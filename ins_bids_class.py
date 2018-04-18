@@ -413,8 +413,8 @@ class IeegChannelInfo(BidsBrick):
 
 
 # Fmap = FmapJSONInfo()
-bids = BidsDataset('D:/roehri/PHRC/test/PHRC')
-bids.parse_bids()
+# bids = BidsDataset('D:/roehri/PHRC/test/PHRC')
+# bids.parse_bids()
 # bids.save_json(bids.bids_dir)
 # pat1 = SubjectInfo()
 # pat1['sub-ID'] = 'coucou'
