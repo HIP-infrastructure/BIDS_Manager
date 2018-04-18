@@ -117,9 +117,10 @@ class BidsBrick(dict):
 
 class IeegInfo(BidsBrick):
 
-    keylist = ['ses', 'task', 'acq', 'run', 'proc', 'recording', 'type', 'fileLoc', 'IeegElecLoc', 'IeegElecPic']
-    keybln = [False, False, False, False, False, False, False, False, True, True]
-    required_keys = ['task']
+    keylist = ['ses', 'task', 'acq', 'run', 'proc', 'recording', 'type', 'fileLoc', 'IeegJSON', 'IeegChannel', 'IeegElecLoc',
+               'IeegElecPic']
+    keybln = [False, False, False, False, False, False, False, False, False, True, True, True]
+    required_keys = ['task', 'JSONfileLoc']
     allowed_file_format = ['.edf', '.gdf', '.fif']
     readable_file_format = allowed_file_format + ['.eeg', '.trc']
 
@@ -322,6 +323,19 @@ class SourceDataInfo(BidsBrick):
         """initiate a  dict var for Subject info"""
         super().__init__(keylist=SourceDataInfo._keylist, keybln=SourceDataInfo._keybln)
 
+    def convert_dcm2niix(self):
+        dcm2niix = 'D:/roehri/python/PycharmProjects/readFromUploader/dcm2niix.exe'
+        cmd_line_base = dcm2niix + " -b y -ba y -m y -z y -f "
+        for pat in self['Subject']:
+            for anat in pat['Anat']:
+                if os.path.isdir(anat['fileLoc']):
+                    print(cmd_line_base + os.path.basename(anat['fileLoc']) + ' -o ' +
+                          os.path.split(anat['fileLoc'])[-2]
+                          + ' ' + anat['fileLoc'])
+                    cmd_line = cmd_line_base + os.path.basename(anat['fileLoc']) + ' -o ' + os.path.split(
+                        anat['fileLoc'])[-2] + ' ' + anat['fileLoc']
+                    os.system(cmd_line)
+
 
 class PipelineInfo(BidsBrick):
 
@@ -351,7 +365,41 @@ class StimuliInfo(BidsBrick):
     pass
 
 
-class ImageryJSONInfo(BidsBrick):
+class ModalityJSON(dict):
+
+    bids_default_unknown = 'n/a'
+
+    def __init__(self, keylist=None, required_keys=None):
+        """initiate a  dict of n/a strings for JSON imagery"""
+        if not keylist:
+            self.keylist = []
+        else:
+            self.keylist = keylist
+        if not required_keys:
+            self.required_keys = []
+        else:
+            self.required_keys = required_keys
+        for item in keylist:
+            self[item] = ModalityJSON.bids_default_unknown
+
+    def has_all_req_attribute(self):  # check if the required attributes are not empty
+        if self.required_keys:
+            for key in self.required_keys:
+                if not self[key]:
+                    return False
+        return True
+
+    def simplify_json(self, required_only=True):
+        for key in self:
+            if (self[key] == ModalityJSON.bids_default_unknown and key not in self.required_keys) or \
+                    (required_only and key in self.required_keys):
+                del(self[key])
+        #         list_key_del.append(key)
+        # for k in list_key_del:
+        #     del()
+
+
+class ImageryJSON(ModalityJSON):
     keylist = ['Manufacturer', 'ManufacturersModelName', 'MagneticFieldStrength', 'DeviceSerialNumber', 'StationName',
                'SoftwareVersions', 'HardcopyDeviceSoftwareVersion', 'ReceiveCoilName', 'ReceiveCoilActiveElements',
                'GradientSetType', 'MRTransmitCoilSequence', 'MatrixCoilMode', 'CoilCombinationMethod',
@@ -364,27 +412,39 @@ class ImageryJSONInfo(BidsBrick):
                'InstitutionalDepartmentName']
     required_keys = []
 
-    def __init__(self, keylist=None, required_keys=None):
+    def __init__(self, required_keys=None):
         """initiate a  dict of n/a strings for JSON imagery"""
-        if not keylist:
-            keylist = ImageryJSONInfo.keylist
+        keylist = ImageryJSON.keylist
         if not required_keys:
-            required_keys = ImageryJSONInfo.required_keys
+            required_keys = ImageryJSON.required_keys
         super().__init__(keylist=keylist, required_keys=required_keys)
-        for item in keylist:
-            self[item] = 'n/a'
+
+    def get_attribute_from_dcm2niix_json(self, filename):
+        dcm2niix_json = json.load(open(filename))
+        for key in self.keylist:
+            if key in dcm2niix_json:
+                self[key] = dcm2niix_json[key]
 
 
-class FmapJSONInfo(ImageryJSONInfo):
+class AnatJSONInfo(ImageryJSON):
+
+    required_keys = []
+
+    def __init__(self):
+        """initiate a  dict var for Subject info"""
+        super().__init__()
+
+
+class FmapJSONInfo(ImageryJSON):
 
     required_keys = ['PhaseEncodingDirection', 'EffectiveEchoSpacing', 'TotalReadoutTime', 'EchoTime']
 
     def __init__(self):
         """initiate a  dict var for Subject info"""
-        super().__init__(keylist=super().keylist, required_keys=FmapJSONInfo.required_keys)
+        super().__init__(required_keys=FmapJSONInfo.required_keys)
 
 
-class IeegJSONInfo(BidsBrick):
+class IeegJSONInfo(ModalityJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
@@ -398,7 +458,7 @@ class IeegJSONInfo(BidsBrick):
         super().__init__(keylist=IeegJSONInfo.keylist, required_keys=IeegJSONInfo.required_keys)
 
 
-class IeegChannelInfo(BidsBrick):
+class IeegChannelInfo(ModalityJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
@@ -409,7 +469,7 @@ class IeegChannelInfo(BidsBrick):
 
     def __init__(self):
         """initiate a  dict var for Subject info"""
-        super().__init__(keylist=IeegJSONInfo.keylist, required_keys=IeegJSONInfo.required_keys)
+        super().__init__(keylist=IeegChannelInfo.keylist, required_keys=IeegChannelInfo.required_keys)
 
 
 # Fmap = FmapJSONInfo()

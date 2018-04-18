@@ -32,7 +32,8 @@ for dirPatName in os.listdir(pathTempPHRC):
                     for dirModFiles in os.listdir(os.path.join(pathTempPHRC, dirPatName, dirModName)):
 
                         uidPatFile = os.path.splitext(dirModFiles.split('_')[-1])[0]
-                        if uidPatFile == sub['sub']:
+                        if os.path.isdir(os.path.join(pathTempPHRC, dirPatName, dirModName, dirModFiles))\
+                                and uidPatFile == sub['sub']:
                             MRIDict = util.AnatInfo()
                             MRIDict['ses'] = str(1).zfill(2)
                             MRI_type = (dirModFiles.split('_')[1])
@@ -40,7 +41,7 @@ for dirPatName in os.listdir(pathTempPHRC):
                                 MRIDict['acq'] = 'preop'
                             elif MRI_type == 'Post':
                                 MRIDict['acq'] = 'postop'
-                            MRIDict['mod'] = 'T1w'
+                            MRIDict['type'] = 'T1w'
                             MRIDict['fileLoc'] = os.path.join(pathTempPHRC, dirPatName, dirModName, dirModFiles)
                             sub['Anat'] = MRIDict
 
@@ -92,10 +93,10 @@ for dirPatName in os.listdir(pathTempPHRC):
                     uidPatFile = os.path.splitext(dirModFiles.split('_')[-1])[0]
                     if uidPatFile == sub['sub']:
                         CTDict = util.AnatInfo()
-                        CTDict['mod'] = 'CT'
+                        CTDict['type'] = 'CT'
                         CTDict['ses'] = str(1).zfill(2)
                         CTDict['fileLoc'] = os.path.join(pathTempPHRC, dirPatName, dirModName, dirModFiles)
-                        sub['CT'] = CTDict
+                        sub['Anat'] = CTDict
 
             elif os.path.splitext(dirModName)[1] == '.json':
                 uidPatFile = os.path.splitext(dirModName)[0].split('_')[0]
@@ -110,11 +111,16 @@ for dirPatName in os.listdir(pathTempPHRC):
 
         source_data['Subject'] = sub
 
+print('Coucou')
+
 # with open(os.path.join(pathTempPHRC, 'reading_' + now.strftime("%d%m%Y_%Hh%M") + '.json'), 'w') as f:
 #     json.dump(source_data, f, indent=2, separators=(',', ': '), ensure_ascii=False)
-
-source_data.save_json(pathTempPHRC)
+# source_data.convert_dcm2niix()
+# source_data.save_json(pathTempPHRC)
+# source_data.convert_dcm2niix()
 # bidsfunc.handle_participant_table(pathPHRC, source_data['Subject'])
+
+
 
 # print(subjectList[0])
 # print(subjectList[1])
