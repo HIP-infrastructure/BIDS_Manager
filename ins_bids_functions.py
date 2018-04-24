@@ -61,7 +61,7 @@ def read_participant_table(rootdir):
         patlist = []
         for l in file:
             ln = l.strip().split("\t")
-            pat = util.SubjectInfo()
+            pat = util.Subject()
             pat['sub'] = ln[0]
             pat['alias'] = ln[3]
             patlist.append(pat)
@@ -136,17 +136,17 @@ def parse_bids_dir(bidsdir, bids_dataset=None, pipeline_list=None, pipeline_labe
     with os.scandir(bidsdir) as it:
         for entry in it:
             if entry.name.startswith('sub-') and entry.is_dir():
-                sub = util.SubjectInfo()
+                sub = util.Subject()
                 sub['sub'] = entry.name.replace('sub-', '')
                 sub = parse_sub_bids_dir(entry.path, sub)
                 bids_dataset['Subject'] = sub
             elif entry.name == 'source data' and entry.is_dir():
-                bids_dataset['SourceData'] = parse_bids_dir(entry.path, bids_dataset=util.SourceDataInfo())
+                bids_dataset['SourceData'] = parse_bids_dir(entry.path, bids_dataset=util.SourceData())
             elif entry.name == 'derivatives' and entry.is_dir():
-                bids_dataset['Derivatives'] = parse_bids_dir(entry.path, bids_dataset=util.DerivativesInfo(),
+                bids_dataset['Derivatives'] = parse_bids_dir(entry.path, bids_dataset=util.Derivatives(),
                                                              pipeline_list=pipeline_list)
             elif pipeline_list and entry.name in pipeline_list and entry.is_dir():
-                bids_dataset['Pipeline'] = parse_bids_dir(entry.path, bids_dataset=util.PipelineInfo(),
+                bids_dataset['Pipeline'] = parse_bids_dir(entry.path, bids_dataset=util.Pipeline(),
                                                           pipeline_label=entry.name)
 
     return bids_dataset
@@ -166,7 +166,7 @@ def parse_sub_bids_dir(sub_bidsdir, subinfo, num_ses=None, mod_dir=None):
                 # subinfo[mod_dir] = eval('util.' + mod_dir + 'Info()')
     return subinfo
 
-#
+
 # bids = parse_bids_dir('D:/roehri/PHRC/test/PHRC', pipeline_list=['Epitools'])
 #
 # now = dtm.datetime.now()
