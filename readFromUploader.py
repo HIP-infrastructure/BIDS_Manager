@@ -42,7 +42,7 @@ for dirPatName in os.listdir(pathTempPHRC):
                                 MRIDict['acq'] = 'preop'
                             elif MRI_type == 'Post':
                                 MRIDict['acq'] = 'postop'
-                            MRIDict['type'] = 'T1w'
+                            MRIDict['modality'] = 'T1w'
                             MRIDict['fileLoc'] = os.path.join(pathTempPHRC, dirPatName, dirModName, dirModFiles)
                             sub['Anat'] = MRIDict
 
@@ -94,7 +94,7 @@ for dirPatName in os.listdir(pathTempPHRC):
                     uidPatFile = os.path.splitext(dirModFiles.split('_')[-1])[0]
                     if uidPatFile == sub['sub']:
                         CTDict = util.Anat()
-                        CTDict['type'] = 'CT'
+                        CTDict['modality'] = 'CT'
                         CTDict['ses'] = str(1).zfill(2)
                         CTDict['fileLoc'] = os.path.join(pathTempPHRC, dirPatName, dirModName, dirModFiles)
                         sub['Anat'] = CTDict
