@@ -124,49 +124,6 @@ def handle_participant_table(rootbidsfolder, input_list):
     curr_listpat = check_participant_table(rootbidsfolder, headerlist)
     update_participant_table(rootbidsfolder, input_list, curr_listpat)
 
-
-def parse_bids_dir(bidsdir, bids_dataset=None, pipeline_list=None, pipeline_label=None):
-
-    if not bids_dataset:
-        bids_dataset = util.BidsDataset()
-
-    if pipeline_label:
-        bids_dataset['name'] = pipeline_label
-
-    with os.scandir(bidsdir) as it:
-        for entry in it:
-            if entry.name.startswith('sub-') and entry.is_dir():
-                sub = util.Subject()
-                sub['sub'] = entry.name.replace('sub-', '')
-                sub = parse_sub_bids_dir(entry.path, sub)
-                bids_dataset['Subject'] = sub
-            elif entry.name == 'source data' and entry.is_dir():
-                bids_dataset['SourceData'] = parse_bids_dir(entry.path, bids_dataset=util.SourceData())
-            elif entry.name == 'derivatives' and entry.is_dir():
-                bids_dataset['Derivatives'] = parse_bids_dir(entry.path, bids_dataset=util.Derivatives(),
-                                                             pipeline_list=pipeline_list)
-            elif pipeline_list and entry.name in pipeline_list and entry.is_dir():
-                bids_dataset['Pipeline'] = parse_bids_dir(entry.path, bids_dataset=util.Pipeline(),
-                                                          pipeline_label=entry.name)
-
-    return bids_dataset
-
-
-def parse_sub_bids_dir(sub_bidsdir, subinfo, num_ses=None, mod_dir=None):
-
-    with os.scandir(sub_bidsdir) as it:
-        for entry in it:
-            if not num_ses and entry.name.startswith('ses-') and entry.is_dir():
-                num_ses = entry.name.replace('ses-', '')
-                subinfo = parse_sub_bids_dir(entry.path, subinfo, num_ses=num_ses)
-            elif not mod_dir and entry.name.title() in subinfo.keyList[7:] and entry.is_dir():
-                subinfo = parse_sub_bids_dir(entry.path, subinfo, num_ses=num_ses, mod_dir=entry.name.title())
-            elif mod_dir and entry.is_file():  # handles file extension! add them to an object?!
-                print(os.path.splitext(entry.name))
-                # subinfo[mod_dir] = eval('util.' + mod_dir + 'Info()')
-    return subinfo
-
-
 # bids = parse_bids_dir('D:/roehri/PHRC/test/PHRC', pipeline_list=['Epitools'])
 #
 # now = dtm.datetime.now()
