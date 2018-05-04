@@ -2,17 +2,23 @@ import os
 import json
 from datetime import datetime
 import pprint
+<<<<<<< HEAD
 import gzip
 import shutil
 from numpy import random as rnd
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsBrickJSON: to handles the JSON 
 sidecars, BidsBrickTSV: to handle the tsv sidecars. '''
+=======
+import shutil
+from numpy import random as rnd
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class BidsBrick(dict):
 
     keylist = ['sub']
+    keybln = [False]
     required_keys = ['sub']
 
     def __init__(self, keylist=None, required_keys=None):
@@ -133,8 +139,12 @@ class BidsBrick(dict):
                 w = word.split('-')
                 if len(w) == 2 and w[0] in mod_dict.keys():
                     mod_dict[w[0]] = w[1]
+<<<<<<< HEAD
             if 'modality' in mod_dict and not mod_dict['modality']:
                 mod_dict['modality'] = fname_pieces[-1]
+=======
+            mod_dict['modality'] = fname_pieces[-1]
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
         if isinstance(self, BidsBrick):
             if 'fileLoc' in self.keys() and self['fileLoc']:
@@ -219,9 +229,23 @@ class BidsBrick(dict):
                             break
             sidecar_dict.has_all_req_attributes()
 
+<<<<<<< HEAD
         #  firstly, check whether the subclass needs a JSON or a TSV files
         sidecar_flag = [value for counter, value in enumerate(self.keylist) if 'TSV' in value or 'JSON' in value]
         print(sidecar_flag)
+=======
+        #  firstly, check whether the subclass needs a JSON file
+        json_flag = [value for counter, value in enumerate(self.keyList) if 'JSON' in value]
+        if issubclass(type(self), BidsBrick) and json_flag:
+            if 'fileLoc' in self.keys() and self['fileLoc']:
+                filename, ext = os.path.splitext(os.path.basename(self['fileLoc']))
+                if ext == '.gz':
+                    filename, ext = os.path.splitext(filename)
+                self[json_flag[0]] = eval(json_flag[0] + '()')
+                find_json_file(self[json_flag[0]], filename, self['fileLoc'])
+                if filename:
+                    self[json_flag[0]].simplify_json(required_only=False)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
         if issubclass(type(self), BidsBrick) and sidecar_flag:
             if 'fileLoc' in self.keys() and self['fileLoc']:
@@ -283,12 +307,21 @@ class BidsBrick(dict):
                 return {key: self[key] for key in self if isinstance(self[key], list) or isinstance(self[key], dict)}
         return {}
 
+<<<<<<< HEAD
     # @staticmethod
     # def create_keytype(keylist):
     #     keytype = [0]*len(keylist)
     #     for key in keylist:
     #         keytype.append(key in BidsBrick.get_list_subclasses_names())
     #     return keytype
+=======
+    @staticmethod
+    def create_keybln(keylist):
+        keybln = []
+        for key in keylist:
+            keybln.append(key in BidsBrick.get_list_subclasses_names() + BidsJSONBrick.get_list_subclasses_names())
+        return keybln
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     @classmethod
     def get_list_subclasses_names(cls):
@@ -299,10 +332,14 @@ class BidsBrick(dict):
         return sub_classes_names
 
 
+<<<<<<< HEAD
 # class BidsBrickSidecar(dictr)
 
 
 class BidsBrickJSON(dict):
+=======
+class BidsJSONBrick(dict):
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     bids_default_unknown = 'n/a'
     inheritance = True
@@ -326,8 +363,13 @@ class BidsBrickJSON(dict):
             self.required_keys = self.__class__.required_keys
         else:
             self.required_keys = required_keys
+<<<<<<< HEAD
         for item in self.keylist:
             self[item] = BidsBrickJSON.bids_default_unknown
+=======
+        for item in keylist:
+            self[item] = BidsJSONBrick.bids_default_unknown
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def has_all_req_attributes(self):  # check if the required attributes are not empty
         if self.required_keys:
@@ -339,7 +381,11 @@ class BidsBrickJSON(dict):
     def simplify_sidecar(self, required_only=True):
         list_key2del = []
         for key in self:
+<<<<<<< HEAD
             if (self[key] == BidsBrickJSON.bids_default_unknown and key not in self.required_keys) or \
+=======
+            if (self[key] == BidsJSONBrick.bids_default_unknown and key not in self.required_keys) or \
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
                     (required_only and key not in self.required_keys):
                 list_key2del.append(key)
         for key in list_key2del:
@@ -347,6 +393,7 @@ class BidsBrickJSON(dict):
         # for k in list_key_del:
         #     del()
 
+<<<<<<< HEAD
     def read_file(self, filename):
         if os.path.isfile(filename):
             if os.path.splitext(filename)[1] == '.json':
@@ -362,6 +409,13 @@ class BidsBrickJSON(dict):
                 json.dump(self, f, indent=2, separators=(',', ': '), ensure_ascii=False)
         else:
             raise TypeError('File is not ".json".')
+=======
+    def read_json_file(self, filename):
+        read_json = json.load(open(filename))
+        for key in read_json:
+            if (key in self.keylist and self[key] == BidsJSONBrick.bids_default_unknown) or key not in self.keylist:
+                self[key] = read_json[key]
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     @classmethod
     def get_list_subclasses_names(cls):
@@ -372,6 +426,7 @@ class BidsBrickJSON(dict):
         return sub_classes_names
 
 
+<<<<<<< HEAD
 class ImageryBrickJSON(BidsBrickJSON):
     keylist = ['Manufacturer', 'ManufacturersModelName', 'MagneticFieldStrength', 'DeviceSerialNumber', 'StationName',
                'SoftwareVersions', 'HardcopyDeviceSoftwareVersion', 'ReceiveCoilName', 'ReceiveCoilActiveElements',
@@ -433,6 +488,23 @@ class BidsBrickTSV(list):
             self.modality_field = self.__class__.modality_field
         else:
             self.modality_field = modality_field
+=======
+class BidsTSVBrick(list):
+
+    bids_default_unknown = 'n/a'
+
+    def __init__(self, header=None, required_fields=None):
+        """initiate a  dict of n/a strings for JSON imagery"""
+        self.is_complete = False
+        if not header:
+            self.header = []
+        else:
+            self.header = header
+        if not required_fields:
+            self.required_fields = []
+        else:
+            self.required_fields = required_fields
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
         super().append(self.header)
 
     def __setitem__(self, key, value):
@@ -468,7 +540,11 @@ class BidsBrickTSV(list):
         if isinstance(key, int) and key == 0:
             return
         elif isinstance(key, slice) and key.start == 0 or not key.start:
+<<<<<<< HEAD
             super().__setitem__(0, self.header)
+=======
+            super().__setitem__(0, self.__class__.header)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
             key = slice(1, key.stop, key.step)
         super().__delitem__(key)
 
@@ -478,6 +554,7 @@ class BidsBrickTSV(list):
         lines = [self.bids_default_unknown]*len(self.header)
         for key in dict2append:
             if key in self.header:
+<<<<<<< HEAD
                 if not dict2append[key]:
                     dict2append[key] = BidsBrickTSV.bids_default_unknown
                 lines[self.header.index(key)] = str(dict2append[key])
@@ -487,6 +564,12 @@ class BidsBrickTSV(list):
         pass
 
     def read_file(self, tsvfilename):
+=======
+                lines[self.header.index(key)] = str(dict2append[key])
+        super().append(lines)
+
+    def read_table(self, tsvfilename):
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
         if os.path.isfile(tsvfilename):
             if os.path.splitext(tsvfilename)[1] == '.tsv':
                 with open(os.path.join(tsvfilename), 'r') as file:
@@ -498,12 +581,20 @@ class BidsBrickTSV(list):
                         for line in file:
                             self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
                     else:
+<<<<<<< HEAD
                         raise AttributeError('Header of ' + os.path.basename(tsvfilename) +
                                              ' does not contain the required fields.')
             else:
                 raise TypeError('File is not ".tsv".')
 
     def write_file(self, tsvfilename):
+=======
+                        raise AttributeError('Header does not contain the required fields.')
+            else:
+                raise TypeError('File is not ".tsv".')
+
+    def write_table(self, tsvfilename):
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
         if os.path.splitext(tsvfilename)[1] == '.tsv':
             with open(os.path.join(tsvfilename), 'w') as file:
                 for _, line in enumerate(self):
@@ -511,9 +602,12 @@ class BidsBrickTSV(list):
         else:
             raise TypeError('File is not ".tsv".')
 
+<<<<<<< HEAD
     def has_all_req_attributes(self):  # check if the required attributes are not empty
         self.is_complete = False  # To be implemented, stay False for the moment
 
+=======
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
     @staticmethod
     def createalias(numsyl=3):
         alias = ''
@@ -534,6 +628,7 @@ class BidsBrickTSV(list):
         alias = alias + datetime.now().strftime('%y')
         return alias
 
+<<<<<<< HEAD
     @classmethod
     def get_list_subclasses_names(cls):
         sub_classes_names = []
@@ -554,10 +649,25 @@ class EventsTSV(BidsBrickTSV):
 
 """ iEEG brick with its file-specific (IeegJSON, IeegChannelsTSV) and global sidecar 
 (IeegCoordSysJSON, IeegElecTSV or IeegPhoto) files. """
+=======
+    def handle_tsv(self, filename, header=None):
+        def create_tsv(self, filename, header=None):
+            # file = open(os.path.join(rootdir, filename), 'w')
+            # if header:
+            #     for idx_word in range(0, len(header)):
+            #         if idx_word != len(header) - 1:
+            #             file.write(header[idx_word] + '\t')
+            #         else:
+            #             file.write(header[idx_word] + '\n')
+            # file.close()
+            pass
+        pass
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class Ieeg(BidsBrick):
 
+<<<<<<< HEAD
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'IeegJSON',
                                    'IeegChannelsTSV', 'IeegEventsTSV']
     # keybln = BidsBrick.create_keytype(keylist)
@@ -568,6 +678,19 @@ class Ieeg(BidsBrick):
 
     def __init__(self):
         super().__init__()
+=======
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'recording', 'modality', 'fileLoc', 'IeegJSONBrick', 'IeegChannel',
+               'IeegElecLoc', 'IeegElecPic']
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    allowed_modality = ['ieeg']
+    allowed_file_format = ['.edf', '.gdf', '.fif']
+    readable_file_format = allowed_file_format + ['.eeg', '.trc']
+
+    def __init__(self):
+        """initiates a  dict var for ieeg info"""
+        super().__init__(keylist=Ieeg.keylist, keybln=Ieeg.keybln, required_keys=Ieeg.required_keys)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
         self['modality'] = 'ieeg'
 
 
@@ -580,10 +703,23 @@ class IeegJSON(BidsBrickJSON):
                'iEEGReferenceScheme', 'Stimulation', 'Medication']
     required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
 
+<<<<<<< HEAD
     def __init__(self, modality_field):
         """initiate a  dict var for Subject info"""
         super().__init__(keylist=IeegJSON.keylist, required_keys=IeegJSON.required_keys, modality_field=modality_field)
 
+=======
+    keylist = BidsBrick.keylist + ['ses', 'space', 'modality', 'fileLoc', 'IeegElecJSON']
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['modality']
+    allowed_file_format = ['.tsv']
+    readable_file_format = allowed_file_format + ['.txt']
+
+    def __init__(self):
+        """initiate a  dict var for ieeg electrode localisation info"""
+        super().__init__(keylist=IeegElec.keylist)
+        self['modality'] = 'electrodes'
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 class IeegChannelsTSV(BidsBrickTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
@@ -595,6 +731,7 @@ class IeegChannelsTSV(BidsBrickTSV):
     modality_field = 'channels'
 
 
+<<<<<<< HEAD
 class IeegEventsTSV(EventsTSV):
     """Store the info of the #_events.tsv."""
     pass
@@ -649,16 +786,37 @@ class IeegGlobalSidecars(BidsBrick):
 
 
 """ Anat brick with its file-specific sidecar files."""
+=======
+    keylist = BidsBrick.keylist + ['ses', 'acq', 'modality', 'fileLoc']
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['modality']
+    allowed_file_format = ['.jpg', '.png']
+    readable_file_format = allowed_file_format + ['.ppt', '.pdf']
+
+    def __init__(self):
+        """initiate a  dict var for ieeg electrode pictures info"""
+        super().__init__(keylist=IeegElecPic.keylist)
+        self['modality'] = 'photo'
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class Anat(BidsBrick):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'ce', 'rec', 'run', 'mod', 'modality', 'fileLoc', 'AnatJSON']
+<<<<<<< HEAD
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modality = ['T1w', 'T2w', 'T1rho', 'T1map', 'T2map', 'T2star', 'FLAIR', 'PD', 'Pdmap', 'PDT2',
                         'inplaneT1', 'inplaneT2', 'angio', 'defacemask', 'CT']
     allowed_file_formats = ['.nii']
     readable_file_format = allowed_file_formats + ['.dcm']
+=======
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['modality']
+    allowed_modality = ['T1w', 'T2w', 'T1rho', 'T1map', 'T2map', 'T2star', 'FLAIR', 'FLASH', 'PD', 'Pdmap', 'PDT2',
+                    'inplaneT1', 'inplaneT2', 'angio', 'defacemask', 'CT']
+    allowed_file_format = ['.nii']
+    readable_file_format = allowed_file_format + ['.dcm']
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def __init__(self):
         super().__init__()
@@ -673,6 +831,7 @@ class AnatJSON(ImageryBrickJSON):
 
 class Func(BidsBrick):
 
+<<<<<<< HEAD
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'echo', 'modality', 'fileLoc', 'FuncJSON',
                                    'FuncEventsTSV']
     # keybln = BidsBrick.create_keytype(keylist)
@@ -680,6 +839,14 @@ class Func(BidsBrick):
     allowed_modality = ['bold', 'sbref']
     allowed_file_formats = ['.nii']
     readable_file_format = allowed_file_formats + ['.dcm']
+=======
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'echo', 'modality', 'fileLoc', 'FuncJSON']
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    allowed_modality = ['bold', 'sbref']
+    allowed_file_format = ['.nii']
+    readable_file_format = allowed_file_format + ['.dcm']
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def __init__(self):
         super().__init__()
@@ -705,11 +872,19 @@ class FuncEventsTSV(EventsTSV):
 class Fmap(BidsBrick):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'dir', 'run', 'modality', 'fileLoc', 'FmapJSON']
+<<<<<<< HEAD
     # keybln = BidsBrick.create_keytype(keylist)
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modality = ['phasediff', 'phase1', 'phase2', 'magnitude1', 'magnitude2', 'magnitude', 'fieldmap', 'epi']
     allowed_file_formats = ['.nii']
     readable_file_format = allowed_file_formats + ['.dcm']
+=======
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['modality']
+    allowed_modality = ['phasediff', 'phase1', 'phase2', 'magnitude1', 'magnitude2', 'magnitude', 'fieldmap', 'epi']
+    allowed_file_format = ['.nii']
+    readable_file_format = allowed_file_format + ['.dcm']
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def __init__(self):
         super().__init__()
@@ -726,6 +901,7 @@ class FmapJSON(ImageryBrickJSON):
 class Dwi(BidsBrick):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'run', 'modality', 'fileLoc', 'DwiJSON']
+<<<<<<< HEAD
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modality = ['dwi']
     allowed_file_formats = ['.nii']
@@ -741,10 +917,23 @@ class DwiJSON(ImageryBrickJSON):
 
 
 """ MEG brick with its file-specific sidecar files (To be finalized). """
+=======
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['modality']
+    allowed_modality = ['dwi']
+    allowed_file_format = ['.nii']
+    readable_file_format = allowed_file_format + ['.dcm']
+
+    def __init__(self):
+        """initiate a  dict var for diffusion weighted images info"""
+        super().__init__(keylist=Dwi.keylist)
+        self['modality'] = 'dwi'
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class Meg(BidsBrick):
 
+<<<<<<< HEAD
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'MegJSON',
                                    'MegEventsTSV']
     # keybln = BidsBrick.create_keytype(keylist)
@@ -764,10 +953,24 @@ class MegEventsTSV(EventsTSV):
 
 
 """ Behaviour brick with its file-specific sidecar files (To be finalized). """
+=======
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc']
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    allowed_modality = ['meg']
+    allowed_file_format = ['.ctf', '.fif', '4D']
+    readable_file_format = allowed_file_format
+
+    def __init__(self):
+        """initiate a  dict var for MEG info"""
+        super().__init__(keylist=Meg.keylist, required_keys=Meg.required_keys)
+        self['modality'] = 'meg'
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class Beh(BidsBrick):
 
+<<<<<<< HEAD
     keylist = BidsBrick.keylist + ['ses', 'task', 'modality', 'fileLoc', 'BehEventsTSV']
     required_keys = BidsBrick.required_keys + ['task', 'modality']
     allowed_modality = ['beh']
@@ -776,6 +979,18 @@ class Beh(BidsBrick):
 
     def __init__(self):
         super().__init__()
+=======
+    keylist = BidsBrick.keylist + ['ses', 'task', 'modality', 'fileLoc']
+    keybln = BidsBrick.create_keybln(keylist)
+    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    allowed_modality = ['beh']
+    allowed_file_format = ['.tsv']
+    readable_file_format = allowed_file_format
+
+    def __init__(self):
+        """initiate a  dict var for MEG info"""
+        super().__init__(keylist=Beh.keylist, required_keys=Beh.required_keys)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
         self['modality'] = 'beh'
 
 
@@ -786,6 +1001,7 @@ class BehEventsTSV(EventsTSV):
 
 ''' Higher level bricks '''
 
+<<<<<<< HEAD
 
 class Subject(BidsBrick):
 
@@ -800,11 +1016,22 @@ class Subject(BidsBrick):
     def get_list_modality_type(cls):
         return ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Ieeg', 'Beh']
         # [mod_type for cnt, mod_type in enumerate(cls.keylist) if cls.keybln[cnt]]
+=======
+    @classmethod
+    def get_list_modality_type(cls):
+        return [mod_type for cnt, mod_type in enumerate(cls.keylist) if cls.keybln[cnt]]
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class SourceData(BidsBrick):
 
+<<<<<<< HEAD
     keylist = ['Subject', 'SrcDataTrack']
+=======
+    _keylist = ['Subject', 'SrcDataTrack']
+    _keybln = BidsBrick.create_keybln(_keylist)
+    # _keybln = [True]
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def __init__(self):
         super().__init__()
@@ -856,10 +1083,52 @@ class Stimuli(BidsBrick):
     pass
 
 
+<<<<<<< HEAD
 ''' Dataset related JSON bricks '''
 
 
 class DatasetDescJSON(BidsBrickJSON):
+=======
+class DatasetDescJSON(BidsJSONBrick):
+
+    keylist = ['Name', 'BIDSVersion', 'License', 'Authors', 'Acknowledgements', 'HowToAcknowledge', 'Funding',
+               'ReferencesAndLinks', 'DatasetDOI']
+    required_keys = ['Name', 'BIDSVersion']
+
+    def __init__(self):
+        """initiate a  dict var for MEG info"""
+        super().__init__(keylist=DatasetDescJSON.keylist, required_keys=DatasetDescJSON.required_keys)
+
+
+class ImageryJSONBrick(BidsJSONBrick):
+    keylist = ['Manufacturer', 'ManufacturersModelName', 'MagneticFieldStrength', 'DeviceSerialNumber', 'StationName',
+               'SoftwareVersions', 'HardcopyDeviceSoftwareVersion', 'ReceiveCoilName', 'ReceiveCoilActiveElements',
+               'GradientSetType', 'MRTransmitCoilSequence', 'MatrixCoilMode', 'CoilCombinationMethod',
+               'PulseSequenceType', 'ScanningSequence', 'SequenceVariant', 'ScanOptions', 'PulseSequenceDetails',
+               'NonlinearGradientCorrection', 'NumberShots', 'ParallelReductionFactorInPlane',
+               'ParallelAcquisitionTechnique', 'PartialFourier', 'PartialFourierDirection', 'PhaseEncodingDirection',
+               'EffectiveEchoSpacing', 'TotalReadoutTime', 'WaterFatShift', 'EchoTrainLength', 'EchoTime',
+               'InversionTime', 'SliceTiming', 'SliceEncodingDirection', 'DwellTime', 'FlipAngle',
+               'MultibandAccelerationFactor', 'AnatomicalLandmarkCoordinates', 'InstitutionName', 'InstitutionAddress',
+               'InstitutionalDepartmentName']
+    required_keys = []
+
+    def __init__(self, required_keys=None):
+        """initiate a  dict of n/a strings for JSON imagery"""
+        keylist = ImageryJSONBrick.keylist
+        if not required_keys:
+            required_keys = ImageryJSONBrick.required_keys
+        super().__init__(keylist=keylist, required_keys=required_keys)
+
+    def get_attribute_from_dcm2niix_json(self, filename):
+        dcm2niix_json = json.load(open(filename))
+        for key in self.keylist:
+            if key in dcm2niix_json:
+                self[key] = dcm2niix_json[key]
+
+
+class AnatJSON(ImageryJSONBrick):
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     keylist = ['Name', 'BIDSVersion', 'License', 'Authors', 'Acknowledgements', 'HowToAcknowledge', 'Funding',
                'ReferencesAndLinks', 'DatasetDOI']
@@ -873,13 +1142,27 @@ class DatasetDescJSON(BidsBrickJSON):
         jsonfilename = os.path.join(BidsDataset.bids_dir, DatasetDescJSON.filename)
         super().write_file(jsonfilename)
 
+<<<<<<< HEAD
     def read_file(self, jsonfilename=None):
         jsonfilename = os.path.join(BidsDataset.bids_dir, DatasetDescJSON.filename)
         super().read_file(jsonfilename)
+=======
+class FuncJSON(ImageryJSONBrick):
+    keylist = ImageryJSONBrick.keylist + ['RepetitionTime', 'VolumeTiming', 'TaskName', 'NumberOfVolumesDiscardedByScanner',
+                                     'NumberOfVolumesDiscardedByUser', 'DelayTime', 'AcquisitionDuration',
+                                     'DelayAfterTrigger', 'NumberOfVolumesDiscardedByScanner',
+                                     'NumberOfVolumesDiscardedByUser', 'Instructions', 'TaskDescription', 'CogAtlasID',
+                                     'CogPOID']
+    required_keys = ['RepetitionTime', 'VolumeTiming', 'TaskName']
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 ''' TSV bricks '''
 
+<<<<<<< HEAD
+=======
+class FmapJSON(ImageryJSONBrick):
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 class SrcDataTrack(BidsBrickTSV):
     header = ['orig_filename', 'bids_filename', 'upload_date']
@@ -889,15 +1172,20 @@ class SrcDataTrack(BidsBrickTSV):
     def __init__(self):
         super().__init__()
 
+<<<<<<< HEAD
     def write_file(self, tsv_full_filename=None):
         tsv_full_filename = os.path.join(BidsDataset.bids_dir, 'sourcedata', SrcDataTrack.__tsv_srctrack)
         super().write_file(tsv_full_filename)
+=======
+class DwiJSON(ImageryJSONBrick):
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def read_file(self, tsv_full_filename=None):
         tsv_full_filename = os.path.join(BidsDataset.bids_dir, 'sourcedata', SrcDataTrack.__tsv_srctrack)
         super().read_file(tsv_full_filename)
 
 
+<<<<<<< HEAD
 class ParticipantsTSV(BidsBrickTSV):
     header = ['participant_id', 'age', 'sex', 'alias', 'group', 'upload_date', 'due_date', 'report_date', 'EI_done',
               'Gardel_done', 'Delphos_done']
@@ -906,6 +1194,21 @@ class ParticipantsTSV(BidsBrickTSV):
 
     def __init__(self):
         super().__init__()
+=======
+
+class IeegJSONBrick(BidsJSONBrick):
+    keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
+               'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
+               'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
+               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration', 'RecordingType',
+               'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'iEEGPlacementScheme',
+               'iEEGReferenceScheme', 'Stimulation', 'Medication']
+    required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
+
+    def __init__(self):
+        """initiate a  dict var for Subject info"""
+        super().__init__(keylist=IeegJSONBrick.keylist, required_keys=IeegJSONBrick.required_keys)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def write_file(self, tsv_full_filename=None):
         tsv_full_filename = os.path.join(BidsDataset.bids_dir, ParticipantsTSV.__tsv_participants)
@@ -931,16 +1234,73 @@ class ParticipantsTSV(BidsBrickTSV):
                 else:
                     self.append({'participant_id': sub_dict['sub'], 'age': sub_dict['age'], 'sex': sub_dict['sex']})
 
+<<<<<<< HEAD
 
 ''' Main BIDS brick which contains all the information concerning the patients and the sidecars. It permits to parse a 
 given bids dataset, request information (e.g. is a given subject is present, has a given subject a given modality), 
 import new data or export a subset of the current dataset (not yet implemented ) '''
+=======
+class IeegChannel(BidsTSVBrick):
+    header = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
+              'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
+              'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
+              'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration', 'RecordingType',
+              'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'iEEGPlacementScheme',
+              'iEEGReferenceScheme', 'Stimulation', 'Medication']
+    required_fields = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
+
+    def __init__(self):
+        """initiate a  dict var for Subject info"""
+        super().__init__(header=IeegChannel.header, required_fields=IeegChannel.required_fields)
+
+
+class SrcDataTrack(BidsTSVBrick):
+    header = ['orig_filename', 'bids_filename', 'upload_date']
+    required_fields = ['orig_filename', 'bids_filename', 'upload_date']
+    __tsv_srctrack = 'source_data_trace.tsv'
+
+    def __init__(self):
+        """initiate a  dict var for Subject info"""
+        super().__init__(header=SrcDataTrack.header, required_fields=SrcDataTrack.required_fields)
+
+    def write_table(self, tsv_full_filename=None):
+        tsv_full_filename = os.path.join(BidsDataset.bids_dir, 'sourcedata', SrcDataTrack.__tsv_srctrack)
+        super().write_table(tsv_full_filename)
+
+    def read_table(self, tsv_full_filename=None):
+        tsv_full_filename = os.path.join(BidsDataset.bids_dir, 'sourcedata', SrcDataTrack.__tsv_srctrack)
+        super().read_table(tsv_full_filename)
+
+
+class ParticipantsTSV(BidsTSVBrick):
+    header = ['participant_id', 'age', 'sex', 'alias', 'group', 'upload_date', 'due_date', 'report_date', 'EI_done',
+              'Gardel_done', 'Delphos_done']
+    required_fields = ['participant_id', 'age', 'upload_date']
+    __tsv_participants = 'participants.tsv'
+
+    def __init__(self):
+        """initiate a  dict var for Subject info"""
+        super().__init__(header=SrcDataTrack.header, required_fields=SrcDataTrack.required_fields)
+
+    def write_table(self, tsv_full_filename=None):
+        tsv_full_filename = os.path.join(BidsDataset.bids_dir, ParticipantsTSV.__tsv_participants)
+        super().write_table(tsv_full_filename)
+
+    def read_table(self, tsv_full_filename=None):
+        tsv_full_filename = os.path.join(BidsDataset.bids_dir, ParticipantsTSV.__tsv_participants)
+        super().read_table(tsv_full_filename)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
 
 class BidsDataset(BidsBrick):
 
+<<<<<<< HEAD
     keylist = ['Subject', 'SourceData', 'Derivatives', 'Code', 'Stimuli', 'DatasetDescJSON', 'ParticipantsTSV']
     # _keybln = BidsBrick.create_keytype(_keylist)
+=======
+    _keylist = ['Subject', 'SourceData', 'Derivatives', 'Code', 'Stimuli', 'DatasetDescJSON']
+    _keybln = BidsBrick.create_keybln(_keylist)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
     bids_dir = None
 
     def __init__(self, bids_dir):
@@ -997,7 +1357,11 @@ class BidsDataset(BidsBrick):
                     elif entry.name == 'sourcedata' and entry.is_dir():
                         bids_brick['SourceData'] = SourceData()
                         bids_brick['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
+<<<<<<< HEAD
                         bids_brick['SourceData'][-1]['SrcDataTrack'].read_file()
+=======
+                        bids_brick['SourceData'][-1]['SrcDataTrack'].read_table()
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
                         parse_bids_dir(bids_brick['SourceData'][-1], entry.path)
                     elif entry.name == 'derivatives' and entry.is_dir():
                         bids_brick['Derivatives'] = Derivatives()
@@ -1015,10 +1379,15 @@ class BidsDataset(BidsBrick):
         self['ParticipantsTSV'] = ParticipantsTSV()
         self['ParticipantsTSV'].read_file()
 
+        self.popitem()  # clear the bids variable before parsing to avoid rewrite the same things
         parse_bids_dir(self, self.bids_dir)
         save_parsing_path = os.path.join(self.bids_dir, 'derivatives', 'parsing')
         os.makedirs(save_parsing_path, exist_ok=True)
+<<<<<<< HEAD
         self.save_json(save_parsing_path, 'parsing')
+=======
+        self.save_json(save_parsing_path)
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     def is_subject_present(self, subject_label):
         """
@@ -1124,20 +1493,28 @@ class BidsDataset(BidsBrick):
             fname2import, ext2import = os.path.splitext(mod_dict2import['fileLoc'])
             orig_ext = ext2import
             bsname_bids_dir = os.path.basename(bids_dst.bids_dir)
+<<<<<<< HEAD
             json_flag = [value for counter, value in enumerate(mod_dict2import.keylist) if 'JSON' in value]
             tsv_flag = [value for counter, value in enumerate(mod_dict2import.keylist) if 'TSV' in value]
 
+=======
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
             if ext2import == '.gz':
                 fname2import, ext2import = os.path.splitext(fname2import)
                 orig_ext = ext2import + orig_ext
 
+<<<<<<< HEAD
             if ext2import in mod_dict2import.allowed_file_formats:
+=======
+            if ext2import in mod_dict2import.allowed_file_format:
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
                 filename = filename + orig_ext
                 os.makedirs(dirname, exist_ok=True)
                 # use shutil.move to handle the copy over different volumes
                 shutil.move(mod_dict2import['fileLoc'], os.path.join(dirname, filename))
             else:
                 raise NotImplementedError('Conversion will be implemented soon')
+<<<<<<< HEAD
 
             if json_flag:
                 for json_tag in json_flag:
@@ -1150,6 +1527,8 @@ class BidsDataset(BidsBrick):
                         mod_dict2import[tsv_tag].write_file(
                             os.path.join(dirname, filename.replace(orig_ext, mod_dict2import[tsv_tag].extension)))
 
+=======
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
             if keep_srcdata:
                 scr_data_dirname = dirname.replace(bsname_bids_dir, os.path.join(bsname_bids_dir, 'sourcedata'))
                 os.makedirs(scr_data_dirname, exist_ok=True)
@@ -1224,7 +1603,11 @@ class BidsDataset(BidsBrick):
             for sub in data2import['Subject']:
                 [flag, missing_str] = sub.has_all_req_attributes()
                 if flag:
+<<<<<<< HEAD
                     self['ParticipantsTSV'].add_subject(sub)
+=======
+
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
                     sub_present, sub_index = self.is_subject_present(sub['sub'])
                     if sub_present:
                         nb_ses, bids_ses = self.get_number_of_session4subject(sub['sub'])
@@ -1253,6 +1636,7 @@ class BidsDataset(BidsBrick):
                 else:
                     raise ValueError(missing_str)
 
+<<<<<<< HEAD
             if self['DatasetDescJSON']:
                 self['DatasetDescJSON'].write_file()
             if self['ParticipantsTSV']:
@@ -1262,6 +1646,17 @@ class BidsDataset(BidsBrick):
             self.parse_bids()
 
             shutil.rmtree(data2import.data2import_dir)
+=======
+            if keep_sourcedata and keep_file_trace:
+                self['SourceData'][-1]['SrcDataTrack'].write_table()
+
+            self.popitem()
+            self.parse_bids()
+
+            shutil.rmtree(data2import.data2import_dir)
+
+
+>>>>>>> 1a48678a7229f265ea0d78ae6a1eb83cbc7854d1
 
     @classmethod
     def _assign_bids_dir(cls, bids_dir):
