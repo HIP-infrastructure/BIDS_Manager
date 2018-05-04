@@ -68,19 +68,19 @@ for dirPatName in os.listdir(pathTempPHRC):
                                                                                            dirModFiles)):
                             for dirModPic in os.listdir(os.path.join(pathTempPHRC, dirPatName,
                                                                      dirModName, dirModFiles)):
-                                implantschema = util.IeegElecPic()
+                                implantschema = util.IeegPhoto()
                                 implantschema['ses'] = str(1).zfill(2)
                                 implantschema['acq'] = 'impl'
                                 implantschema['fileLoc'] = os.path.join(pathTempPHRC, dirPatName, dirModName,
                                                                         dirModFiles, dirModPic)
                                 if sub['Ieeg']:
                                     for ieegIdx in range(0, len(sub['Ieeg'])):
-                                        sub['Ieeg'][ieegIdx]['IeegElecPic'] = implantschema
+                                        sub['Ieeg'][ieegIdx]['IeegPhoto'] = implantschema
                                 else:
                                     sub['Ieeg'] = util.Ieeg()
-                                    sub['Ieeg'][0]['IeegElecPic'] = implantschema
+                                    sub['Ieeg'][0]['IeegPhoto'] = implantschema
                         # if dirModFiles.startswith('Localisation'):
-                        #     elecloc = util.IeegElec()
+                        #     elecloc = util.IeegElecTSV()
                         #     elecloc['space'] = 'CT'
                         #     if patDict['Ieeg']:
                         #         for ieegIdx in range(0, len(patDict['Ieeg'])):
