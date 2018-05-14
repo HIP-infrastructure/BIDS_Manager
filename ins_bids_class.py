@@ -6,8 +6,8 @@ import gzip
 import shutil
 from numpy import random as rnd
 
-''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsBrickJSON: to handles the JSON 
-sidecars, BidsBrickTSV: to handle the tsv sidecars. '''
+''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
+sidecars, BidsTSV: to handle the tsv sidecars. '''
 
 
 class BidsBrick(dict):
@@ -27,9 +27,9 @@ class BidsBrick(dict):
             self.required_keys = self.__class__.required_keys
 
         for key in self.keylist:
-            if key in BidsBrick.get_list_subclasses_names() or key in BidsBrickTSV.get_list_subclasses_names():
+            if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
-            elif key in BidsBrickTSV.get_list_subclasses_names():
+            elif key in BidsTSV.get_list_subclasses_names():
                 self[key] = {}
             else:
                 self[key] = ''
@@ -44,15 +44,15 @@ class BidsBrick(dict):
                     self[key].append(value)
                 else:
                     dict.__setitem__(self, key, [])
-            elif key in BidsBrickJSON.get_list_subclasses_names():
-                if value and isinstance(value, BidsBrickJSON):
+            elif key in BidsJSON.get_list_subclasses_names():
+                if value and isinstance(value, BidsJSON):
                     # check whether the value is from the correct class when not empty
                     super().__setitem__(key, value)
                 else:
                     dict.__setitem__(self, key, {})
-            elif key in BidsBrickTSV.get_list_subclasses_names():
+            elif key in BidsTSV.get_list_subclasses_names():
                 # if value and eval('type(value) == ' + key):
-                if value and isinstance(value, BidsBrickTSV):
+                if value and isinstance(value, BidsTSV):
                     # check whether the value is from the correct class when not empty
                     super().__setitem__(key, value)
                 else:
@@ -64,9 +64,9 @@ class BidsBrick(dict):
 
     def __delitem__(self, key):
         if key in self.keylist:
-            if key in BidsBrick.get_list_subclasses_names() or key in BidsBrickTSV.get_list_subclasses_names():
+            if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
-            elif key in BidsBrickTSV.get_list_subclasses_names():
+            elif key in BidsTSV.get_list_subclasses_names():
                 self[key] = {}
             else:
                 self[key] = ''
@@ -76,9 +76,9 @@ class BidsBrick(dict):
     def pop(self, key, val=None):
         if key in self.keylist:
             value = self[key]
-            if key in BidsBrick.get_list_subclasses_names() or key in BidsBrickTSV.get_list_subclasses_names():
+            if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
-            elif key in BidsBrickTSV.get_list_subclasses_names():
+            elif key in BidsTSV.get_list_subclasses_names():
                 self[key] = {}
             else:
                 self[key] = ''
@@ -90,9 +90,9 @@ class BidsBrick(dict):
         value = []
         for key in self.keylist:
             value.append(self[key])
-            if key in BidsBrick.get_list_subclasses_names() or key in BidsBrickTSV.get_list_subclasses_names():
+            if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
-            elif key in BidsBrickTSV.get_list_subclasses_names():
+            elif key in BidsTSV.get_list_subclasses_names():
                 self[key] = {}
             else:
                 self[key] = ''
@@ -100,9 +100,9 @@ class BidsBrick(dict):
 
     def clear(self):
         for key in self.keylist:
-            if key in BidsBrick.get_list_subclasses_names() or key in BidsBrickTSV.get_list_subclasses_names():
+            if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
-            elif key in BidsBrickTSV.get_list_subclasses_names():
+            elif key in BidsTSV.get_list_subclasses_names():
                 self[key] = {}
             else:
                 self[key] = ''
@@ -220,8 +220,7 @@ class BidsBrick(dict):
             sidecar_dict.has_all_req_attributes()
 
         #  firstly, check whether the subclass needs a JSON or a TSV files
-        sidecar_flag = [value for counter, value in enumerate(self.keylist) if 'TSV' in value or 'JSON' in value]
-        print(sidecar_flag)
+        sidecar_flag = [value for _, value in enumerate(self.keylist) if value in BidsSidecar.get_list_subclasses_names()]
 
         if issubclass(type(self), BidsBrick) and sidecar_flag:
             if 'fileLoc' in self.keys() and self['fileLoc']:
@@ -233,7 +232,6 @@ class BidsBrick(dict):
                         filename, ext = os.path.splitext(filename)
                     for sidecar_tag in sidecar_flag:
                         if 'modality' in self and not eval(sidecar_tag + '.modality_field'):
-                            print(sidecar_tag)
                             self[sidecar_tag] = eval(sidecar_tag + '(modality_field=self["modality"])')
                         else:
                             self[sidecar_tag] = eval(sidecar_tag + '()')
@@ -299,69 +297,72 @@ class BidsBrick(dict):
         return sub_classes_names
 
 
-# class BidsBrickSidecar(dictr)
-
-
-class BidsBrickJSON(dict):
-
+class BidsSidecar(object):
     bids_default_unknown = 'n/a'
     inheritance = True
-    extension = '.json'
-    modality_field = ''
-    keylist = []
-    required_keys = []
+    modality_field = []
 
-    def __init__(self, keylist=None, required_keys=None, modality_field=None):
+    def __init__(self, modality_field=None):
         """initiate a  dict of n/a strings for JSON imagery"""
+        self.is_complete = False
         if not modality_field:
             self.modality_field = self.__class__.modality_field
         else:
             self.modality_field = modality_field
-        self.is_complete = False
-        if not keylist:
-            self.keylist = self.__class__.keylist
-        else:
-            self.keylist = keylist
-        if not required_keys:
-            self.required_keys = self.__class__.required_keys
-        else:
-            self.required_keys = required_keys
-        for item in self.keylist:
-            self[item] = BidsBrickJSON.bids_default_unknown
-
-    def has_all_req_attributes(self):  # check if the required attributes are not empty
-        if self.required_keys:
-            for key in self.required_keys:
-                if key not in self or self[key] == BidsBrickJSON.bids_default_unknown:
-                    self.is_complete = False
-        self.is_complete = True
-
-    def simplify_sidecar(self, required_only=True):
-        list_key2del = []
-        for key in self:
-            if (self[key] == BidsBrickJSON.bids_default_unknown and key not in self.required_keys) or \
-                    (required_only and key not in self.required_keys):
-                list_key2del.append(key)
-        for key in list_key2del:
-            del(self[key])
-        # for k in list_key_del:
-        #     del()
 
     def read_file(self, filename):
         if os.path.isfile(filename):
-            if os.path.splitext(filename)[1] == '.json':
-                read_json = json.load(open(filename))
-                for key in read_json:
-                    if (key in self.keylist and self[key] == BidsBrickJSON.bids_default_unknown) or \
-                            key not in self.keylist:
-                        self[key] = read_json[key]
+            if isinstance(self, BidsJSON):
+                if os.path.splitext(filename)[1] == '.json':
+                    read_json = json.load(open(filename))
+                    for key in read_json:
+                        if (key in self.keylist and self[key] == BidsJSON.bids_default_unknown) or \
+                                key not in self.keylist:
+                            self[key] = read_json[key]
+                else:
+                    raise TypeError('File is not ".json".')
+            elif isinstance(self, BidsTSV):
+                if os.path.splitext(filename)[1] == '.tsv':
+                    with open(os.path.join(filename), 'r') as file:
+                        tsv_header_line = file.readline()
+                        tsv_header = tsv_header_line.strip().split("\t")
+                        if len([word for word in tsv_header if word in self.required_fields]) >= \
+                                len(self.required_fields):
+                            self.header = tsv_header
+                            self.clear()
+                            for line in file:
+                                self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
+                        else:
+                            raise AttributeError('Header of ' + os.path.basename(filename) +
+                                                 ' does not contain the required fields.')
+                else:
+                    raise TypeError('File is not ".tsv".')
+            elif isinstance(self, BidsFreeFile):
+                self.clear()
+                with open(os.path.join(filename), 'r') as file:
+                    for line in file:
+                        self.append(line.replace('\n', ''))
+            else:
+                raise TypeError('Not readable class input ' + self.__class__.__name__ + '.')
+        # else:
+        #     raise FileNotFoundError('No such file or directory:' + filename + '.')
 
-    def write_file(self, jsonfilename):
-        if os.path.splitext(jsonfilename)[1] == '.json':
-            with open(os.path.join(jsonfilename), 'w') as f:
-                json.dump(self, f, indent=2, separators=(',', ': '), ensure_ascii=False)
-        else:
-            raise TypeError('File is not ".json".')
+    def simplify_sidecar(self, required_only=True):
+        if isinstance(self, BidsJSON):
+            list_key2del = []
+            for key in self:
+                if (self[key] == BidsJSON.bids_default_unknown and key not in self.required_keys) or \
+                        (required_only and key not in self.required_keys):
+                    list_key2del.append(key)
+            for key in list_key2del:
+                del(self[key])
+
+    def has_all_req_attributes(self):  # check if the required attributes are not empty
+        if 'required_keys' in dir(self) and self.required_keys:
+            for key in self.required_keys:
+                if key not in self or self[key] == BidsSidecar.bids_default_unknown:
+                    self.is_complete = False
+        self.is_complete = True
 
     @classmethod
     def get_list_subclasses_names(cls):
@@ -372,7 +373,78 @@ class BidsBrickJSON(dict):
         return sub_classes_names
 
 
-class ImageryBrickJSON(BidsBrickJSON):
+class BidsFreeFile(BidsSidecar, list):
+    pass
+
+
+class BidsJSON(BidsSidecar, dict):
+
+    extension = '.json'
+    modality_field = ''
+    keylist = []
+    required_keys = []
+
+    def __init__(self, keylist=None, required_keys=None, modality_field=None):
+        """initiate a  dict of n/a strings for JSON imagery"""
+        # if not modality_field:
+        #     self.modality_field = self.__class__.modality_field
+        # else:
+        #     self.modality_field = modality_field
+        super().__init__(modality_field=modality_field)
+        self.is_complete = False
+        if not keylist:
+            self.keylist = self.__class__.keylist
+        else:
+            self.keylist = keylist
+        if not required_keys:
+            self.required_keys = self.__class__.required_keys
+        else:
+            self.required_keys = required_keys
+        for item in self.keylist:
+            self[item] = BidsJSON.bids_default_unknown
+
+    # def has_all_req_attributes(self):  # check if the required attributes are not empty
+    #     if self.required_keys:
+    #         for key in self.required_keys:
+    #             if key not in self or self[key] == BidsJSON.bids_default_unknown:
+    #                 self.is_complete = False
+    #     self.is_complete = True
+
+    # def simplify_sidecar(self, required_only=True):
+    #     list_key2del = []
+    #     for key in self:
+    #         if (self[key] == BidsJSON.bids_default_unknown and key not in self.required_keys) or \
+    #                 (required_only and key not in self.required_keys):
+    #             list_key2del.append(key)
+    #     for key in list_key2del:
+    #         del(self[key])
+        # for k in list_key_del:
+        #     del()
+
+    # def read_file(self, filename):
+    #     if os.path.isfile(filename):
+    #         if os.path.splitext(filename)[1] == '.json':
+    #             read_json = json.load(open(filename))
+    #             for key in read_json:
+    #                 if (key in self.keylist and self[key] == BidsJSON.bids_default_unknown) or \
+    #                         key not in self.keylist:
+    #                     self[key] = read_json[key]
+
+    def write_file(self, jsonfilename):
+        if os.path.splitext(jsonfilename)[1] == '.json':
+            with open(os.path.join(jsonfilename), 'w') as f:
+                json.dump(self, f, indent=2, separators=(',', ': '), ensure_ascii=False)
+        else:
+            raise TypeError('File is not ".json".')
+
+    def get_attribute_from_converter_json(self, filename):
+        converter_json = json.load(open(filename))
+        for key in self.keylist:
+            if key in converter_json:
+                self[key] = converter_json[key]
+
+
+class ImageryJSON(BidsJSON):
     keylist = ['Manufacturer', 'ManufacturersModelName', 'MagneticFieldStrength', 'DeviceSerialNumber', 'StationName',
                'SoftwareVersions', 'HardcopyDeviceSoftwareVersion', 'ReceiveCoilName', 'ReceiveCoilActiveElements',
                'GradientSetType', 'MRTransmitCoilSequence', 'MatrixCoilMode', 'CoilCombinationMethod',
@@ -385,14 +457,8 @@ class ImageryBrickJSON(BidsBrickJSON):
                'InstitutionalDepartmentName']
     required_keys = []
 
-    def get_attribute_from_converter_json(self, filename):
-        converter_json = json.load(open(filename))
-        for key in self.keylist:
-            if key in converter_json:
-                self[key] = converter_json[key]
 
-
-class ElectrophyBrickJSON(BidsBrickJSON):
+class ElectrophyJSON(BidsJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
@@ -401,18 +467,9 @@ class ElectrophyBrickJSON(BidsBrickJSON):
                'iEEGReferenceScheme', 'Stimulation', 'Medication']
     required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
 
-    def get_attribute_from_converter_json(self, filename):  # To be implemented
-        pass
-        # dcm2niix_json = json.load(open(filename))
-        # for key in self.keylist:
-        #     if key in dcm2niix_json:
-        #         self[key] = dcm2niix_json[key]
 
+class BidsTSV(BidsSidecar, list):
 
-class BidsBrickTSV(list):
-
-    bids_default_unknown = 'n/a'
-    inheritance = True
     extension = '.tsv'
     modality_field = ''
     header = []
@@ -421,6 +478,7 @@ class BidsBrickTSV(list):
     def __init__(self, header=None, required_fields=None, modality_field=None):
         """initiate a  table containing the header"""
         self.is_complete = False
+        super().__init__(modality_field=modality_field)
         if not header:
             self.header = self.__class__.header
         else:
@@ -429,10 +487,7 @@ class BidsBrickTSV(list):
             self.required_fields = self.__class__.required_fields
         else:
             self.required_fields = required_fields
-        if not modality_field:
-            self.modality_field = self.__class__.modality_field
-        else:
-            self.modality_field = modality_field
+
         super().append(self.header)
 
     def __setitem__(self, key, value):
@@ -479,29 +534,29 @@ class BidsBrickTSV(list):
         for key in dict2append:
             if key in self.header:
                 if not dict2append[key]:
-                    dict2append[key] = BidsBrickTSV.bids_default_unknown
+                    dict2append[key] = BidsTSV.bids_default_unknown
                 lines[self.header.index(key)] = str(dict2append[key])
         super().append(lines)
 
-    def simplify_sidecar(self, required_only=True):
-        pass
+    # def simplify_sidecar(self, required_only=True):
+    #     pass
 
-    def read_file(self, tsvfilename):
-        if os.path.isfile(tsvfilename):
-            if os.path.splitext(tsvfilename)[1] == '.tsv':
-                with open(os.path.join(tsvfilename), 'r') as file:
-                    tsv_header_line = file.readline()
-                    tsv_header = tsv_header_line.strip().split("\t")
-                    if len([word for word in tsv_header if word in self.required_fields]) >= len(self.required_fields):
-                        self.header = tsv_header
-                        self[:] = []
-                        for line in file:
-                            self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
-                    else:
-                        raise AttributeError('Header of ' + os.path.basename(tsvfilename) +
-                                             ' does not contain the required fields.')
-            else:
-                raise TypeError('File is not ".tsv".')
+    # def read_file(self, tsvfilename):
+    #     if os.path.isfile(tsvfilename):
+    #         if os.path.splitext(tsvfilename)[1] == '.tsv':
+    #             with open(os.path.join(tsvfilename), 'r') as file:
+    #                 tsv_header_line = file.readline()
+    #                 tsv_header = tsv_header_line.strip().split("\t")
+    #                 if len([word for word in tsv_header if word in self.required_fields]) >= len(self.required_fields):
+    #                     self.header = tsv_header
+    #                     self[:] = []
+    #                     for line in file:
+    #                         self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
+    #                 else:
+    #                     raise AttributeError('Header of ' + os.path.basename(tsvfilename) +
+    #                                          ' does not contain the required fields.')
+    #         else:
+    #             raise TypeError('File is not ".tsv".')
 
     def write_file(self, tsvfilename):
         if os.path.splitext(tsvfilename)[1] == '.tsv':
@@ -534,16 +589,8 @@ class BidsBrickTSV(list):
         alias = alias + datetime.now().strftime('%y')
         return alias
 
-    @classmethod
-    def get_list_subclasses_names(cls):
-        sub_classes_names = []
-        for subcls in cls.__subclasses__():
-            sub_classes_names.append(subcls.__name__)
-            sub_classes_names.extend(subcls.get_list_subclasses_names())
-        return sub_classes_names
 
-
-class EventsTSV(BidsBrickTSV):
+class EventsTSV(BidsTSV):
 
     header = ['onset', 'duration', 'trial_type', 'response_time', 'stim_file', 'HED']
     required_fields = ['onset', 'duration']
@@ -571,7 +618,7 @@ class Ieeg(BidsBrick):
         self['modality'] = 'ieeg'
 
 
-class IeegJSON(BidsBrickJSON):
+class IeegJSON(BidsJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
@@ -585,7 +632,7 @@ class IeegJSON(BidsBrickJSON):
         super().__init__(keylist=IeegJSON.keylist, required_keys=IeegJSON.required_keys, modality_field=modality_field)
 
 
-class IeegChannelsTSV(BidsBrickTSV):
+class IeegChannelsTSV(BidsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
     frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
 
@@ -600,13 +647,13 @@ class IeegEventsTSV(EventsTSV):
     pass
 
 
-class IeegElecTSV(BidsBrickTSV):
+class IeegElecTSV(BidsTSV):
     header = ['name', 'x', 'y', 'z', 'size', 'type', 'material', 'tissue', 'manufacturer', 'grid_size', 'hemisphere']
     required_fields = ['name', 'x', 'y', 'z', 'size']
     modality_field = 'electrodes'
 
 
-class IeegCoordSysJSON(BidsBrickJSON):
+class IeegCoordSysJSON(BidsJSON):
     keylist = ['iEEGCoordinateSystem', 'iEEGCoordinateUnits', 'iEEGCoordinateProcessingDescription', 'IntendedFor',
                'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
                'AssociatedImageCoordinateSystemDescription', 'iEEGCoordinateProcessingReference']
@@ -664,7 +711,7 @@ class Anat(BidsBrick):
         super().__init__()
 
 
-class AnatJSON(ImageryBrickJSON):
+class AnatJSON(ImageryJSON):
     pass
 
 
@@ -685,8 +732,8 @@ class Func(BidsBrick):
         super().__init__()
 
 
-class FuncJSON(ImageryBrickJSON):
-    keylist = ImageryBrickJSON.keylist + ['RepetitionTime', 'VolumeTiming', 'TaskName',
+class FuncJSON(ImageryJSON):
+    keylist = ImageryJSON.keylist + ['RepetitionTime', 'VolumeTiming', 'TaskName',
                                           'NumberOfVolumesDiscardedByScanner', 'NumberOfVolumesDiscardedByUser',
                                           'DelayTime', 'AcquisitionDuration', 'DelayAfterTrigger',
                                           'NumberOfVolumesDiscardedByScanner', 'NumberOfVolumesDiscardedByUser',
@@ -715,7 +762,7 @@ class Fmap(BidsBrick):
         super().__init__()
 
 
-class FmapJSON(ImageryBrickJSON):
+class FmapJSON(ImageryJSON):
 
     required_keys = ['PhaseEncodingDirection', 'EffectiveEchoSpacing', 'TotalReadoutTime', 'EchoTime']
 
@@ -725,7 +772,7 @@ class FmapJSON(ImageryBrickJSON):
 
 class Dwi(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['ses', 'acq', 'run', 'modality', 'fileLoc', 'DwiJSON']
+    keylist = BidsBrick.keylist + ['ses', 'acq', 'run', 'modality', 'fileLoc', 'DwiJSON', 'Bval', "Bvec"]
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modality = ['dwi']
     allowed_file_formats = ['.nii']
@@ -736,8 +783,16 @@ class Dwi(BidsBrick):
         self['modality'] = 'dwi'
 
 
-class DwiJSON(ImageryBrickJSON):
+class DwiJSON(ImageryJSON):
     pass
+
+
+class Bval(BidsFreeFile):
+    extension = '.bval'
+
+
+class Bvec(BidsFreeFile):
+    extension = '.bvec'
 
 
 """ MEG brick with its file-specific sidecar files (To be finalized). """
@@ -859,7 +914,7 @@ class Stimuli(BidsBrick):
 ''' Dataset related JSON bricks '''
 
 
-class DatasetDescJSON(BidsBrickJSON):
+class DatasetDescJSON(BidsJSON):
 
     keylist = ['Name', 'BIDSVersion', 'License', 'Authors', 'Acknowledgements', 'HowToAcknowledge', 'Funding',
                'ReferencesAndLinks', 'DatasetDOI']
@@ -881,7 +936,7 @@ class DatasetDescJSON(BidsBrickJSON):
 ''' TSV bricks '''
 
 
-class SrcDataTrack(BidsBrickTSV):
+class SrcDataTrack(BidsTSV):
     header = ['orig_filename', 'bids_filename', 'upload_date']
     required_fields = ['orig_filename', 'bids_filename', 'upload_date']
     __tsv_srctrack = 'source_data_trace.tsv'
@@ -898,7 +953,7 @@ class SrcDataTrack(BidsBrickTSV):
         super().read_file(tsv_full_filename)
 
 
-class ParticipantsTSV(BidsBrickTSV):
+class ParticipantsTSV(BidsTSV):
     header = ['participant_id', 'age', 'sex', 'alias', 'group', 'upload_date', 'due_date', 'report_date', 'EI_done',
               'Gardel_done', 'Delphos_done']
     required_fields = ['participant_id', 'age']
