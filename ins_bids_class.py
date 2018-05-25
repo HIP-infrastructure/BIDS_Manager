@@ -4,7 +4,8 @@ from datetime import datetime
 import pprint
 import gzip
 import shutil
-from numpy import random as rnd
+# from numpy import random as rnd
+import random as rnd
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
 sidecars, BidsTSV: to handle the tsv sidecars. '''
@@ -80,7 +81,7 @@ class BidsBrick(dict):
             else:
                 dict.__setitem__(self, key, value)
         else:
-            str_issue = '/!\ Not recognize key: ' + str(key) + ', check class keyList /!\ '
+            str_issue = '/!\ Not recognized key: ' + str(key) + ', check class keyList /!\ '
             self.write_log(str_issue)
 
     def __delitem__(self, key):
@@ -92,7 +93,7 @@ class BidsBrick(dict):
             else:
                 self[key] = ''
         else:
-            print('/!\ Not recognize key: ' + str(key) + ', check class keyList /!\ ')
+            print('/!\ Not recognized key: ' + str(key) + ', check class keyList /!\ ')
 
     def update(self, input_dict, f=None):
         if isinstance(input_dict, dict):
@@ -112,7 +113,7 @@ class BidsBrick(dict):
                 self[key] = ''
             return value
         else:
-            print('/!\ Not recognize key: ' + str(key) + ', check class keyList /!\ ')
+            print('/!\ Not recognized key: ' + str(key) + ', check class keyList /!\ ')
 
     def popitem(self):
         value = []
@@ -335,9 +336,9 @@ class BidsBrick(dict):
         return attr_dict
 
     def copy_values(self, input_dict):
-        attr_dict = {key: self[key] for _, key in enumerate(self.keys()) if key not in
-                     BidsBrick.get_list_subclasses_names() and key not in BidsSidecar.get_list_subclasses_names()}
-        self.update(attr_dict)
+        # attr_dict = {key: self[key] for _, key in enumerate(self.keys()) if key not in
+        #              BidsBrick.get_list_subclasses_names() and key not in BidsSidecar.get_list_subclasses_names()}
+        # self.update(attr_dict)
         for key in input_dict:
             if key in BidsBrick.get_list_subclasses_names():
                 if key in GlobalSidecars.get_list_subclasses_names():
@@ -363,6 +364,46 @@ class BidsBrick(dict):
         sidecar_dict = {key: self[key] for _, key in enumerate(self.keys()) if key in
                         BidsSidecar.get_list_subclasses_names()}
         return sidecar_dict
+
+    def extract_sidecares_from_sourcedata(self):
+        filename, dirname = self.create_filename_from_attributes()
+
+        if not Data2Import.data2import_dir or not Data2Import.data2import_dir:
+            str_issue = 'Need import and bids directory to be set.'
+            self.write_log(str_issue)
+            raise NotADirectoryError(str_issue)
+        if isinstance(self, Imagery):
+            converter_path = 'D:/roehri/python/PycharmProjects/readFromUploader/dcm2niix.exe'
+            conv_ext = ['.nii']
+            cmd_line_base = converter_path + " -b y -ba y -m y -z n -f "
+            cmd_line = cmd_line_base + filename + ' -o ' + Data2Import.data2import_dir + ' ' + \
+                       os.path.join(Data2Import.data2import_dir, self['fileLoc'])
+        elif isinstance(self, Electrophy):
+            converter_path = 'D:/roehri/AnyWave_Apr18/AnyWave.exe'
+            attr_dict = self.get_attributes(['fileLoc', 'modality'])
+            name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
+
+            cmd_line = converter_path + ' --seegBIDS "' + os.path.join(Data2Import.data2import_dir, self['fileLoc']) + \
+                       '" ' + name_cmd + ' --bids_dir "' + Data2Import.data2import_dir + '" --bids_output sidecars'
+            conv_ext = ['.vhdr', '.vmrk', '.dat']
+        else:
+            str_issue = 'Sidecars from ' + os.path.basename(self['fileLoc']) + ' cannot be extracted!!'
+            self.write_log(str_issue)
+            return
+
+        os.system(cmd_line)
+        # list_filename = [filename + ext for ext in conv_ext]
+        dict_copy = eval(self.get_modality_type().capitalize() + '()')
+        set_cwd = BidsBrick.cwdir
+        if not BidsBrick.cwdir == Data2Import.data2import_dir:
+            BidsBrick.cwdir = Data2Import.data2import_dir
+
+        dict_copy.copy_values(self)
+        dict_copy.get_sidecar_files(in_bids_dir=False, input_dirname=Data2Import.data2import_dir,
+                                    input_filename=filename)
+        BidsBrick.cwdir = set_cwd
+
+        return dict_copy.get_modality_sidecars()
 
     def convert(self):
         filename, dirname = self.create_filename_from_attributes()
@@ -713,14 +754,15 @@ class BidsTSV(BidsSidecar, list):
         self.is_complete = False  # To be implemented, stay False for the moment
 
     @staticmethod
-    def createalias(numsyl=3):
+    def createalias(subname=None, numsyl=3):
+        rnd.seed(subname)
         alias = ''
         consonants = 'zrtpdfklmvbn'
         consonants = consonants.upper()
-        num_cons = len(consonants)
-        vowels = "aeiou"
+        num_cons = len(consonants)-1
+        vowels = 'aeiou'
         vowels = vowels.upper()
-        num_voy = len(vowels)
+        num_voy = len(vowels)-1
         order = rnd.randint(0, 2)
         for syl in range(0, numsyl):
             if order == 1:
@@ -779,6 +821,7 @@ class Photo(GlobalSidecars):
         BidsBrick().__init__()
         self['modality'] = self.__class__.modality_field
 
+
 ''' The different modality bricks, subclasses of BidsBrick. '''
 
 """ iEEG brick with its file-specific (IeegJSON, IeegChannelsTSV) and global sidecar 
@@ -793,7 +836,7 @@ class Ieeg(Electrophy):
     required_keys = BidsBrick.required_keys + ['task', 'modality']
     allowed_modality = ['ieeg']
     allowed_file_formats = ['.edf', '.gdf', '.fif', '.vhdr']
-    readable_file_format = allowed_file_formats + ['.eeg', '.trc']
+    readable_file_formats = allowed_file_formats + ['.eeg', '.trc']
 
     def __init__(self):
         super().__init__()
@@ -864,7 +907,7 @@ class Anat(Imagery):
     allowed_modality = ['T1w', 'T2w', 'T1rho', 'T1map', 'T2map', 'T2star', 'FLAIR', 'PD', 'Pdmap', 'PDT2',
                         'inplaneT1', 'inplaneT2', 'angio', 'defacemask', 'CT']
     allowed_file_formats = ['.nii']
-    readable_file_format = allowed_file_formats + ['.dcm']
+    readable_file_formats = allowed_file_formats + ['.dcm']
 
     def __init__(self):
         super().__init__()
@@ -885,7 +928,7 @@ class Func(Imagery):
     required_keys = BidsBrick.required_keys + ['task', 'modality']
     allowed_modality = ['bold', 'sbref']
     allowed_file_formats = ['.nii']
-    readable_file_format = allowed_file_formats + ['.dcm']
+    readable_file_formats = allowed_file_formats + ['.dcm']
 
     def __init__(self):
         super().__init__()
@@ -915,7 +958,7 @@ class Fmap(Imagery):
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modality = ['phasediff', 'phase1', 'phase2', 'magnitude1', 'magnitude2', 'magnitude', 'fieldmap', 'epi']
     allowed_file_formats = ['.nii']
-    readable_file_format = allowed_file_formats + ['.dcm']
+    readable_file_formats = allowed_file_formats + ['.dcm']
 
     def __init__(self):
         super().__init__()
@@ -935,7 +978,7 @@ class Dwi(Imagery):
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modality = ['dwi']
     allowed_file_formats = ['.nii']
-    readable_file_format = allowed_file_formats + ['.dcm']
+    readable_file_formats = allowed_file_formats + ['.dcm']
 
     def __init__(self):
         super().__init__()
@@ -965,7 +1008,7 @@ class Meg(Electrophy):
     required_keys = BidsBrick.required_keys + ['task', 'modality']
     allowed_modality = ['meg']
     allowed_file_formats = ['.ctf', '.fif', '4D']
-    readable_file_format = allowed_file_formats
+    readable_file_formats = allowed_file_formats
 
     def __init__(self):
         super().__init__()
@@ -986,7 +1029,7 @@ class Beh(ModalityType):
     required_keys = BidsBrick.required_keys + ['task', 'modality']
     allowed_modality = ['beh']
     allowed_file_formats = ['.tsv']
-    readable_file_format = allowed_file_formats
+    readable_file_formats = allowed_file_formats
 
     def __init__(self):
         super().__init__()
@@ -1009,6 +1052,13 @@ class Subject(BidsBrick):
 
     def __init__(self):
         super().__init__()
+
+    def get_attr_tsv(self, parttsv):
+        if isinstance(parttsv, ParticipantsTSV):
+            bln, sub_dict = parttsv.is_subject_present(self['sub'])
+            if bln:
+                self.copy_values(sub_dict)
+
 
     # @classmethod
     # def get_list_modality_type(cls):
@@ -1134,16 +1184,24 @@ class ParticipantsTSV(BidsTSV):
         super().read_file(tsv_full_filename)
 
     def is_subject_present(self, sub_id):
-        if not sub_id.startswith('sub-'):
-            sub_id = 'sub-' + sub_id
+        # if not sub_id.startswith('sub-'):
+        #     sub_id = 'sub-' + sub_id
         participant_idx = self.header.index('participant_id')
-        return bool([line for line in self[1:] if sub_id in line[participant_idx]])
+        sub_line = [line for line in self[1:] if sub_id in line[participant_idx]]
+        if sub_line:
+            sub_info = {self.header[cnt]: val for cnt, val in enumerate(sub_line[0])}
+            sub_info['sub'] = sub_info['participant_id']
+            del(sub_info['participant_id'])
+        else:
+            sub_info = {}
+
+        return bool(sub_info), sub_info
 
     def add_subject(self, sub_dict):
         if isinstance(sub_dict, Subject):
-            if not self.is_subject_present(sub_dict['sub']):
+            if not self.is_subject_present(sub_dict['sub'])[0]:
                 if 'alias' in self.header:
-                    alias = self.createalias()
+                    alias = self.createalias(sub_dict['sub'])
                     self.append({'participant_id': sub_dict['sub'], 'age': sub_dict['age'], 'sex': sub_dict['sex'],
                                  'alias': alias})
                 else:
@@ -1170,20 +1228,23 @@ class BidsDataset(BidsBrick):
 
     def parse_bids(self):
 
-        def parse_sub_bids_dir(sub_currdir, subinfo, num_ses=None, mod_dir=None):
+        def parse_sub_bids_dir(sub_currdir, subinfo, num_ses=None, mod_dir=None, srcdata=False):
             with os.scandir(sub_currdir) as it:
                 for file in it:
                     if file.name.startswith('ses-') and file.is_dir():
                         num_ses = file.name.replace('ses-', '')
-                        parse_sub_bids_dir(file.path, subinfo, num_ses=num_ses)
-                    elif not mod_dir and file.name.capitalize() in ModalityType.get_list_subclasses_names() and file.is_dir():
+                        parse_sub_bids_dir(file.path, subinfo, num_ses=num_ses, srcdata=srcdata)
+                    elif not mod_dir and file.name.capitalize() in ModalityType.get_list_subclasses_names() and \
+                            file.is_dir():
                         # enumerate permits to filter the key that corresponds to other subclass e.g Anat, Func, Ieeg
-                        parse_sub_bids_dir(file.path, subinfo, num_ses=num_ses, mod_dir=file.name.capitalize())
+                        parse_sub_bids_dir(file.path, subinfo, num_ses=num_ses, mod_dir=file.name.capitalize(),
+                                           srcdata=srcdata)
                     elif mod_dir and file.is_file():
                         filename, ext = os.path.splitext(file)
                         if ext.lower() == '.gz':
                             filename, ext = os.path.splitext(filename)
-                        if ext.lower() in eval(mod_dir + '.allowed_file_formats'):
+                        if ext.lower() in eval(mod_dir + '.allowed_file_formats') or \
+                                (srcdata and ext.lower() in eval(mod_dir + '.readable_file_formats')):
                             subinfo[mod_dir] = eval(mod_dir + '()')
                             # create empty object for the given modality
                             subinfo[mod_dir][-1]['fileLoc'] = file.path
@@ -1200,8 +1261,11 @@ class BidsDataset(BidsBrick):
                             subinfo[mod_dir + 'GlobalSidecars'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'GlobalSidecars'][-1].get_attributes_from_filename()
                             subinfo[mod_dir + 'GlobalSidecars'][-1].get_sidecar_files()
+                    elif mod_dir and file.is_dir():
+                        subinfo[mod_dir] = eval(mod_dir + '()')
+                        subinfo[mod_dir][-1]['fileLoc'] = file.path
 
-        def parse_bids_dir(bids_brick, currdir):
+        def parse_bids_dir(bids_brick, currdir, sourcedata=False):
 
             with os.scandir(currdir) as it:
                 for entry in it:
@@ -1210,13 +1274,15 @@ class BidsDataset(BidsBrick):
                         #                                 entry.path)
                         bids_brick['Subject'] = Subject()
                         bids_brick['Subject'][-1]['sub'] = entry.name.replace('sub-', '')
-                        parse_sub_bids_dir(entry.path, bids_brick['Subject'][-1])
+                        if isinstance(bids_brick, BidsDataset) and bids_brick['ParticipantsTSV']:
+                            bids_brick['Subject'][-1].get_attr_tsv(bids_brick['ParticipantsTSV'])
+                        parse_sub_bids_dir(entry.path, bids_brick['Subject'][-1], srcdata=sourcedata)
                         # since all Bidsbrick that are not string are append [-1] is enough
                     elif entry.name == 'sourcedata' and entry.is_dir():
                         bids_brick['SourceData'] = SourceData()
                         bids_brick['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
                         bids_brick['SourceData'][-1]['SrcDataTrack'].read_file()
-                        parse_bids_dir(bids_brick['SourceData'][-1], entry.path)
+                        parse_bids_dir(bids_brick['SourceData'][-1], entry.path, sourcedata=True)
                     elif entry.name == 'derivatives' and entry.is_dir():
                         bids_brick['Derivatives'] = Derivatives()
                         parse_bids_dir(bids_brick['Derivatives'][-1], entry.path)
@@ -1299,11 +1365,13 @@ class BidsDataset(BidsBrick):
         if bln:
             ses_list = []
             sub = self['Subject'][sub_index]
-            for mod_type in ModalityType.get_list_subclasses_names():
-                mod_list = sub[mod_type]
-                for mod in mod_list:
-                    if mod['ses'] and mod['ses'] not in ses_list:  # 'ses': '' means no session therefore does not count
-                        ses_list.append(mod['ses'])
+            for mod_type in sub:
+                if mod_type in ModalityType.get_list_subclasses_names():
+                    mod_list = sub[mod_type]
+                    for mod in mod_list:
+                        if mod['ses'] and mod['ses'] not in ses_list:
+                            # 'ses': '' means no session therefore does not count
+                            ses_list.append(mod['ses'])
             return len(ses_list), ses_list
         else:
             raise NameError('subject: ' + subject_label + ' is not present in the database')
@@ -1316,7 +1384,7 @@ class BidsDataset(BidsBrick):
         func_schema['sub'] = '01'
         func_schema['ses'] = '01'
         func_schema['task'] = 'bapa'
-        N = bids.have_data_same_attributes(func_schema)
+        N = bids.get_number_of_runs(func_schema)
         """
         nb_runs = 0
         if 'run' in mod_dict_with_attr.keylist:
@@ -1324,15 +1392,14 @@ class BidsDataset(BidsBrick):
             if mod_type in ModalityType.get_list_subclasses_names():
                 bln, sub_index = self.is_subject_present(mod_dict_with_attr['sub'])
                 if bln:
-                    if self.has_subject_modality_type(mod_dict_with_attr['sub'], mod_type)[0]:
+                    if self['Subject'][sub_index][mod_type]:
                         mod_input_attr = mod_dict_with_attr.get_attributes(['fileLoc', 'run'])
                         # compare every attributes but fileLoc and run
-                        for mod in self['Subject'][sub_index][mod_dict_with_attr.get_modality_type().capitalize()]:
+                        for mod in self['Subject'][sub_index][mod_type]:
                             mod_attr = mod.get_attributes('fileLoc')
-                            if mod_attr.pop('run'):
-                                if mod_input_attr == mod_attr:
-                                    nb_runs += 1
-
+                            idx_run = int(mod_attr.pop('run'))
+                            if mod_input_attr == mod_attr:
+                                nb_runs = max(nb_runs, idx_run)
         return nb_runs
 
     def import_data(self, data2import, keep_sourcedata=True, keep_file_trace=True):
@@ -1374,43 +1441,41 @@ class BidsDataset(BidsBrick):
             if sidecar_flag:
                 for sidecar_tag in sidecar_flag:
                     if mod_dict2import[sidecar_tag]:
-                        fname2bewritten = os.path.join(BidsDataset.bids_dir, dirname, filename +
+                        if mod_dict2import[sidecar_tag].modality_field:
+                            fname = filename.replace(mod_dict2import['modality'],
+                                                     mod_dict2import[sidecar_tag].modality_field)
+                        else:
+                            fname = filename
+                        fname2bewritten = os.path.join(BidsDataset.bids_dir, dirname, fname +
                                                        mod_dict2import[sidecar_tag].extension)
                         mod_dict2import[sidecar_tag].write_file(fname2bewritten)
 
             mod_dict2import.write_log(mod_dict2import['fileLoc'] + ' was imported as ' + filename)
 
-
-        def have_data_same_attrs_and_sidecars(bids_dst, mod_dict2import):
+        def have_data_same_attrs_and_sidecars(bids_dst, mod_dict2import, sub_idx):
             """
             Method that compares whether a given modality dict is the same as the ones present in the bids dataset.
             Ex: True = bids.have_data_same_attrs_and_sidecars(instance of Anat())
             """
-            if isinstance(mod_dict2import, BidsBrick) and 'sub' in mod_dict2import.keylist:
-                bln, sub_index = bids_dst.is_subject_present(mod_dict2import['sub'])
-                if bln:
-                    bids_mod_list = bids_dst['Subject'][sub_index][mod_dict2import.get_modality_type().capitalize()]
-                    mod_dict2import_attr = mod_dict2import.get_attributes('fileLoc')
-                    mod_dict2import_dep = mod_dict2import.get_modality_sidecars()
-                    numb_runs = bids_dst.get_number_of_runs(mod_dict2import)
-                    for mod in bids_mod_list:
-                        mod_in_bids_attr = mod.get_attributes('fileLoc')
-                        if mod_dict2import_attr == mod_in_bids_attr:  # check if both mod dict have same attributes
-                            if 'run' in mod_dict2import_attr.keys() and mod_dict2import_attr['run']:
-                                # if run if a key check the JSON and possibly increment the run integer of mod_
-                                # dict2import to import it
-                                mod_in_bids_dep = mod.get_modality_sidecars()
-                                if not mod_dict2import_dep == mod_in_bids_dep:
-                                    # check the sidecar files to verify whether they are the same data, in that the case
-                                    # add current nb_runs to 'run' if available otherwise do not import
-                                    mod_dict2import_dep['run'] = str(int(mod_dict2import_dep['run'])
-                                                                     + numb_runs).zfill(2)
-                                    return False
-                        else:
+            bids_mod_list = bids_dst['Subject'][sub_idx][mod_dict2import.get_modality_type().capitalize()]
+            mod_dict2import_attr = mod_dict2import.get_attributes('fileLoc')
+            for mod in bids_mod_list:
+                mod_in_bids_attr = mod.get_attributes('fileLoc')
+                if mod_dict2import_attr == mod_in_bids_attr:  # check if both mod dict have same attributes
+                    if 'run' in mod_dict2import_attr.keys() and mod_dict2import_attr['run']:
+                        # if run if a key check the JSON and possibly increment the run integer of mod_
+                        # dict2import to import it
+                        mod_dict2import_dep = mod_dict2import.extract_sidecares_from_sourcedata()
+                        numb_runs = bids_dst.get_number_of_runs(mod_dict2import)
+                        mod_in_bids_dep = mod.get_modality_sidecars()
+                        if not mod_dict2import_dep == mod_in_bids_dep:
+                            # check the sidecar files to verify whether they are the same data, in that the case
+                            # add current nb_runs to 'run' if available otherwise do not import
+                            mod_dict2import['run'] = str(1 + numb_runs).zfill(2)
                             return False
 
-            else:
-                TypeError('ModalityType to import is not from the correct type. Check BidsBrick.get_list_subclasses_names()')
+                    return True
+            return False
 
         self._assign_bids_dir(self.bids_dir)  # make sure to import in the current bids_dir
         if issubclass(type(data2import), Data2Import) and data2import.has_all_req_attributes()[0]:
@@ -1420,6 +1485,8 @@ class BidsDataset(BidsBrick):
                     self['SourceData'] = SourceData()
                     if keep_file_trace:
                         self['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
+
+            copy_data2import = data2import.copy()
 
             for sub in data2import['Subject']:
                 [flag, missing_str] = sub.has_all_req_attributes()
@@ -1436,22 +1503,37 @@ class BidsDataset(BidsBrick):
                                         # if subject is present, have to check if ses in the data2import matches
                                         # the session structures of the dataset (if ses-X already exist than data2import
                                         #  has to have a ses)
-                                        bln = have_data_same_attrs_and_sidecars(self, modality)
+                                        bln = have_data_same_attrs_and_sidecars(self, modality, sub_index)
                                         if not bln:
                                             push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
+                                        else:
+                                            string_issue = 'Subject ' + sub['sub'] + '\'s file:' + modality['fileLoc']\
+                                                           + ' was not imported because ' + \
+                                                           modality.create_filename_from_attributes()[0] + \
+                                                           ' is already present in the bids dataset ' + self['DatasetDescJSON']['Name'] + '.'
+                                            self.write_log(string_issue)
+
                                     else:
-                                        print(
-                                            'Session structure of the data to be imported does not match the one '
-                                            'of the current dataset.\nSession label(s): ' + ', '.join(bids_ses)
-                                            + '.\nSubject ' + sub['sub'] + ' ' + modality.__name__ + ' not imported.')
+                                        string_issue = 'Session structure of the data to be imported does not match' \
+                                                       ' the one of the current dataset.\nSession label(s): ' + \
+                                                       ', '.join(bids_ses) + '.\nSubject ' + sub['sub'] + ' not ' \
+                                                                                                          'imported.'
+                                        self.write_log(string_issue)
                     else:
                         # if subject is not present, simply import the data
                         for modality_type in sub.keys():
                             if modality_type in BidsBrick.get_list_subclasses_names():
                                 for modality in sub[modality_type]:
                                     push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
+                                    # copy_data2import['Subject'][0][modality_type].pop(0)
                 else:
+                    self.write_log(missing_str)
                     raise ValueError(missing_str)
+
+
+                # copy_data2import['Subject'].pop(0)
+
+            # copy_data2import
 
             if self['DatasetDescJSON']:
                 self['DatasetDescJSON'].write_file()
