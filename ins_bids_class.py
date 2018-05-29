@@ -4,6 +4,7 @@ from datetime import datetime
 import pprint
 import gzip
 import shutil
+from copy import deepcopy
 # from numpy import random as rnd
 import random as rnd
 
@@ -293,7 +294,7 @@ class BidsBrick(dict):
                                   direct_search=not in_bids_dir)
                 self[sidecar_tag].simplify_sidecar(required_only=False)
 
-    def save_json(self, savedir, file_start=None):
+    def save_as_json(self, savedir, file_start=None, write_date=True, compress=True):
         if os.path.isdir(savedir):
             if not file_start:
                 file_start = ''
@@ -302,17 +303,23 @@ class BidsBrick(dict):
                     if not file_start.endswith('_'):
                         file_start += '_'
                 else:
-                    TypeError('file_start should be a string.')
+                    str_issue = 'Input file beginning is not a string; json saved with default name.'
+                    self.write_log(str_issue)
+            if write_date:
+                date_string = '_' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M-%S")
+            else:
+                date_string = ''
 
-            now = BidsBrick.access_time
-            output_fname = os.path.join(savedir, file_start + type(self).__name__ + '_' +
-                                        now.strftime("%Y-%m-%dT%H-%M-%S") + '.json')
+            json_filename = file_start + type(self).__name__.lower() + date_string + '.json'
+
+            output_fname = os.path.join(savedir, json_filename)
             with open(output_fname, 'w') as f:
                 json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
-            with open(output_fname, 'rb') as f_in, \
-                    gzip.open(output_fname + '.gz', 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
-            os.remove(output_fname)
+            if compress:
+                with open(output_fname, 'rb') as f_in, \
+                        gzip.open(output_fname + '.gz', 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+                os.remove(output_fname)
         else:
             raise TypeError('savedir should be a directory.')
 
@@ -379,7 +386,7 @@ class BidsBrick(dict):
             cmd_line = cmd_line_base + filename + ' -o ' + Data2Import.data2import_dir + ' ' + \
                        os.path.join(Data2Import.data2import_dir, self['fileLoc'])
         elif isinstance(self, Electrophy):
-            converter_path = 'D:/roehri/AnyWave_Apr18/AnyWave.exe'
+            converter_path = 'D:/roehri/AnyWave/AnyWave.exe'
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
@@ -415,11 +422,17 @@ class BidsBrick(dict):
         if isinstance(self, Imagery):
             converter_path = 'D:/roehri/python/PycharmProjects/readFromUploader/dcm2niix.exe'
             conv_ext = ['.nii']
+            # by default dcm2niix not do overwrite file with same names but adds a letter to it (inputnamea, inputnameb)
+            # therefore one should firstly test whether a file with the same input name already exist and remove it to
+            # avoid risking to import this one rather than the one which was converted and added a suffix
+            for ext in conv_ext:
+                if os.path.exists(os.path.join(Data2Import.data2import_dir, filename+ext)):
+                    os.remove(os.path.join(Data2Import.data2import_dir, filename+ext))
             cmd_line_base = converter_path + " -b y -ba y -m y -z n -f "
-            cmd_line = cmd_line_base + filename + ' -o ' + Data2Import.data2import_dir + ' ' + \
-                       os.path.join(Data2Import.data2import_dir, self['fileLoc'])
+            cmd_line = cmd_line_base + filename + ' -o ' + Data2Import.data2import_dir + ' ' + os.path.join(
+                Data2Import.data2import_dir, self['fileLoc'])
         elif isinstance(self, Electrophy):
-            converter_path = 'D:/roehri/AnyWave_Apr18/AnyWave.exe'
+            converter_path = 'D:/roehri/AnyWave/AnyWave.exe'
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
@@ -1089,10 +1102,15 @@ class Data2Import(BidsBrick):
                 with open(os.path.join(self.data2import_dir, Data2Import.__filename)) as file:
                     inter_dict = json.load(file)
                     self.copy_values(inter_dict)
+            else:
+                self['UploadDate'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         else:
             str_error = data2import_dir + 'is not a directory.'
             self.write_log(str_error)
             raise NotADirectoryError(str_error)
+
+    def save_as_json(self, savedir=None, file_start=None, write_date=False, compress=False):
+        super().save_as_json(savedir=self.data2import_dir, file_start=None, write_date=False, compress=False)
 
     @classmethod
     def _assign_import_dir(cls, data2import_dir):
@@ -1164,6 +1182,17 @@ class SrcDataTrack(BidsTSV):
     def read_file(self, tsv_full_filename=None):
         tsv_full_filename = os.path.join(BidsDataset.bids_dir, 'sourcedata', SrcDataTrack.__tsv_srctrack)
         super().read_file(tsv_full_filename)
+
+    def get_source_from_raw_filename(self, filename):
+        filename, ext = os.path.splitext(os.path.basename(filename).replace('.gz', ''))
+
+        bids_fname_idx = self.header.index('bids_filename')
+        orig_fname_idx = self.header.index('orig_filename')
+        orig_fname = [line[orig_fname_idx] for line in self[1:] if filename in line[bids_fname_idx]]
+        if orig_fname:
+            orig_fname = orig_fname[0]
+
+        return orig_fname, filename
 
 
 class ParticipantsTSV(BidsTSV):
@@ -1293,16 +1322,13 @@ class BidsDataset(BidsBrick):
                         parse_bids_dir(bids_brick['Pipeline'][-1], entry.path)
 
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
-
         self['DatasetDescJSON'] = DatasetDescJSON()
         self['DatasetDescJSON'].read_file()
         self['ParticipantsTSV'] = ParticipantsTSV()
         self['ParticipantsTSV'].read_file()
 
         parse_bids_dir(self, self.bids_dir)
-        save_parsing_path = os.path.join(self.bids_dir, 'derivatives', 'parsing')
-        os.makedirs(save_parsing_path, exist_ok=True)
-        self.save_json(save_parsing_path, 'parsing')
+        self.save_as_json()
 
     def is_subject_present(self, subject_label):
         """
@@ -1452,6 +1478,14 @@ class BidsDataset(BidsBrick):
 
             mod_dict2import.write_log(mod_dict2import['fileLoc'] + ' was imported as ' + filename)
 
+        def have_data_same_source_file(bids_dict, mod_dict):
+            if bids_dict['SourceData'] and bids_dict['SourceData'][-1]['SrcDataTrack']:
+                filename, dirname = mod_dict.create_filename_from_attributes()
+                original_src = bids_dict['SourceData'][-1]['SrcDataTrack'].get_source_from_raw_filename(filename)[0]
+                return os.path.basename(mod_dict['fileLoc']) == original_src
+
+            return False
+
         def have_data_same_attrs_and_sidecars(bids_dst, mod_dict2import, sub_idx):
             """
             Method that compares whether a given modality dict is the same as the ones present in the bids dataset.
@@ -1477,7 +1511,6 @@ class BidsDataset(BidsBrick):
                     return True
             return False
 
-        self._assign_bids_dir(self.bids_dir)  # make sure to import in the current bids_dir
         if issubclass(type(data2import), Data2Import) and data2import.has_all_req_attributes()[0]:
 
             if keep_sourcedata:
@@ -1486,9 +1519,11 @@ class BidsDataset(BidsBrick):
                     if keep_file_trace:
                         self['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
 
-            copy_data2import = data2import.copy()
+            copy_data2import = Data2Import(Data2Import.data2import_dir)
 
+            self._assign_bids_dir(self.bids_dir)  # make sure to import in the current bids_dir
             for sub in data2import['Subject']:
+                import_sub_idx = data2import['Subject'].index(sub)
                 [flag, missing_str] = sub.has_all_req_attributes()
                 if flag:
                     self['ParticipantsTSV'].add_subject(sub)
@@ -1497,21 +1532,26 @@ class BidsDataset(BidsBrick):
                         nb_ses, bids_ses = self.get_number_of_session4subject(sub['sub'])
                         # print(self.has_subject_modality_type(sub['sub'], 'anat')[-1])
                         for modality_type in sub.keys():
+
                             if modality_type in BidsBrick.get_list_subclasses_names():
                                 for modality in sub[modality_type]:
                                     if modality['ses'] and bids_ses:
                                         # if subject is present, have to check if ses in the data2import matches
                                         # the session structures of the dataset (if ses-X already exist than data2import
                                         #  has to have a ses)
-                                        bln = have_data_same_attrs_and_sidecars(self, modality, sub_index)
-                                        if not bln:
-                                            push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
-                                        else:
-                                            string_issue = 'Subject ' + sub['sub'] + '\'s file:' + modality['fileLoc']\
-                                                           + ' was not imported because ' + \
-                                                           modality.create_filename_from_attributes()[0] + \
-                                                           ' is already present in the bids dataset ' + self['DatasetDescJSON']['Name'] + '.'
-                                            self.write_log(string_issue)
+                                        same_src_file_bln = have_data_same_source_file(self, modality)
+                                        if not same_src_file_bln:
+                                            same_attr_bln = have_data_same_attrs_and_sidecars(self, modality, sub_index)
+                                            if not same_attr_bln:
+                                                push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
+                                                copy_data2import['Subject'][import_sub_idx][modality_type].pop(0)
+                                                break
+                                        string_issue = 'Subject ' + sub['sub'] + '\'s file:' + modality['fileLoc']\
+                                                       + ' was not imported because ' + \
+                                                       modality.create_filename_from_attributes()[0] + \
+                                                       ' is already present in the bids dataset ' + \
+                                                       self['DatasetDescJSON']['Name'] + '.'
+                                        self.write_log(string_issue)
 
                                     else:
                                         string_issue = 'Session structure of the data to be imported does not match' \
@@ -1524,8 +1564,9 @@ class BidsDataset(BidsBrick):
                         for modality_type in sub.keys():
                             if modality_type in BidsBrick.get_list_subclasses_names():
                                 for modality in sub[modality_type]:
+                                    print(modality.create_filename_from_attributes()[0])
                                     push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
-                                    # copy_data2import['Subject'][0][modality_type].pop(0)
+                                    copy_data2import['Subject'][import_sub_idx][modality_type].pop(0)
                 else:
                     self.write_log(missing_str)
                     raise ValueError(missing_str)
@@ -1533,7 +1574,9 @@ class BidsDataset(BidsBrick):
 
                 # copy_data2import['Subject'].pop(0)
 
-            # copy_data2import
+            with open(os.path.join(Data2Import.data2import_dir, 'test_data2import2.json'), 'w') as file:
+                json.dump(copy_data2import, file, indent=1, separators=(',', ': '), ensure_ascii=False)
+            # copy_data2import.save
 
             if self['DatasetDescJSON']:
                 self['DatasetDescJSON'].write_file()
@@ -1544,6 +1587,11 @@ class BidsDataset(BidsBrick):
             self.parse_bids()
 
             # shutil.rmtree(data2import.data2import_dir)
+
+    def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
+        save_parsing_path = os.path.join(self.bids_dir, 'derivatives', 'parsing')
+        os.makedirs(save_parsing_path, exist_ok=True)
+        super().save_as_json(savedir=save_parsing_path, file_start='parsing', write_date=True, compress=True)
 
     @classmethod
     def _assign_bids_dir(cls, bids_dir):
