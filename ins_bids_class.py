@@ -1,12 +1,21 @@
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import division
+from __future__ import absolute_import
+from builtins import super
+from builtins import open
+from builtins import int
+from builtins import range
+from builtins import str
+from future import standard_library
 import os
 import json
 from datetime import datetime
 import pprint
 import gzip
 import shutil
-from copy import deepcopy
-# from numpy import random as rnd
 import random as rnd
+standard_library.install_aliases()
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
 sidecars, BidsTSV: to handle the tsv sidecars. '''
@@ -314,7 +323,10 @@ class BidsBrick(dict):
 
             output_fname = os.path.join(savedir, json_filename)
             with open(output_fname, 'w') as f:
-                json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
+                # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
+                json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False)
+                f.write(json_str)
+
             if compress:
                 with open(output_fname, 'rb') as f_in, \
                         gzip.open(output_fname + '.gz', 'wb') as f_out:
@@ -429,8 +441,8 @@ class BidsBrick(dict):
                 if os.path.exists(os.path.join(Data2Import.data2import_dir, filename+ext)):
                     os.remove(os.path.join(Data2Import.data2import_dir, filename+ext))
             cmd_line_base = converter_path + " -b y -ba y -m y -z n -f "
-            cmd_line = cmd_line_base + filename + ' -o ' + Data2Import.data2import_dir + ' ' + os.path.join(
-                Data2Import.data2import_dir, self['fileLoc'])
+            cmd_line = cmd_line_base + filename + ' -o "' + Data2Import.data2import_dir + '" "' + os.path.join(
+                Data2Import.data2import_dir, self['fileLoc']) + '"'
         elif isinstance(self, Electrophy):
             converter_path = 'D:/roehri/AnyWave/AnyWave.exe'
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
@@ -644,7 +656,9 @@ class BidsJSON(BidsSidecar, dict):
     def write_file(self, jsonfilename):
         if os.path.splitext(jsonfilename)[1] == '.json':
             with open(jsonfilename, 'w') as f:
-                json.dump(self, f, indent=2, separators=(',', ': '), ensure_ascii=False)
+                # json.dump(self, f, indent=2, separators=(',', ': '), ensure_ascii=False)
+                json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False)
+                f.write(json_str)
         else:
             raise TypeError('File ' + jsonfilename + ' is not ".json".')
 
@@ -826,7 +840,7 @@ class GlobalSidecars(BidsBrick):
 class Photo(GlobalSidecars):
     keylist = BidsBrick.keylist + ['ses', 'acq', 'modality', 'fileLoc']
     required_keys = BidsBrick.required_keys + ['modality']
-    allowed_file_formats = ['.jpg', '.png']
+    allowed_file_formats = ['.jpg', '.png', '.pdf', '.ppt', '.pptx']
     readable_file_format = allowed_file_formats
     modality_field = 'photo'
 
@@ -1575,7 +1589,9 @@ class BidsDataset(BidsBrick):
                 # copy_data2import['Subject'].pop(0)
 
             with open(os.path.join(Data2Import.data2import_dir, 'test_data2import2.json'), 'w') as file:
-                json.dump(copy_data2import, file, indent=1, separators=(',', ': '), ensure_ascii=False)
+                # json.dump(copy_data2import, file, indent=1, separators=(',', ': '), ensure_ascii=False)
+                json_str = json.dumps(copy_data2import, indent=1, separators=(',', ': '), ensure_ascii=False)
+                file.write(json_str)
             # copy_data2import.save
 
             if self['DatasetDescJSON']:
