@@ -71,7 +71,7 @@ class BidsBrick(dict):
                 else:
                     dict.__setitem__(self, key, [])
             elif key == 'fileLoc':
-                if isinstance(value, str):
+                if value.__class__.__name__ == 'str':  # makes it python 2 and python 3 compatible
                     if value:
                         if os.path.isabs(value):
                             value = os.path.relpath(value, BidsBrick.cwdir)
@@ -310,7 +310,7 @@ class BidsBrick(dict):
             if not file_start:
                 file_start = ''
             else:
-                if isinstance(file_start, str):
+                if file_start.__class__.__name__ == 'str':  # makes it pyton2 and python3 compatible
                     if not file_start.endswith('_'):
                         file_start += '_'
                 else:
