@@ -73,7 +73,11 @@ class BidsBrick(dict):
                 else:
                     dict.__setitem__(self, key, [])
             elif key == 'fileLoc':
+<<<<<<< HEAD
                 if value.__class__.__name__ in ['str', 'unicode']:  # makes it python 2 and python 3 compatible
+=======
+                if value.__class__.__name__ == 'str':  # makes it python 2 and python 3 compatible
+>>>>>>> 2020e7f3dc54ac106f7d6d2d0ca647966303dc0d
                     if value:
                         if os.path.isabs(value):
                             value = os.path.relpath(value, BidsBrick.cwdir)
@@ -312,7 +316,11 @@ class BidsBrick(dict):
             if not file_start:
                 file_start = ''
             else:
+<<<<<<< HEAD
                 if file_start.__class__.__name__ in ['str', 'unicode']:  # makes it pyton2 and python3 compatible
+=======
+                if file_start.__class__.__name__ == 'str':  # makes it pyton2 and python3 compatible
+>>>>>>> 2020e7f3dc54ac106f7d6d2d0ca647966303dc0d
                     if not file_start.endswith('_'):
                         file_start += '_'
                 else:
