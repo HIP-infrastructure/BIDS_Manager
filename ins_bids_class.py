@@ -110,7 +110,9 @@ class BidsBrick(dict):
             for key in input_dict:
                 if key not in self.keylist:
                     del (input_dict[key])
-            super().update(input_dict)
+                else:
+                    self.__setitem__(key, input_dict[key])
+            # super().update(input_dict)
 
     def pop(self, key, val=None):
         if key in self.keylist:
@@ -822,7 +824,7 @@ class GlobalSidecars(BidsBrick):
         """initiates a  dict var for ieeg info"""
         filename = filename.replace('.gz', '')
         filename, ext = os.path.splitext(filename)
-        if ext in ['.json', '.tsv']:
+        if ext.lower() in ['.json', '.tsv']:
             comp_key = [value for counter, value in enumerate(self.complementary_keylist) if value in
                         BidsSidecar.get_list_subclasses_names() and eval(value + '.modality_field') ==
                         filename.split('_')[-1]]
@@ -832,7 +834,7 @@ class GlobalSidecars(BidsBrick):
         else:
             photo_key = [value for counter, value in enumerate(self.complementary_keylist) if value in
                          BidsBrick.get_list_subclasses_names()][0]
-            if ext in eval(photo_key + '.allowed_file_formats'):
+            if ext.lower() in eval(photo_key + '.allowed_file_formats'):
                 super().__init__(keylist=eval(photo_key + '.keylist'), required_keys=eval(photo_key + '.required_keys'))
                 self['modality'] = 'photo'
 
@@ -1073,8 +1075,8 @@ class BehEventsTSV(EventsTSV):
 
 class Subject(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['age', 'sex', 'alias', 'group', 'Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Ieeg', 'Beh',
-                                   'IeegGlobalSidecars']
+    keylist = BidsBrick.keylist + ['dateOfBirth', 'sex', 'eCRF', 'alias', 'Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Ieeg',
+                                   'Beh', 'IeegGlobalSidecars']
     required_keys = BidsBrick.required_keys
 
     def __init__(self):
