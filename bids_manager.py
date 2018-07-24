@@ -1,8 +1,8 @@
 import ins_bids_class as bids
 import os
-from tkinter import Tk, Menu, filedialog, Frame, scrolledtext, \
-    Label, Button, Entry, StringVar, BooleanVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT, TOP, \
-    BOTTOM
+from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
+    Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
+    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE
 
 
 class BidsManager(Frame):
@@ -42,11 +42,13 @@ class BidsManager(Frame):
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
 
-    def update_text(self, str2show, delete_flag=True):
+    def update_text(self, str2show, delete_flag=True, location=None):
         self.log_area.config(state=NORMAL)
         if delete_flag:
             self.log_area.delete(1.0, END)
-        self.log_area.insert(END, str2show)
+        if not location:
+            location = END
+        self.log_area.insert(location, str2show)
         self.log_area.config(state=DISABLED)
 
     def askdir4bids(self):
@@ -67,7 +69,7 @@ class BidsManager(Frame):
 
     def askdir4upload_dir(self):
         self.upload_dir = filedialog.askdirectory()
-        print('upload')
+
 
     def print_participants_tsv(self):
         self.update_text(self.make_table(self.curr_bids['ParticipantsTSV']))
@@ -75,32 +77,65 @@ class BidsManager(Frame):
     def print_srcdata_tsv(self):
         self.update_text(self.make_table(self.curr_bids['SourceData'][-1]['SrcDataTrack']))
 
+    def select_correct_name(self, idx, location):
+
+        curr_dict = self.curr_bids.keep_channel_issues[idx]
+        if 'info' not in curr_dict.keys():
+            curr_dict['info'] = []
+        for mismtch_elec in curr_dict['mismatched_electrodes']:
+            results = ListDialog(self.master, curr_dict['ref_electrodes'], 'Modify ' + mismtch_elec + ' in :').apply()
+            if results:
+                str_info = mismtch_elec + ' has to be renamed as ' + results + ' in the channels.tsv, events.tsv' \
+                                                                               ' and in the .vhdr.\n'
+                self.update_text(str_info, delete_flag=False, location=location)
+                curr_dict['info'].append(str_info)
+
+    def remove_group_name(self, idx, location):
+        curr_dict = self.curr_bids.keep_channel_issues[idx]
+        if 'info' not in curr_dict.keys():
+            curr_dict['info'] = []
+        for mismtch_elec in curr_dict['mismatched_electrodes']:
+            flag = messagebox.askyesno('Remove group name', 'Do you want to remove the group label from ' +
+                                       mismtch_elec + '?')
+            str_info = 'Remove group label for ' + mismtch_elec + ': ' + str(flag) + '.\n'
+            self.update_text(str_info, delete_flag=False, location=location)
+            curr_dict['info'].append(str_info)
+
+
     def solve_issues(self):
 
         def make_line(issue_dict):
-            formatted_line = 'Modality ' + issue_dict['modality'] + ' of subject ' + issue_dict['sub']\
+            formatted_line = 'File ' + issue_dict['filepath'] + ' of subject ' + issue_dict['sub']\
                              + ' has following mismatched electrodes: ' + str(issue_dict['mismatched_electrodes'])\
                              + '.\n'
             return formatted_line
 
-        self.update_text('')
+        def make_button_line(frame, idx):
+            btn_list = list()
+            btn_list.append(Button(frame.log_area, text="Modify name",
+                                   command=lambda: frame.select_correct_name(idx, "here")))
+            btn_list.append(Button(frame.log_area, text="Remove contact from group list",
+                                   command=lambda: frame.remove_group_name(idx, "here")))
+            btn_list.append(Button(frame.log_area, text="Add comment"))
+
+            flg = BooleanVar()
+            btn_list.append(Button(self.log_area, text="Next issue", command=lambda: flg.set(True)))
+            for btn in btn_list:
+                frame.log_area.window_create(END, window=btn)
+            return btn_list, flg
+
+        self.update_text('')  # empty previous page
         for line in self.curr_bids.keep_channel_issues:
             self.update_text(make_line(line), delete_flag=False)
-            button1 = Button(self.log_area, text="Modify ...")
-            button2 = Button(self.log_area, text="Add comment")
-            flag = BooleanVar()
-            button3 = Button(self.log_area, text="Next issue", command=lambda: flag.set(True))
-            self.log_area.window_create(END, window=button1)
-            self.log_area.window_create(END, window=button2)
-            self.log_area.window_create(END, window=button3)
+            self.log_area.mark_set("here", END)
+            self.log_area.mark_gravity("here", direction=LEFT)
+            button_list, flag = make_button_line(self, self.curr_bids.keep_channel_issues.index(line))
             self.update_text('\n\n', delete_flag=False)
             self.update()
-            button3.wait_variable(flag)
-            button1.configure(state=DISABLED)
-            button2.configure(state=DISABLED)
-            button3.configure(state=DISABLED)
+            button_list[-1].wait_variable(flag)
+            for button in button_list:
+                button.configure(state=DISABLED)
             self.update()
-
 
     def onExit(self):
         self.quit()
@@ -113,6 +148,110 @@ class BidsManager(Frame):
 
         return string_table
 
+
+class ListDialog(Toplevel):
+    button_size = [2, 10]
+
+    def __init__(self, parent, input_list, label_str=None, selection_style=None):
+        if not selection_style:
+            selection_style = BROWSE
+        if not label_str:
+            if selection_style in [MULTIPLE, EXTENDED]:
+                label_str = 'Select element(s) from the list'
+            else:
+                label_str = 'Select an element from the list'
+        Toplevel.__init__(self, parent)
+
+        self.list = None
+        self.btn_ok = None
+        self.btn_cancel = None
+        self.results = None
+
+        self.withdraw()  # remain invisible for now
+        # If the master is not viewable, don't
+        # make the child transient, or else it
+        # would be opened withdrawn
+        self.initial_focus = None
+        if parent.winfo_viewable():
+            self.transient(parent)
+
+        self.parent = parent
+        body = Frame(self)
+        self.list_and_button(body, input_list=input_list, label_str=label_str, selection_style=selection_style)
+        body.pack(padx=5, pady=5)
+        self.result = None
+
+        # self.list_and_button(parent, input_list=input_list, label_str=label_str, selection_style=selection_style)
+        if not self.initial_focus:
+            self.initial_focus = self
+
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+
+        if self.parent is not None:
+            self.geometry("+%d+%d" % (parent.winfo_rootx() + 50,
+                                      parent.winfo_rooty() + 50))
+
+        self.deiconify()  # become visible now
+
+        self.initial_focus.focus_set()
+
+        # wait for window to appear on screen before calling grab_set
+        self.wait_visibility()
+        self.grab_set()
+        self.wait_window(self)
+
+    def list_and_button(self, parent, input_list=None, label_str=None, selection_style=None):
+
+        self.title = 'Choose from list'
+        Label(parent, text=label_str).pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
+        self.list = Listbox(parent, selectmode=selection_style)
+        self.list.pack(expand=1, fill=BOTH, padx=5, pady=5)
+        self.btn_ok = Button(parent, text='OK', command=self.ok, height=self.button_size[0],
+                             width=self.button_size[1])
+        self.btn_ok.pack(side=LEFT, expand=1, padx=10, pady=5)
+        self.btn_cancel = Button(parent, text='Cancel', command=self.cancel, height=self.button_size[0],
+                                 width=self.button_size[1], default=ACTIVE)
+        self.btn_cancel.pack(side=RIGHT, expand=1, padx=10, pady=5)
+        self.bind("<Return>", self.ok)
+        self.bind("<Escape>", self.cancel)
+        # self.protocol("WM_DELETE_WINDOW", self.cancel)
+
+        for item in input_list:
+            self.list.insert(END, item)
+
+        return
+
+    def ok(self, event=None):
+        if self.list.curselection():
+            self.results = self.selection_get()
+            self.destroy()
+        else:
+            self.results = None
+            self.bell()
+
+    def destroy(self):
+        """Destroy the window"""
+        self.initial_focus = None
+        Toplevel.destroy(self)
+
+    def cancel(self, event=None):
+        # put focus back to the parent window
+        if self.parent is not None:
+            self.parent.focus_set()
+        self.destroy()
+
+    def apply(self):
+        return self.results
+
+
+
 root = Tk()
 my_gui = BidsManager()
+
+# MyDialog(root)
+# The following three commands are needed so the window pops
+# up on top on Windows...
+# root.iconify()
+# root.update()
+# root.deiconify()
 root.mainloop()
