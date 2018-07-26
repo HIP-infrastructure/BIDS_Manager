@@ -17,6 +17,7 @@ import pprint
 import gzip
 import shutil
 import random as rnd
+import getpass
 standard_library.install_aliases()
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
@@ -32,6 +33,7 @@ class BidsBrick(dict):
     allowed_modalities = []
     state_list = ['valid', 'invalid', 'forced']
     curr_state = None
+    curr_user = getpass.getuser()
 
     def __init__(self, keylist=None, required_keys=None):
         """initiate a  dict var for modality info"""
@@ -43,7 +45,6 @@ class BidsBrick(dict):
             self.required_keys = required_keys
         else:
             self.required_keys = self.__class__.required_keys
-        self.keep_channel_issues = None
         self.curr_state = BidsBrick.curr_state
 
         for key in self.keylist:
@@ -113,7 +114,7 @@ class BidsBrick(dict):
                     key in BidsFreeFile.get_list_subclasses_names():
                 dict.__setitem__(self, key, value)
             else:
-                str_issue = '/!\ key: ' + str(key) + ' should either be a string or a integer /!\ '
+                str_issue = '/!\ key: ' + str(key) + ' should either be a string or an integer /!\ '
                 self.write_log(str_issue)
                 raise TypeError(str_issue)
         else:
@@ -468,15 +469,15 @@ class BidsBrick(dict):
 
     def get_requirements(self, reqfiloc=None):
 
-        if isinstance(self, BidsDataset) or isinstance(self, Data2Import):
+        if isinstance(self, BidsDataset) and BidsDataset.bids_dir and \
+                os.path.exists(os.path.join(BidsDataset.bids_dir, 'code', 'requirements.json')):
+            full_filename = os.path.join(BidsDataset.bids_dir, 'code', 'requirements.json')
+        elif os.path.exists(reqfiloc):
+            full_filename = reqfiloc
+        else:
+            full_filename = None
 
-            if BidsDataset.bids_dir and os.path.exists(os.path.join(BidsDataset.bids_dir, 'code', 'requirements.json')):
-                full_filename = os.path.join(BidsDataset.bids_dir, 'code', 'requirements.json')
-            elif Data2Import.data2import_dir and os.path.exists(reqfiloc):
-                full_filename = reqfiloc
-            else:
-                full_filename = None
-
+        if isinstance(self, BidsDataset):
             self.requirements = Requirements(full_filename)
 
             if 'Requirements' not in self.requirements.keys() or not self.requirements['Requirements']:
@@ -507,39 +508,45 @@ class BidsBrick(dict):
                 if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
                     ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
                     ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
+        else:
+            requirements = Requirements(full_filename)
+            for key in requirements['Requirements']['Subject']:
+                if key == 'keys':
+                    Subject.keylist += [elmt for elmt in requirements['Requirements']['Subject']['keys']
+                                        if elmt not in Subject.keylist]
 
     def check_requirements(self):
 
-        class IssueList(list):
-
-            keyword = ['sub', 'modality', 'filepath', 'ref_electrodes', 'mismatched_electrodes']
-
-            @staticmethod
-            def sanity_check(sub_id=None, filepath=None, refelec=None, miss_elec=None,  mod=None):
-                if not (isinstance(sub_id, str) and
-                        isinstance(os.path.join(filepath[1], filepath[0]), str)
-                        and isinstance(miss_elec, list) and isinstance(miss_elec, list)
-                        and mod in Electrophy.get_list_subclasses_names()):
-                    raise TypeError('sub_id should be a string, filepath should exist, channels should be a list'
-                                    ' of channels and the modality should be a subclass of Electrophy.')
-
-                kword = IssueList.keyword
-                return {kword[0]: sub_id, kword[1]: mod, kword[2]: os.path.join(filepath[1], filepath[0]),
-                        kword[3]: refelec, kword[4]: miss_elec}
-
-            def append(self, sub_id=None, filepath=None, refelec=None, miss_elec=None,  mod=None):
-
-                issue_dict = IssueList.sanity_check(sub_id, filepath, refelec, miss_elec, mod)
-                super().append(issue_dict)
-
-            def save_json(self):
-
-                log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
-                log_filename = 'channel_issue-' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M") + '.json'
-                with open(os.path.join(log_path, log_filename), 'w') as f:
-                    # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
-                    json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
-                    f.write(json_str)
+        # class IssueList(list):
+        #
+        #     keyword = ['sub', 'modality', 'fileLoc', 'ref_electrodes', 'mismatched_electrodes']
+        #
+        #     @staticmethod
+        #     def sanity_check(sub_id=None, filepath=None, refelec=None, miss_elec=None,  mod=None):
+        #         if not (isinstance(sub_id, str) and
+        #                 isinstance(os.path.join(filepath[1], filepath[0]), str)
+        #                 and isinstance(miss_elec, list) and isinstance(miss_elec, list)
+        #                 and mod in Electrophy.get_list_subclasses_names()):
+        #             raise TypeError('sub_id should be a string, filepath should exist, channels should be a list'
+        #                             ' of channels and the modality should be a subclass of Electrophy.')
+        #
+        #         kword = IssueList.keyword
+        #         return {kword[0]: sub_id, kword[1]: mod, kword[2]: os.path.join(filepath[1], filepath[0]),
+        #                 kword[3]: refelec, kword[4]: miss_elec}
+        #
+        #     def append(self, sub_id=None, filepath=None, refelec=None, miss_elec=None,  mod=None):
+        #
+        #         issue_dict = IssueList.sanity_check(sub_id, filepath, refelec, miss_elec, mod)
+        #         super().append(issue_dict)
+        #
+        #     def save_json(self):
+        #
+        #         log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
+        #         log_filename = 'channel_issue-' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M") + '.json'
+        #         with open(os.path.join(log_path, log_filename), 'w') as f:
+        #             # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
+        #             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+        #             f.write(json_str)
 
         def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
 
@@ -597,7 +604,7 @@ class BidsBrick(dict):
             if sub_list and integrity_list:
                 idx_elec_name = IeegElecTSV.header.index('group')
                 idx_chan_name = IeegChannelsTSV.header.index('group')
-                self.keep_channel_issues = IssueList()
+
                 for bidsintegrity_key in integrity_list:
                     for sub in sub_list:
                         self.is_subject_present(sub)
@@ -643,12 +650,18 @@ class BidsBrick(dict):
                              not line[idx_chan_name] == BidsSidecar.bids_default_unknown]
                             miss_matching_elec = [name for name in curr_elec if name not in ref_elec]
                             if miss_matching_elec:
-
+                                channel_issues = ChannelIssue()
                                 str_issue = 'File ' + mod.create_filename_from_attributes()[0] + \
                                             ' has inconsistent electrode name(s) ' + str(miss_matching_elec) + '.'
                                 self.write_log(str_issue)
-                                self.keep_channel_issues.append(sub, mod.create_filename_from_attributes(),
-                                                          ref_elec, miss_matching_elec, bidsintegrity_key[0])
+                                filepath = mod.create_filename_from_attributes()
+
+                                channel_issues.update({'sub': sub,
+                                                       'filepath': os.path.join(filepath[1], filepath[0]),
+                                                       'RefElectrodes': ref_elec,
+                                                       'MismatchedElectrodes': miss_matching_elec,
+                                                       'mod': bidsintegrity_key[0]})
+                                self.keep_channel_issues['ChannelIssue'] = channel_issues
                                 self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = \
                                     str(False)
 
@@ -658,7 +671,7 @@ class BidsBrick(dict):
                                 str(True)
 
                 if self.keep_channel_issues:
-                    self.keep_channel_issues.save_json()
+                    self.keep_channel_issues.save_as_json()
 
             for sub in sub_list:
                 idx = [elmt for elmt in integrity_list + check_list
@@ -1540,6 +1553,7 @@ class BidsDataset(BidsBrick):
         self.bids_dir = bids_dir
         self._assign_bids_dir(bids_dir)
         self.curr_subject = {}
+        self.keep_channel_issues = IssueBrick()
         self.requirements = BidsDataset.requirements
         self.parse_bids()
 
@@ -1611,6 +1625,7 @@ class BidsDataset(BidsBrick):
 
         BidsBrick.access_time = datetime.now()
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
+        self.write_log('Current User: ' + self.curr_user)
         # First read requirements.json which should be in the code folder of bids dir.
         self.get_requirements()
 
@@ -1957,3 +1972,80 @@ class BidsDataset(BidsBrick):
 
     # def __repr__(self):
     #     return 'bids = BidsDataset("C:/Users/datasetdir/your_bids_dir")'
+
+
+''' Additional class to handle issues and relative actions '''
+
+
+class RefElectrodes(BidsFreeFile):
+    pass
+
+
+class MismatchedElectrodes(BidsFreeFile):
+    pass
+
+
+class Comment(BidsBrick):
+    keylist = ['date', 'user', 'description']
+
+    def __init__(self, new_keys=None):
+        if new_keys:
+            if isinstance(new_keys, str):
+                new_keys = [new_keys]
+            if isinstance(new_keys, list):
+                super().__init__(keylist=new_keys + self.__class__.keylist)
+            else:
+                error_str = 'The new keys of ' + self.__class__.__name__ + ' should be either a list of a string.'
+                self.write_log(error_str)
+                raise TypeError(error_str)
+
+
+class Action(Comment):
+    keylist = Comment.keylist + ['command']
+
+    def __init__(self, single_action_watch_key, new_keys=None):
+        super().__init__(new_keys=new_keys)
+        '''single_action_watch_key is used to avoid setting several actions on the same file. Only the last one is
+         retained'''
+        self.single_action_watch_key = single_action_watch_key
+
+
+class ChannelIssue(BidsBrick):
+    keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'filepath', 'Comment', 'Action']
+
+
+class ImportIssue(BidsBrick):
+    keylist = BidsBrick.keylist + ['filepath', 'Comment', 'Action']
+
+
+class IssueBrick(BidsBrick):
+    keylist = ['ChannelIssue', 'ImportIssue']
+
+    def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
+
+        log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
+        super().save_as_json(savedir=log_path, file_start='issue', write_date=True, compress=False)
+    # @staticmethod
+    # def sanity_check(sub_id=None, filepath=None, refelec=None, miss_elec=None, mod=None):
+    #     if not (isinstance(sub_id, str) and
+    #             isinstance(os.path.join(filepath[1], filepath[0]), str)
+    #             and isinstance(miss_elec, list) and isinstance(miss_elec, list)
+    #             and mod in Electrophy.get_list_subclasses_names()):
+    #         raise TypeError('sub_id should be a string, filepath should exist, channels should be a list'
+    #                         ' of channels and the modality should be a subclass of Electrophy.')
+    #
+    #     kword = IssueBrick.keylist
+    #     return {kword[0]: sub_id, kword[1]: mod, kword[2]: os.path.join(filepath[1], filepath[0]),
+    #             kword[3]: refelec, kword[4]: miss_elec}
+    #
+    # def append(self, sub_id=None, filepath=None, refelec=None, miss_elec=None, mod=None):
+    #     issue_dict = IssueBrick.sanity_check(sub_id, filepath, refelec, miss_elec, mod)
+    #     super().append(issue_dict)
+    #
+    # def save_json(self):
+    #     log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
+    #     log_filename = 'channel_issue-' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M") + '.json'
+    #     with open(os.path.join(log_path, log_filename), 'w') as f:
+    #         # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
+    #         json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+    #         f.write(json_str)
