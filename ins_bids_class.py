@@ -517,37 +517,6 @@ class BidsBrick(dict):
 
     def check_requirements(self):
 
-        # class IssueList(list):
-        #
-        #     keyword = ['sub', 'modality', 'fileLoc', 'ref_electrodes', 'mismatched_electrodes']
-        #
-        #     @staticmethod
-        #     def sanity_check(sub_id=None, filepath=None, refelec=None, miss_elec=None,  mod=None):
-        #         if not (isinstance(sub_id, str) and
-        #                 isinstance(os.path.join(filepath[1], filepath[0]), str)
-        #                 and isinstance(miss_elec, list) and isinstance(miss_elec, list)
-        #                 and mod in Electrophy.get_list_subclasses_names()):
-        #             raise TypeError('sub_id should be a string, filepath should exist, channels should be a list'
-        #                             ' of channels and the modality should be a subclass of Electrophy.')
-        #
-        #         kword = IssueList.keyword
-        #         return {kword[0]: sub_id, kword[1]: mod, kword[2]: os.path.join(filepath[1], filepath[0]),
-        #                 kword[3]: refelec, kword[4]: miss_elec}
-        #
-        #     def append(self, sub_id=None, filepath=None, refelec=None, miss_elec=None,  mod=None):
-        #
-        #         issue_dict = IssueList.sanity_check(sub_id, filepath, refelec, miss_elec, mod)
-        #         super().append(issue_dict)
-        #
-        #     def save_json(self):
-        #
-        #         log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
-        #         log_filename = 'channel_issue-' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M") + '.json'
-        #         with open(os.path.join(log_path, log_filename), 'w') as f:
-        #             # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
-        #             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
-        #             f.write(json_str)
-
         def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
 
             type_dict = mod_req['type']
@@ -661,7 +630,7 @@ class BidsBrick(dict):
                                                        'RefElectrodes': ref_elec,
                                                        'MismatchedElectrodes': miss_matching_elec,
                                                        'mod': bidsintegrity_key[0]})
-                                self.keep_channel_issues['ChannelIssue'] = channel_issues
+                                self.issues['ChannelIssue'] = channel_issues
                                 self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = \
                                     str(False)
 
@@ -670,8 +639,8 @@ class BidsBrick(dict):
                             self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = \
                                 str(True)
 
-                if self.keep_channel_issues:
-                    self.keep_channel_issues.save_as_json()
+                if self.issues:
+                    self.issues.save_as_json()
 
             for sub in sub_list:
                 idx = [elmt for elmt in integrity_list + check_list
@@ -1553,7 +1522,7 @@ class BidsDataset(BidsBrick):
         self.bids_dir = bids_dir
         self._assign_bids_dir(bids_dir)
         self.curr_subject = {}
-        self.keep_channel_issues = IssueBrick()
+        self.issues = IssueBrick()
         self.requirements = BidsDataset.requirements
         self.parse_bids()
 
@@ -1989,29 +1958,76 @@ class Comment(BidsBrick):
     keylist = ['date', 'user', 'description']
 
     def __init__(self, new_keys=None):
-        if new_keys:
-            if isinstance(new_keys, str):
-                new_keys = [new_keys]
-            if isinstance(new_keys, list):
-                super().__init__(keylist=new_keys + self.__class__.keylist)
-            else:
-                error_str = 'The new keys of ' + self.__class__.__name__ + ' should be either a list of a string.'
-                self.write_log(error_str)
-                raise TypeError(error_str)
+        if not new_keys:
+            new_keys = []
+        if isinstance(new_keys, str):
+            new_keys = [new_keys]
+        if isinstance(new_keys, list):
+            super().__init__(keylist=new_keys + self.__class__.keylist)
+            self['user'] = self.curr_user
+            self['date'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        else:
+            error_str = 'The new keys of ' + self.__class__.__name__ + ' should be either a list of a string.'
+            self.write_log(error_str)
+            raise TypeError(error_str)
+
+    def formatting(self):
+        return '==> ' + self.__class__.__name__ + ' by ' + self['user'] + ' at ' + self['date'] + ':\n'\
+               + self['description']
 
 
 class Action(Comment):
     keylist = Comment.keylist + ['command']
 
-    def __init__(self, single_action_watch_key, new_keys=None):
+    def __init__(self, new_keys=None):
         super().__init__(new_keys=new_keys)
-        '''single_action_watch_key is used to avoid setting several actions on the same file. Only the last one is
-         retained'''
-        self.single_action_watch_key = single_action_watch_key
 
 
 class ChannelIssue(BidsBrick):
     keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'filepath', 'Comment', 'Action']
+
+    def add_action(self, elec_name, desc, command):
+        """verify that the given electrode name is part of the mismatched electrodes"""
+        if elec_name not in self['MismatchedElectrodes']:
+            raise NameError(elec_name + 'is not an mismatched electrode.')
+        """ check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
+        idx2pop = None
+        for act in self['Action']:
+            if act['label'] == elec_name:
+                idx2pop = self['Action'].index(act)
+                break
+        if idx2pop is not None:
+            self['Action'].pop(idx2pop)
+        """ add action for given mismatched electrodes """
+        action = Action('label')
+        action['label'] = elec_name
+        action['description'] = desc
+        action['command'] = command
+        self['Action'] = action
+
+    def add_comment(self,  elec_name, desc):
+        """verify that the given electrode name is part of the mismatched electrodes"""
+        if elec_name not in self['MismatchedElectrodes']:
+            raise NameError(elec_name + 'is not an mismatched electrode.')
+        """ add comment about a given mismatched electrodes """
+        comment = Comment('label')
+        comment['label'] = elec_name
+        comment['description'] = desc
+        self['Comment'] = comment
+
+    def formatting(self, comment_type=None):
+        if comment_type and (not isinstance(comment_type, str) or
+                             comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
+            raise KeyError(comment_type + ' is not a recognized key of ' + self.__class__.__name__ + '.')
+        if not comment_type:
+            comment_type = Comment.get_list_subclasses_names() + ['Comment']
+        else:
+            comment_type = [comment_type.capitalize()]
+        formatted_str = ''
+        for cmnt_type in comment_type:
+            for cmnt in self[cmnt_type]:
+                formatted_str += cmnt.formatting()
+        return formatted_str
 
 
 class ImportIssue(BidsBrick):
@@ -2025,27 +2041,21 @@ class IssueBrick(BidsBrick):
 
         log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
         super().save_as_json(savedir=log_path, file_start='issue', write_date=True, compress=False)
-    # @staticmethod
-    # def sanity_check(sub_id=None, filepath=None, refelec=None, miss_elec=None, mod=None):
-    #     if not (isinstance(sub_id, str) and
-    #             isinstance(os.path.join(filepath[1], filepath[0]), str)
-    #             and isinstance(miss_elec, list) and isinstance(miss_elec, list)
-    #             and mod in Electrophy.get_list_subclasses_names()):
-    #         raise TypeError('sub_id should be a string, filepath should exist, channels should be a list'
-    #                         ' of channels and the modality should be a subclass of Electrophy.')
-    #
-    #     kword = IssueBrick.keylist
-    #     return {kword[0]: sub_id, kword[1]: mod, kword[2]: os.path.join(filepath[1], filepath[0]),
-    #             kword[3]: refelec, kword[4]: miss_elec}
-    #
-    # def append(self, sub_id=None, filepath=None, refelec=None, miss_elec=None, mod=None):
-    #     issue_dict = IssueBrick.sanity_check(sub_id, filepath, refelec, miss_elec, mod)
-    #     super().append(issue_dict)
-    #
-    # def save_json(self):
-    #     log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
-    #     log_filename = 'channel_issue-' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M") + '.json'
-    #     with open(os.path.join(log_path, log_filename), 'w') as f:
-    #         # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
-    #         json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
-    #         f.write(json_str)
+
+    def formatting(self, specific_issue=None, comment_type=None):
+        if specific_issue and specific_issue not in self.keys():
+            raise KeyError(specific_issue + ' is not a recognized key of ' + self.__class__.__name__ + '.')
+        if comment_type and (not isinstance(comment_type, str) or
+                             comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
+            raise KeyError(comment_type + ' is not a reckognized key of ' + self.__class__.__name__ + '.')
+        formatted_str = ''
+        if specific_issue:
+            key2check = [specific_issue]
+        else:
+            key2check = self.keylist
+        for key in key2check:
+            for issue in self[key]:
+                formatted_str += issue.formatting(comment_type=comment_type)
+
+        return formatted_str
+
