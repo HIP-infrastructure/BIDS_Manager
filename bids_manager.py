@@ -1,5 +1,6 @@
 import ins_bids_class as bids
 import os
+import platform
 from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar
@@ -283,6 +284,10 @@ class DoubleListbox:
 
 class DefaultText(scrolledtext.ScrolledText):
 
+    def __init__(self, master=None, **kw):
+
+        super().__init__(master=master, **kw)
+
     def clear_text(self, start=None, end=None):
         if not start:
             start = 1.0
@@ -321,9 +326,12 @@ class TemplateDialog(Toplevel):
             self.transient(parent)
 
         self.parent = parent
-        self.body_widget = Frame(self)
+        self.body_widget = Frame(self, height=150, width=150)
+        self.body_widget.pack(padx=self.default_pad[0], pady=self.default_pad[1], fill=BOTH, expand=1)
+
         self.body(self.body_widget)
-        self.body_widget.pack(padx=self.default_pad[0], pady=self.default_pad[1])
+
+        # self.body_widget.geo
         self.results = None
         self.bind("<Escape>", self.cancel)
 
@@ -352,10 +360,10 @@ class TemplateDialog(Toplevel):
     def ok_cancel_button(self, parent):
         self.btn_ok = Button(parent, text='OK', command=self.ok, height=self.button_size[0],
                              width=self.button_size[1])
-        self.btn_ok.pack(side=LEFT, expand=1, padx=10, pady=5)
+        self.btn_ok.pack(side=LEFT, fill=Y, expand=1, padx=10, pady=5)
         self.btn_cancel = Button(parent, text='Cancel', command=self.cancel, height=self.button_size[0],
                                  width=self.button_size[1], default=ACTIVE)
-        self.btn_cancel.pack(side=RIGHT, expand=1, padx=10, pady=5)
+        self.btn_cancel.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
 
     def ok(self, event=None):
         pass
@@ -428,17 +436,21 @@ class CommentDialog(TemplateDialog):
 
     def body(self, parent):
         self.title = 'Choose from list'
-        Label(parent, text='Previous comment(s)').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
-        self.read_comment_area = DisplayText(master=parent)
-        self.read_comment_area.pack(padx=5, pady=10)
+
+        self.read_comment_area = DisplayText(master=parent, height=20, width=100)
         self.read_comment_area.update_text(self.previous_comment)
-        Label(parent, text='Add new comment').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
-        self.add_comment_area = DefaultText(master=parent)
-        self.add_comment_area.pack(padx=5, pady=10)
-        # add the default ok and cancel button
+        self.add_comment_area = DefaultText(master=parent, height=10, width=100)
         self.add_comment_btn = Button(parent, text='Add comment', command=self.add_new_comment,
                                       height=self.button_size[0], width=self.button_size[1])
+
+        Label(parent, text='Previous comment(s)').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
+
+        self.read_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP,)
+        Label(parent, text='Add new comment').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
+        self.add_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP,)
+
         self.add_comment_btn.pack(side=TOP, fill=X, expand=1, padx=10, pady=5)
+        # add the default ok and cancel button
         self.ok_cancel_button(parent)
 
     def add_new_comment(self):
@@ -455,6 +467,12 @@ class CommentDialog(TemplateDialog):
 
 
 root = Tk()
+if platform.system() == 'Windows':
+    root.state("zoomed")
+elif platform.system() == 'Linux':
+    root.attributes('-zoomed', True)
+
+
 my_gui = BidsManager()
 
 # MyDialog(root)
