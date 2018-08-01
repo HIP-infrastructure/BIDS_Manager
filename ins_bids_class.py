@@ -1069,6 +1069,7 @@ class GlobalSidecars(BidsBrick):
                         filename.split('_')[-1]]
             super().__init__(keylist=self.__class__.keylist + comp_key,
                              required_keys=self.__class__.required_keys)
+            self['fileLoc'] = filename + ext
         # elif ext in self.allowed_file_formats and filename.split('_')[-1] == 'photo':
         else:
             photo_key = [value for counter, value in enumerate(self.complementary_keylist) if value in
@@ -1076,6 +1077,10 @@ class GlobalSidecars(BidsBrick):
             if ext.lower() in eval(photo_key + '.allowed_file_formats'):
                 super().__init__(keylist=eval(photo_key + '.keylist'), required_keys=eval(photo_key + '.required_keys'))
                 self['modality'] = 'photo'
+                self['fileLoc'] = filename + ext
+            else:
+                err_str = 'Not recognise file type for ' + self.__class__.__name__ + '.'
+                self.write_log(err_str)
 
 
 class Photo(GlobalSidecars):
@@ -1419,6 +1424,8 @@ class SrcDataTrack(BidsTSV):
         super().__init__()
 
     def write_file(self, tsv_full_filename=None):
+        if not os.path.exists(os.path.join(BidsDataset.bids_dir, 'sourcedata')):
+            os.makedirs(os.path.join(BidsDataset.bids_dir, 'sourcedata'))
         tsv_full_filename = os.path.join(BidsDataset.bids_dir, 'sourcedata', SrcDataTrack.__tsv_srctrack)
         super().write_file(tsv_full_filename)
 
@@ -1898,11 +1905,11 @@ class BidsDataset(BidsBrick):
 
                     # test whether the subject to be imported has the same attributes as the one already inside the
                     # bids dataset
-                    if sub_present and not self.curr_subject['Subject'].get_attributes('alias') == sub.get_attributes(
-                            'alias'):
+                    if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) \
+                                           == sub.get_attributes(['alias', 'upload_date', 'fdsfs']):
                         error_str = 'The subject to be imported has different attributes than the analogous subject' \
-                                    ' in the bids dataset (' + sub.get_attributes() + '=/=' + \
-                                    self.curr_subject['Subject'].get_attributes() + ').'
+                                    ' in the bids dataset (' + str(sub.get_attributes()) + '=/=' + \
+                                    str(self.curr_subject['Subject'].get_attributes()) + ').'
                         self.issues.add_issue(Issue.keylist[1], sub=sub, issue_desc=error_str)
                         self.write_log(error_str)
                         continue
@@ -1983,7 +1990,7 @@ class BidsDataset(BidsBrick):
 
             # shutil.rmtree(data2import.data2import_dir)
             except Exception as err:
-                self.write_log(err)
+                self.write_log(str(err))
                 copy_data2import.save_as_json()
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
