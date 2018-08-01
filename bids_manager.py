@@ -12,7 +12,7 @@ class BidsManager(Frame):
     def __init__(self):
         super().__init__()
         self.master.title("BidsManager " + BidsManager.version)
-        # self.master.geometry("1000x1000")
+        self.master.geometry("500x500")
 
         self.curr_bids = None
         self.curr_import_folder = None
@@ -82,13 +82,20 @@ class BidsManager(Frame):
         print('actions applied (To be implemented!)')
 
     def delete_actions(self):
-        flag = messagebox.askyesno('Are you sure you want to DELETE all chosen actions?')
+        flag = messagebox.askyesno('DELETE All Actions', 'Are you sure you want to DELETE all chosen actions?')
         if flag:
             for issue in self.curr_bids.issues['ChannelIssue']:
                 issue['Action'] = []
+            issue_list = self.main_frame['double_list'].elements['list1']
+            action_list = self.main_frame['double_list'].elements['list2']
+            for list_idx in range(0, action_list.size()-1):
+                action_list.delete(list_idx)
+                action_list.insert(list_idx, '')
+                issue_list.itemconfig(list_idx, foreground='black')
             info_str = 'All actions were deleted'
             self.curr_bids.write_log(info_str)
-            messagebox.showinfo('Delete actions',info_str)
+            self.curr_bids.issues.save_as_json()
+            messagebox.showinfo('Delete actions', info_str)
 
     @staticmethod
     def populate_list(list_object, input_list):
@@ -178,6 +185,19 @@ class BidsManager(Frame):
                 curr_dict.add_comment(mismtch_elec, comment)
             issue_list.itemconfig(list_idx, bg='yellow')
 
+    def cancel_action(self, list_idx, info):
+        idx = info['index']
+        mismtch_elec = info['MismatchedElectrode']
+        curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
+        issue_list = self.main_frame['double_list'].elements['list1']
+        action_list = self.main_frame['double_list'].elements['list2']
+        for action in curr_dict['Action']:
+            if action['label'] == mismtch_elec:
+                curr_dict['Action'].pop(curr_dict['Action'].index(action))
+                action_list.delete(list_idx)
+                action_list.insert(list_idx, '')
+                issue_list.itemconfig(list_idx, foreground='black')
+
     def solve_issues(self):
 
         def whatto2menu(dlb_lst, line_map, event):
@@ -193,6 +213,8 @@ class BidsManager(Frame):
                                                                                                     line_map[curr_idx]))
             pop_menu.add_command(label='Read or add comment', command=lambda: self.get_entry(curr_idx,
                                                                                              line_map[curr_idx]))
+            pop_menu.add_command(label='Cancel action', command=lambda: self.cancel_action(curr_idx,
+                                                                                           line_map[curr_idx]))
             pop_menu.post(event.x_root, event.y_root)
 
         dlb_list = self.main_frame['double_list']
@@ -332,7 +354,7 @@ class IssueList(DoubleListbox):
     validating, saving or deleting the actions chosen by the user related to the issues in the right-hand side list"""
     button_size = [2, 10]
 
-    def __init__(self, master, cmd_apply, cmd_save, cmd_cancel):
+    def __init__(self, master, cmd_apply, cmd_save, cmd_delete):
         super().__init__(master)
         self.user_choice = None
         self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
@@ -341,14 +363,14 @@ class IssueList(DoubleListbox):
         self.elements['save'] = Button(master=master, text='Save', command=cmd_save, height=self.button_size[0],
                                        width=self.button_size[1])
 
-        self.elements['cancel'] = Button(master=master, text='Cancel', command=cmd_cancel, height=self.button_size[0],
+        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0],
                                          width=self.button_size[1], default=ACTIVE)
 
     def pack_elements(self):
         super().pack_elements()
         self.elements['apply'].pack(side=TOP, expand=1, padx=10, pady=5)
         self.elements['save'].pack(side=TOP, expand=1, padx=10, pady=5)
-        self.elements['cancel'].pack(side=TOP, expand=1, padx=10, pady=5)
+        self.elements['delete'].pack(side=TOP, expand=1, padx=10, pady=5)
 
 
 class DefaultText(scrolledtext.ScrolledText):
