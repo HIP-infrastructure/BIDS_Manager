@@ -669,8 +669,8 @@ class BidsBrick(dict):
             self.write_log(str_issue)
             raise NotADirectoryError(str_issue)
         if isinstance(self, Imagery):
-            converter_path = 'D:/roehri/python/PycharmProjects/readFromUploader/dcm2niix.exe'
-            conv_ext = ['.nii']
+            converter_path = BidsDataset.converters['Imagery']['path']
+            conv_ext = BidsDataset.converters['Imagery']['ext']
             # by default dcm2niix not do overwrite file with same names but adds a letter to it (inputnamea, inputnameb)
             # therefore one should firstly test whether a file with the same input name already exist and remove it to
             # avoid risking to import this one rather than the one which was converted and added a suffix
@@ -681,13 +681,13 @@ class BidsBrick(dict):
             cmd_line = cmd_line_base + filename + ' -o "' + Data2Import.data2import_dir + '" "' + os.path.join(
                 Data2Import.data2import_dir, self['fileLoc']) + '"'
         elif isinstance(self, Electrophy):
-            converter_path = 'D:/roehri/AnyWave/AnyWave.exe'
+            converter_path = BidsDataset.converters['Electrophy']['path']
+            conv_ext = BidsDataset.converters['Electrophy']['ext']
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
             cmd_line = converter_path + ' --seegBIDS "' + os.path.join(Data2Import.data2import_dir, self['fileLoc']) + \
                        '" ' + name_cmd + ' --bids_dir "' + Data2Import.data2import_dir + '" --bids_format vhdr'
-            conv_ext = ['.vhdr', '.vmrk', '.dat']
         elif isinstance(self, GlobalSidecars):
             if self['modality'] == 'photo':
                 shutil.copy2(os.path.join(Data2Import.data2import_dir, self['fileLoc']), os.path.join(
@@ -1846,6 +1846,13 @@ class BidsDataset(BidsBrick):
         # if True:
 
         if isinstance(data2import, Data2Import) and data2import.has_all_req_attributes()[0]:
+            if not (not BidsDataset.converters['Electrophy']['path'] or
+                    os.path.isfile(BidsDataset.converters['Electrophy']['path']) and
+                    (not BidsDataset.converters['Imagery']['path'] or
+                    os.path.isfile(BidsDataset.converters['Imagery']['path']))):
+                error_str = 'At least one converter path in requirements.json is wrongly set'
+                self.write_log(error_str)
+                raise FileNotFoundError(error_str)
 
             if not data2import['DatasetDescJSON']['Name'] == self['DatasetDescJSON']['Name']:
                 error_str = 'The data to be imported belong to a different protocol (' \
@@ -1860,8 +1867,8 @@ class BidsDataset(BidsBrick):
             copy_data2import = Data2Import(Data2Import.data2import_dir)
             try:
                 shutil.copy2(os.path.join(Data2Import.data2import_dir, Data2Import.filename),
-                            os.path.join(Data2Import.data2import_dir, self.access_time.strftime("%Y-%m-%dT%H-%M-%S")
-                                         + Data2Import.filename))
+                             os.path.join(Data2Import.data2import_dir, self.access_time.strftime("%Y-%m-%dT%H-%M-%S")
+                                          + Data2Import.filename))
                 if keep_sourcedata:
                     if not self['SourceData']:
                         self['SourceData'] = SourceData()
@@ -1899,10 +1906,10 @@ class BidsDataset(BidsBrick):
                     for modality_type in sub.keys():
                         if modality_type in BidsBrick.get_list_subclasses_names():
                             for modality in sub[modality_type]:
-                                # check again if the subject is present because it could be absent at the beginning but
-                                # you could have added a data from the subject in a previous iteration of the loop.
-                                # For instance, if you add a T1w and by mistake add the another T1w but with the same
-                                # attributes you need to know what was previously imported for the subject
+                                """check again if the subject is present because it could be absent at the beginning but
+                                you could have added a data from the subject in a previous iteration of the loop.
+                                For instance, if you add a T1w and by mistake add the another T1w but with the same
+                                attributes you need to know what was previously imported for the subject"""
                                 self.is_subject_present(sub['sub'])
                                 sub_present = self.curr_subject['isPresent']
                                 sub_index = self.curr_subject['index']
@@ -2080,7 +2087,7 @@ class ChannelIssue(BidsBrick, BidsSidecar):
 
 
 class ImportIssue(BidsBrick):
-    keylist = BidsBrick.keylist + ['data2import_dir', 'Comment', 'Action']
+    keylist = BidsBrick.keylist + ['Subject', 'DatasetDescJSON', 'data2import_dir', 'Comment', 'Action']
 
 
 class IssueBrick(BidsBrick):
