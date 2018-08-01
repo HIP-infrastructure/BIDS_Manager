@@ -29,14 +29,22 @@ class BidsManager(Frame):
         self.uploader_menu = uploader_menu
         bids_menu = Menu(menu_bar, tearoff=0)
         self.bids_menu = bids_menu
+        issue_menu = Menu(menu_bar, tearoff=0)
+        self.issue_menu = issue_menu
+        # fill up the bids menu
+        bids_menu.add_command(label='Create new BIDS directory', command=self.bell)
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
         bids_menu.add_command(label='Show participants.tsv', command=self.print_participants_tsv, state="disabled")
         bids_menu.add_command(label='Show source_data_trace.tsv', command=self.print_srcdata_tsv, state="disabled")
-        bids_menu.add_command(label='Solve raised issues', command=self.solve_issues, state="disabled")
+        # fill up the issue menu
+        issue_menu.add_command(label='Solve channel issues', command=self.solve_issues)
+        issue_menu.add_command(label='Solve importation issues', command=self.bell)
+        # fill up the upload/import menu
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir)
         # settings_menu.add_command(label='Exit', command=self.quit)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
+        menu_bar.add_cascade(label="Issues", underline=0, menu=issue_menu)
 
         # area to print logs
         self.main_frame['text'] = DisplayText(master=self.master)
@@ -113,9 +121,14 @@ class BidsManager(Frame):
         self.info_label.set(self.info_label._default)
         self.update()
         self.curr_bids = bids.BidsDataset(bids_dir)
+        # enable all bids sub-menu
         last = self.bids_menu.index(END)
-        for i in range(1, last+1):
+        for i in range(0, last+1):
             self.bids_menu.entryconfigure(i, state=NORMAL)
+        # enable all issue sub-menu
+        last = self.issue_menu.index(END)
+        for i in range(0, last + 1):
+            self.issue_menu.entryconfigure(i, state=NORMAL)
         self.info_label.set('Current BIDS directory: ' + bids_dir)
         self.pack_element(self.main_frame['text'])
         self.update_text(str(self.curr_bids.curr_log))
@@ -145,7 +158,7 @@ class BidsManager(Frame):
         results = ListDialog(self.master, curr_dict['RefElectrodes'], 'Rename ' + mismtch_elec + ' as :').apply()
         if results:
             str_info = mismtch_elec + ' has to be renamed as ' + results + ' in the files related to ' + \
-                       os.path.basename(curr_dict['filepath']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
+                       os.path.basename(curr_dict['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
             curr_dict.add_action(mismtch_elec, str_info, 'To be defined')
             # self.update_text(self.curr_bids.issues.formatting(specific_issue='ChannelIssue', comment_type='action'))
             # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ChannelIssue',
@@ -164,7 +177,7 @@ class BidsManager(Frame):
                                    mismtch_elec + '?')
         if flag:
             str_info = 'Remove group label for ' + mismtch_elec + ' in the channel file related to ' + \
-                       os.path.basename(curr_dict['filepath']) + '.\n'
+                       os.path.basename(curr_dict['fileLoc']) + '.\n'
             # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
             curr_dict.add_action(mismtch_elec, str_info, 'To be defined')
             # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ChannelIssue',
@@ -232,7 +245,7 @@ class BidsManager(Frame):
         line_mapping = []
         for issue in issue_dict:
             for mismatch_el in issue['MismatchedElectrodes']:
-                issue_list2write.append('In file ' + os.path.basename(issue['filepath']) + ' of subject ' + issue['sub'] +
+                issue_list2write.append('In file ' + os.path.basename(issue['fileLoc']) + ' of subject ' + issue['sub'] +
                                         ', ' + mismatch_el + ' does not match electrodes.tsv reference.')
                 act_str = issue.formatting(comment_type='Action', elec_name=mismatch_el)
 
@@ -264,7 +277,7 @@ class BidsManager(Frame):
         dlb_list.elements['list1'].bind('<Return>', lambda event: whatto2menu(dlb_list, line_mapping, event))
 
         # def make_line(issue_dict):
-        #     formatted_line = 'File ' + issue_dict['filepath'] + ' of subject ' + issue_dict['sub']\
+        #     formatted_line = 'File ' + issue_dict['fileLoc'] + ' of subject ' + issue_dict['sub']\
         #                      + ' has following mismatched electrodes: ' + str(issue_dict['MismatchedElectrodes'])\
         #                      + '.\n'
         #     return formatted_line
