@@ -231,6 +231,7 @@ class BidsBrick(dict):
     def create_filename_from_attributes(self):
         filename = ''
         dirname = ''
+        ext = ''
         if isinstance(self, ModalityType) or isinstance(self, GlobalSidecars):
             for key in self.get_attributes(['fileLoc', 'modality']):
                 if self[key]:
@@ -246,7 +247,11 @@ class BidsBrick(dict):
                 mod_type = mod_type.lower()
             piece_dirname += [mod_type]
             dirname = '/'.join(piece_dirname)
-        return filename, dirname
+            if isinstance(self, Electrophy):
+                ext = BidsDataset.converters['Electrophy']['ext'][0]
+            elif isinstance(self, Imagery):
+                ext = BidsDataset.converters['Imagery']['ext'][0]
+        return filename, dirname, ext
 
     def get_sidecar_files(self, in_bids_dir=True, input_dirname=None, input_filename=None):
         # find corresponding JSON file and read its attributes and save fileloc
@@ -430,7 +435,7 @@ class BidsBrick(dict):
         return sidecar_dict
 
     def extract_sidecares_from_sourcedata(self):
-        filename, dirname = self.create_filename_from_attributes()
+        filename, dirname, ext = self.create_filename_from_attributes()
 
         if not Data2Import.data2import_dir or not Data2Import.data2import_dir:
             str_issue = 'Need import and bids directory to be set.'
@@ -629,7 +634,7 @@ class BidsBrick(dict):
                                 filepath = mod.create_filename_from_attributes()
 
                                 channel_issues.update({'sub': sub,
-                                                       'filepath': os.path.join(filepath[1], filepath[0]),
+                                                       'fileLoc': os.path.join(filepath[1], filepath[0]+filepath[2]),
                                                        'RefElectrodes': ref_elec,
                                                        'MismatchedElectrodes': miss_matching_elec,
                                                        'mod': bidsintegrity_key[0]})
@@ -657,7 +662,7 @@ class BidsBrick(dict):
                     self['ParticipantsTSV'][1 + sub_list.index(sub)][subject_ready_idx] = str(False)
 
     def convert(self):
-        filename, dirname = self.create_filename_from_attributes()
+        filename, dirname, ext = self.create_filename_from_attributes()
 
         if not Data2Import.data2import_dir or not Data2Import.data2import_dir:
             str_issue = 'Need import and bids directory to be set.'
@@ -1099,6 +1104,10 @@ class Requirements(dict):
                 json_dict = json.load(file)
                 if 'Requirements' in json_dict.keys():
                     self['Requirements'] = json_dict['Requirements']
+                if 'Readers' in json_dict.keys():
+                    BidsDataset.readers = json_dict['Readers']
+                if 'Converters' in json_dict.keys():
+                    BidsDataset.converters = json_dict['Converters']
 
 
 ''' The different modality bricks, subclasses of BidsBrick. '''
@@ -1518,8 +1527,10 @@ class BidsDataset(BidsBrick):
     keylist = ['Subject', 'SourceData', 'Derivatives', 'Code', 'Stimuli', 'DatasetDescJSON', 'ParticipantsTSV']
     # _keybln = BidsBrick.create_keytype(_keylist)
     bids_dir = None
-    requirements = None
+    requirements = dict()
     curr_log = ''
+    readers = dict()
+    converters = dict()
 
     def __init__(self, bids_dir):
         """initiate a  dict var for patient info"""
@@ -1737,7 +1748,7 @@ class BidsDataset(BidsBrick):
     def import_data(self, data2import, keep_sourcedata=True, keep_file_trace=True):
 
         def push_into_dataset(bids_dst, mod_dict2import, keep_srcdata, keep_ftrack):
-            filename, dirname = mod_dict2import.create_filename_from_attributes()
+            filename, dirname, ext = mod_dict2import.create_filename_from_attributes()
 
             fname2import, ext2import = os.path.splitext(mod_dict2import['fileLoc'])
             orig_ext = ext2import
@@ -1801,7 +1812,7 @@ class BidsDataset(BidsBrick):
 
         def have_data_same_source_file(bids_dict, mod_dict):
             if bids_dict['SourceData'] and bids_dict['SourceData'][-1]['SrcDataTrack']:
-                filename, dirname = mod_dict.create_filename_from_attributes()
+                filename, dirname, ext = mod_dict.create_filename_from_attributes()
                 original_src = bids_dict['SourceData'][-1]['SrcDataTrack'].get_source_from_raw_filename(filename)[0]
                 return os.path.basename(mod_dict['fileLoc']) == original_src
 
@@ -2020,7 +2031,7 @@ class Action(Comment):
 
 
 class ChannelIssue(BidsBrick, BidsSidecar):
-    keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'filepath', 'Comment', 'Action']
+    keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'Comment', 'Action']
 
     def add_action(self, elec_name, desc, command):
         """verify that the given electrode name is part of the mismatched electrodes"""
@@ -2069,7 +2080,7 @@ class ChannelIssue(BidsBrick, BidsSidecar):
 
 
 class ImportIssue(BidsBrick):
-    keylist = BidsBrick.keylist + ['filepath', 'Comment', 'Action']
+    keylist = BidsBrick.keylist + ['data2import_dir', 'Comment', 'Action']
 
 
 class IssueBrick(BidsBrick):
