@@ -12,7 +12,7 @@ class BidsManager(Frame):
     def __init__(self):
         super().__init__()
         self.master.title("BidsManager " + BidsManager.version)
-        self.master.geometry("1000x1000")
+        # self.master.geometry("1000x1000")
 
         self.curr_bids = None
         self.curr_import_folder = None
@@ -45,7 +45,8 @@ class BidsManager(Frame):
         self.main_frame['list'] = Listbox(master=self.master, font=("Arial", 12))
 
         # area to print double linked list
-        self.main_frame['double_list'] = DoubleListbox(master=self.master)
+        self.main_frame['double_list'] = IssueList(self.master, self.apply_actions, self.save_actions,
+                                                   self.delete_actions)
 
         # little band to print small infos
         self.info_label = StringVar()
@@ -70,6 +71,24 @@ class BidsManager(Frame):
 
     def update_text(self, str2show, delete_flag=True, location=None):
         self.main_frame['text'].update_text(str2show, delete_flag=delete_flag, location=location)
+
+    def save_actions(self):
+        self.curr_bids.issues.save_as_json()
+        info_str = 'Actions were save for another session in the log folder of the current BIDS directory'
+        self.curr_bids.write_log(info_str)
+        messagebox.showinfo('Save actions', info_str)
+
+    def apply_actions(self):
+        print('actions applied (To be implemented!)')
+
+    def delete_actions(self):
+        flag = messagebox.askyesno('Are you sure you want to DELETE all chosen actions?')
+        if flag:
+            for issue in self.curr_bids.issues['ChannelIssue']:
+                issue['Action'] = []
+            info_str = 'All actions were deleted'
+            self.curr_bids.write_log(info_str)
+            messagebox.showinfo('Delete actions',info_str)
 
     @staticmethod
     def populate_list(list_object, input_list):
@@ -104,7 +123,10 @@ class BidsManager(Frame):
 
     def print_srcdata_tsv(self):
         self.pack_element(self.main_frame['text'])
-        self.update_text(self.make_table(self.curr_bids['SourceData'][-1]['SrcDataTrack']))
+        if self.curr_bids['SourceData'] and self.curr_bids['SourceData'][-1]['SrcDataTrack']:
+            self.update_text(self.make_table(self.curr_bids['SourceData'][-1]['SrcDataTrack']))
+        else:
+            self.update_text('Source Data Track does not exist')
 
     def select_correct_name(self, list_idx, info):
 
@@ -149,7 +171,8 @@ class BidsManager(Frame):
         mismtch_elec = info['MismatchedElectrode']
         curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
-        list_new_comments = CommentDialog(self.master, '\n'.join(curr_dict.formatting(comment_type='Comment'))).apply()
+        list_new_comments = CommentDialog(self.master, '\n'.join(curr_dict.formatting(
+            comment_type='Comment', elec_name=mismtch_elec))).apply()
         if list_new_comments:
             for comment in list_new_comments:
                 curr_dict.add_comment(mismtch_elec, comment)
@@ -173,7 +196,7 @@ class BidsManager(Frame):
             pop_menu.post(event.x_root, event.y_root)
 
         dlb_list = self.main_frame['double_list']
-        self.update_text(self.curr_bids.issues.formatting(specific_issue='ChannelIssue', comment_type='action'))
+        # self.update_text(self.curr_bids.issues.formatting(specific_issue='ChannelIssue', comment_type='action'))
         # self.main_frame['list'].delete(0, END)
         dlb_list.clear_list()
         #
@@ -183,17 +206,33 @@ class BidsManager(Frame):
 
         issue_dict = self.curr_bids.issues['ChannelIssue']
         issue_list2write = []
-        action_list2write = self.curr_bids.issues.formatting(specific_issue='ChannelIssue', comment_type='Action')
+        action_list2write = []
         line_mapping = []
-        for line in issue_dict:
-            for mismatch_el in line['MismatchedElectrodes']:
-                issue_list2write.append('In file ' + os.path.basename(line['filepath']) + ' of subject ' + line['sub'] +
+        for issue in issue_dict:
+            for mismatch_el in issue['MismatchedElectrodes']:
+                issue_list2write.append('In file ' + os.path.basename(issue['filepath']) + ' of subject ' + issue['sub'] +
                                         ', ' + mismatch_el + ' does not match electrodes.tsv reference.')
-                line_mapping.append({'index': issue_dict.index(line), 'MismatchedElectrode': mismatch_el})
+                act_str = issue.formatting(comment_type='Action', elec_name=mismatch_el)
+
+                line_mapping.append({'index': issue_dict.index(issue), 'MismatchedElectrode': mismatch_el,
+                                     'IsComment': bool(issue.formatting(comment_type='Comment', elec_name=mismatch_el)),
+                                     'IsAction': False})
+                if act_str:
+                    action_list2write.append(act_str[0])
+                    # you can write act_str[0] because there is only one action per channel
+                    line_mapping[-1]['IsAction'] = True
+                else:
+                    action_list2write.append('')
 
         self.populate_list(dlb_list.elements['list1'], issue_list2write)
 
-        self.populate_list(dlb_list.elements['list2'], ['']*len(issue_list2write))
+        for cnt, mapping in enumerate(line_mapping):
+            if mapping['IsComment']:
+                dlb_list.elements['list1'].itemconfig(cnt, bg='yellow')
+            if mapping['IsAction']:
+                dlb_list.elements['list1'].itemconfig(cnt, foreground='green')
+
+        self.populate_list(dlb_list.elements['list2'], action_list2write)
 
         self.info_label.set(self.info_label._default + '\nSelect issue from list')
         # self.main_frame['list'].bind('<Double-Button-1>', lambda event: whatto2menu(line_mapping, event))
@@ -248,12 +287,14 @@ class BidsManager(Frame):
 
 
 class DoubleListbox:
-    def __init__(self, master):
+    """ DoubleListbox is a class to display two ListBox which share the same scrollbar and are thus synchronous """
+
+    def __init__(self, parent):
         self.elements = dict()
-        self.elements['scrollbar'] = Scrollbar(master=master, orient="vertical", command=self.on_vsb)
-        self.elements['list1'] = Listbox(master=master, font=("Arial", 12),
+        self.elements['scrollbar'] = Scrollbar(master=parent, orient="vertical", command=self.on_vsb)
+        self.elements['list1'] = Listbox(master=parent, font=("Arial", 12),
                                          yscrollcommand=self.elements['scrollbar'].set)
-        self.elements['list2'] = Listbox(master=master,  font=("Arial", 12),
+        self.elements['list2'] = Listbox(master=parent, font=("Arial", 12),
                                          yscrollcommand=self.elements['scrollbar'].set)
         self.elements['list1'].bind("<MouseWheel>", self.on_mouse_wheel)
         self.elements['list2'].bind("<MouseWheel>", self.on_mouse_wheel)
@@ -281,12 +322,36 @@ class DoubleListbox:
     def winfo_ismapped(self):
         return self.elements['list1'].winfo_ismapped()
 
+    def pack_forget(self):
+        for key in self.elements.keys():
+            self.elements[key].pack_forget()
+
+
+class IssueList(DoubleListbox):
+    """ Based on the DoubleListbox class, the IssueList class adds three buttons to the joint listbox to allow
+    validating, saving or deleting the actions chosen by the user related to the issues in the right-hand side list"""
+    button_size = [2, 10]
+
+    def __init__(self, master, cmd_apply, cmd_save, cmd_cancel):
+        super().__init__(master)
+        self.user_choice = None
+        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
+                                        height=self.button_size[0], width=self.button_size[1])
+
+        self.elements['save'] = Button(master=master, text='Save', command=cmd_save, height=self.button_size[0],
+                                       width=self.button_size[1])
+
+        self.elements['cancel'] = Button(master=master, text='Cancel', command=cmd_cancel, height=self.button_size[0],
+                                         width=self.button_size[1], default=ACTIVE)
+
+    def pack_elements(self):
+        super().pack_elements()
+        self.elements['apply'].pack(side=TOP, expand=1, padx=10, pady=5)
+        self.elements['save'].pack(side=TOP, expand=1, padx=10, pady=5)
+        self.elements['cancel'].pack(side=TOP, expand=1, padx=10, pady=5)
+
 
 class DefaultText(scrolledtext.ScrolledText):
-
-    def __init__(self, master=None, **kw):
-
-        super().__init__(master=master, **kw)
 
     def clear_text(self, start=None, end=None):
         if not start:
@@ -315,6 +380,7 @@ class TemplateDialog(Toplevel):
     def __init__(self, parent):
 
         Toplevel.__init__(self, parent)
+        self.wm_resizable(False, False)
         self.btn_ok = None
         self.btn_cancel = None
         self.withdraw()  # remain invisible for now
@@ -326,7 +392,7 @@ class TemplateDialog(Toplevel):
             self.transient(parent)
 
         self.parent = parent
-        self.body_widget = Frame(self, height=150, width=150)
+        self.body_widget = Frame(self)
         self.body_widget.pack(padx=self.default_pad[0], pady=self.default_pad[1], fill=BOTH, expand=1)
 
         self.body(self.body_widget)

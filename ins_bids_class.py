@@ -642,8 +642,8 @@ class BidsBrick(dict):
                             self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = \
                                 str(True)
 
-                if self.issues:
-                    self.issues.save_as_json()
+            self.issues.check_with_latest_issue()
+            self.issues.save_as_json()
 
             for sub in sub_list:
                 idx = [elmt for elmt in integrity_list + check_list
@@ -1599,6 +1599,7 @@ class BidsDataset(BidsBrick):
 
         BidsBrick.access_time = datetime.now()
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
+        self.issues.clear()  # clear issue to only get the unsolved ones but
         self.write_log('Current User: ' + self.curr_user)
         # First read requirements.json which should be in the code folder of bids dir.
         self.get_requirements()
@@ -1992,7 +1993,7 @@ class MismatchedElectrodes(BidsFreeFile):
 
 
 class Comment(BidsBrick):
-    keylist = ['date', 'user', 'description']
+    keylist = ['label', 'date', 'user', 'description']
 
     def __init__(self, new_keys=None):
         if not new_keys:
@@ -2000,7 +2001,8 @@ class Comment(BidsBrick):
         if isinstance(new_keys, str):
             new_keys = [new_keys]
         if isinstance(new_keys, list):
-            super().__init__(keylist=new_keys + self.__class__.keylist)
+            self.keylist = new_keys + self.keylist
+            super().__init__(keylist=self.keylist)
             self['user'] = self.curr_user
             self['date'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         else:
@@ -2016,18 +2018,15 @@ class Comment(BidsBrick):
 class Action(Comment):
     keylist = Comment.keylist + ['command']
 
-    def __init__(self, new_keys=None):
-        super().__init__(new_keys=new_keys)
 
-
-class ChannelIssue(BidsBrick):
+class ChannelIssue(BidsBrick, BidsSidecar):
     keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'filepath', 'Comment', 'Action']
 
     def add_action(self, elec_name, desc, command):
         """verify that the given electrode name is part of the mismatched electrodes"""
         if elec_name not in self['MismatchedElectrodes']:
             raise NameError(elec_name + 'is not an mismatched electrode.')
-        """ check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
+        """check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
         idx2pop = None
         for act in self['Action']:
             if act['label'] == elec_name:
@@ -2045,14 +2044,14 @@ class ChannelIssue(BidsBrick):
     def add_comment(self,  elec_name, desc):
         """verify that the given electrode name is part of the mismatched electrodes"""
         if elec_name not in self['MismatchedElectrodes']:
-            raise NameError(elec_name + 'is not an mismatched electrode.')
+            print(elec_name + ' does not belong to the current mismatched electrode.')
         """ add comment about a given mismatched electrodes """
-        comment = Comment('label')
+        comment = Comment()
         comment['label'] = elec_name
         comment['description'] = desc
         self['Comment'] = comment
 
-    def formatting(self, comment_type=None):
+    def formatting(self, comment_type=None, elec_name=None):
         if comment_type and (not isinstance(comment_type, str) or
                              comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
             raise KeyError(comment_type + ' is not a recognized key of ' + self.__class__.__name__ + '.')
@@ -2063,6 +2062,8 @@ class ChannelIssue(BidsBrick):
         formatted_list = []
         for cmnt_type in comment_type:
             for cmnt in self[cmnt_type]:
+                if elec_name and not cmnt['label'] == elec_name:
+                    continue
                 formatted_list.append(cmnt.formatting())
         return formatted_list
 
@@ -2074,12 +2075,46 @@ class ImportIssue(BidsBrick):
 class IssueBrick(BidsBrick):
     keylist = ['ChannelIssue', 'ImportIssue']
 
+    def check_with_latest_issue(self):
+
+        def read_file(filename):
+            with open(filename, 'r') as file:
+                read_json = json.load(file)
+            return read_json
+
+        log_dir = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
+        if BidsDataset.bids_dir and os.path.isdir(log_dir):
+            list_of_files = os.listdir(log_dir)
+            list_of_issue_files = [os.path.join(log_dir, file) for file in list_of_files
+                                   if file.startswith(self.get_modality_type().lower()) and os.path.splitext(file)[0]]
+            if list_of_issue_files:
+                latest_issue = max(list_of_issue_files, key=os.path.getctime)
+                read_json = read_file(latest_issue)
+                prev_issues = IssueBrick()
+                prev_issues.copy_values(read_json)
+
+                for issue_key in self.keys():
+                    for issue in self[issue_key]:
+                        """ file in the previous issuebrick.json the comment and action concering the same file; 
+                        add_comment() and add_action() take care of the electrode matching."""
+                        idx = None
+                        for cnt, prev_iss in enumerate(prev_issues[issue_key]):
+                            if prev_iss.get_attributes() == issue.get_attributes():
+                                idx = cnt
+                                break
+                        comment_list = prev_issues[issue_key][idx]['Comment']
+                        action_list = prev_issues[issue_key][idx]['Action']
+                        for comment in comment_list:
+                            issue.add_comment(comment['label'], comment['description'])
+                        for action in action_list:
+                            issue.add_action(action['label'], action['description'], action['command'])
+
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
 
         log_path = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
-        super().save_as_json(savedir=log_path, file_start='issue', write_date=True, compress=False)
+        super().save_as_json(savedir=log_path, file_start=None, write_date=True, compress=False)
 
-    def formatting(self, specific_issue=None, comment_type=None):
+    def formatting(self, specific_issue=None, comment_type=None, elec_name=None):
         if specific_issue and specific_issue not in self.keys():
             raise KeyError(specific_issue + ' is not a recognized key of ' + self.__class__.__name__ + '.')
         if comment_type and (not isinstance(comment_type, str) or
