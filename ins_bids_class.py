@@ -757,6 +757,7 @@ class BidsSidecar(object):
             self.modality_field = modality_field
 
     def read_file(self, filename):
+        """read sidecar file and store in self according to its class (BidsJSON, BidsTSV, BidsFreeFile)"""
         if os.path.isfile(filename):
             if isinstance(self, BidsJSON):
                 if os.path.splitext(filename)[1] == '.json':
@@ -793,6 +794,7 @@ class BidsSidecar(object):
                 raise TypeError('Not readable class input ' + self.__class__.__name__ + '.')
 
     def simplify_sidecar(self, required_only=True):
+        """remove fields that have 'n/a' and are not required or if required_only=True keep only required fields."""
         if isinstance(self, BidsJSON):
             list_key2del = []
             for key in self:
@@ -802,10 +804,12 @@ class BidsSidecar(object):
             for key in list_key2del:
                 del(self[key])
 
-    def copy_values(self, sidecar_elmt):
+    def copy_values(self, sidecar_elmt, simplify_flag=True):
         if isinstance(self, BidsJSON):
-            attr_dict = {key: sidecar_elmt[key] for _, key in enumerate(sidecar_elmt.keys()) if (key in self.keylist
-                         and self[key] == BidsSidecar.bids_default_unknown) or key not in self.keylist}
+            # attr_dict = {key: sidecar_elmt[key] for key in sidecar_elmt.keys() if (key in self.keylist
+            #              and self[key] == BidsSidecar.bids_default_unknown) or key not in self.keylist}
+            # change into this otherwise cannot modify dataset_description.json (to test)
+            attr_dict = {key: sidecar_elmt[key] for key in sidecar_elmt.keys() if sidecar_elmt[key]}
             self.update(attr_dict)
         elif isinstance(self, BidsTSV) and isinstance(sidecar_elmt, list):
             if sidecar_elmt and len([word for word in sidecar_elmt[0] if word in self.required_fields]) >= \
@@ -816,7 +820,8 @@ class BidsSidecar(object):
         elif isinstance(self, BidsFreeFile) and isinstance(sidecar_elmt, list):
             for line in sidecar_elmt:
                 self.append(line)
-        self.simplify_sidecar(required_only=False)
+        if simplify_flag:
+            self.simplify_sidecar(required_only=False)
 
     def has_all_req_attributes(self):  # check if the required attributes are not empty
         if 'required_keys' in dir(self) and self.required_keys:
