@@ -17,6 +17,7 @@ class BidsManager(Frame):
         self.master.geometry("500x500")
 
         self.curr_bids = None
+        self.curr_data2import = None
         self.curr_import_folder = None
         self.bids_dir = None
         self.upload_dir = None
@@ -36,19 +37,15 @@ class BidsManager(Frame):
         # fill up the bids menu
         bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
-        # bids_menu.add_command(label='Show dataset_description.json',
-        #                       command=lambda key='DatasetDescJSON': self.modify_attributes(key), state=DISABLED)
-        # bids_menu.add_command(label='Show participants.tsv', command=self.print_participants_tsv, state=DISABLED)
-        # bids_menu.add_command(label='Show source_data_trace.tsv', command=self.print_srcdata_tsv, state=DISABLED)
-
         bids_menu.add_command(label='Show dataset_description.json', state=DISABLED)
         bids_menu.add_command(label='Show participants.tsv', state=DISABLED)
         bids_menu.add_command(label='Show source_data_trace.tsv', state=DISABLED)
+        # fill up the upload/import menu
+        uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir)
+        uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
         issue_menu.add_command(label='Solve channel issues', command=self.solve_issues)
         issue_menu.add_command(label='Solve importation issues', command=self.bell)
-        # fill up the upload/import menu
-        uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir)
         # settings_menu.add_command(label='Exit', command=self.quit)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
@@ -118,7 +115,8 @@ class BidsManager(Frame):
         for item in input_list:
             list_object.insert(END, item)
 
-    def show_bids_desc(self, input_dict):
+    @staticmethod
+    def show_bids_desc(input_dict):
 
         if isinstance(input_dict, bids.BidsBrick):
             output_dict = FormDialog(root, input_dict,
@@ -131,7 +129,7 @@ class BidsManager(Frame):
                                      required_keys=input_dict.required_keys,
                                      title='Fill up the ' + input_dict.__class__.filename).apply()
             if output_dict:
-                if not output_dict == input_dict and \
+                if not output_dict == temp_dict and \
                         messagebox.askyesno('Change ' + input_dict.__class__.filename + '?',
                                             'You are about to modify ' + input_dict.__class__.filename +
                                             '.\nAre you sure?'):
@@ -166,11 +164,11 @@ class BidsManager(Frame):
                 messagebox.showerror('Error', error_str)
                 return
         else:
+            self.info_label._default = 'Parsing BIDS directory: ' + bids_dir
+            self.info_label.set(self.info_label._default)
+            self.update()
             self.curr_bids = bids.BidsDataset(bids_dir)
 
-        self.info_label._default = 'Parsing BIDS directory: ' + bids_dir
-        self.info_label.set(self.info_label._default)
-        self.update()
         # enable all bids sub-menu
         last = self.bids_menu.index(END)
         for i in range(0, last):
@@ -186,11 +184,18 @@ class BidsManager(Frame):
             self.issue_menu.entryconfigure(i, state=NORMAL)
         self.info_label.set('Current BIDS directory: ' + bids_dir)
         self.pack_element(self.main_frame['text'])
-        self.update_text(str(self.curr_bids.curr_log))
+        self.update_text(self.curr_bids.curr_log)
 
     def ask4upload_dir(self):
         self.pack_element(self.main_frame['text'])
         self.upload_dir = filedialog.askdirectory()
+        if not self.upload_dir:
+            return
+        try:
+            self.curr_data2import = bids.Data2Import(self.upload_dir)
+            self.update_text(self.curr_data2import.curr_log)
+        except Exception as err:
+            self.update_text(str(err))
 
     def print_participants_tsv(self):
         self.pack_element(self.main_frame['text'])
@@ -363,6 +368,9 @@ class BidsManager(Frame):
         #     for button in button_list:
         #         button.configure(state=DISABLED)
         #     self.update()
+
+    def import_data(self):
+        pass
 
     def onExit(self):
         self.quit()
@@ -687,7 +695,7 @@ class FormDialog(TemplateDialog):
     def ok(self, event=None):
         self.results = {key: self.input_dict[key] for key in self.input_dict.keys()}
         for key in self.input_dict.keys():
-            self.results[key] = self.key_entries[key].get().replace(' ', '')
+            self.results[key] = self.key_entries[key].get()
         self.destroy()
 
 
