@@ -182,8 +182,6 @@ class BidsBrick(dict):
                 self[key] = {}
             else:
                 self[key] = ''
-        if isinstance(self, BidsDataset):
-            BidsDataset.curr_log = ''
 
     def has_all_req_attributes(self, missing_elements=None):  # check if the required attributes are not empty to create
         # the filename (/!\ Json or coordsystem checked elsewhere)
@@ -710,6 +708,11 @@ class BidsBrick(dict):
         return list_filename
 
     @classmethod
+    def clear_log(cls):
+        if cls == BidsDataset or cls == Data2Import:
+            cls.curr_log = ''
+
+    @classmethod
     def get_list_subclasses_names(cls):
         sub_classes_names = []
         for subcls in cls.__subclasses__():
@@ -738,6 +741,7 @@ class BidsBrick(dict):
         with open(os.path.join(log_path, log_filename), cmd) as file:
             file.write(str2write + '\n')
             BidsDataset.curr_log += str2write + '\n'
+            Data2Import.curr_log += str2write + '\n'
         print(str2write)
 
 
@@ -1501,18 +1505,22 @@ class Data2Import(BidsBrick):
     filename = 'data2import.json'
     data2import_dir = None
     requirements = None
+    curr_log = ''
 
     def __init__(self, data2import_dir, requirements_fileloc=None):
         """initiate a  dict var for Subject info"""
+        self.__class__.clear_log()
         if os.path.isdir(data2import_dir):
             self._assign_import_dir(data2import_dir)
             self.data2import_dir = data2import_dir
             self.requirements = None
+
             super().__init__()
             if os.path.isfile(os.path.join(self.data2import_dir, Data2Import.filename)):
                 with open(os.path.join(self.data2import_dir, Data2Import.filename)) as file:
                     inter_dict = json.load(file)
                     self.copy_values(inter_dict)
+                    self.write_log('Importation procedure ready!')
             else:
                 self['UploadDate'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             self.get_requirements(requirements_fileloc)
@@ -1547,6 +1555,7 @@ class BidsDataset(BidsBrick):
 
     def __init__(self, bids_dir):
         """initiate a  dict var for patient info"""
+        self.__class__.clear_log()
         super().__init__()
         self.bids_dir = bids_dir
         self._assign_bids_dir(bids_dir)
@@ -1623,6 +1632,7 @@ class BidsDataset(BidsBrick):
 
         BidsBrick.access_time = datetime.now()
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
+        self.__class__.clear_log()
         self.issues.clear()  # clear issue to only get the unsolved ones but
         self.write_log('Current User: ' + self.curr_user)
         # First read requirements.json which should be in the code folder of bids dir.
