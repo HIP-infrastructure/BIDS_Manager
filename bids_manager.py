@@ -1,9 +1,11 @@
+#!/usr/bin/python3
+
 import ins_bids_class as bids
 import os
 import platform
 from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
-    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar
+    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu
 
 
 class BidsManager(Frame):
@@ -32,7 +34,7 @@ class BidsManager(Frame):
         issue_menu = Menu(menu_bar, tearoff=0)
         self.issue_menu = issue_menu
         # fill up the bids menu
-        bids_menu.add_command(label='Create new BIDS directory', command=self.bell)
+        bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
         bids_menu.add_command(label='Show participants.tsv', command=self.print_participants_tsv, state="disabled")
         bids_menu.add_command(label='Show source_data_trace.tsv', command=self.print_srcdata_tsv, state="disabled")
@@ -110,7 +112,7 @@ class BidsManager(Frame):
         for item in input_list:
             list_object.insert(END, item)
 
-    def ask4bidsdir(self):
+    def ask4bidsdir(self, isnew_dir=False):
         bids_dir = filedialog.askdirectory()
 
         if not bids_dir:
@@ -121,6 +123,27 @@ class BidsManager(Frame):
         self.info_label.set(self.info_label._default)
         self.update()
         self.curr_bids = bids.BidsDataset(bids_dir)
+        if isnew_dir:
+            if not self.curr_bids['DatasetDescJSON']['Name'] == bids.BidsJSON.bids_default_unknown:
+                error_str = 'The directory is not empty.\nBidsManager has found a dataset_description.json which is ' \
+                            'not empty.'
+                self.pack_element(self.main_frame['text'])
+                self.update_text(error_str)
+                return
+
+            else:
+                FormDialog(root, self.curr_bids['DatasetDescJSON'], required_keys=bids.DatasetDescJSON.required_keys,
+                           title='Fill up the ' + bids.DatasetDescJSON.filename)
+                self.curr_bids['DatasetDescJSON'].has_all_req_attributes()
+                if not self.curr_bids['DatasetDescJSON'].is_complete:
+                    error_str = bids.DatasetDescJSON.filename + ' needs at least these elements: ' +\
+                                str(bids.DatasetDescJSON.required_keys) + 'to be filled.'
+                    self.pack_element(self.main_frame['text'])
+                    self.update_text(error_str)
+                    return
+                self.curr_bids['DatasetDescJSON'].write_file()
+
+
         # enable all bids sub-menu
         last = self.bids_menu.index(END)
         for i in range(0, last+1):
@@ -458,13 +481,18 @@ class TemplateDialog(Toplevel):
     def body(self, parent):
         pass
 
-    def ok_cancel_button(self, parent):
+    def ok_cancel_button(self, parent, row=None):
         self.btn_ok = Button(parent, text='OK', command=self.ok, height=self.button_size[0],
                              width=self.button_size[1])
-        self.btn_ok.pack(side=LEFT, fill=Y, expand=1, padx=10, pady=5)
+
         self.btn_cancel = Button(parent, text='Cancel', command=self.cancel, height=self.button_size[0],
                                  width=self.button_size[1], default=ACTIVE)
-        self.btn_cancel.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
+        if row:
+            self.btn_ok.grid(row=row, column=0, sticky=W+E, padx=10, pady=5)
+            self.btn_cancel.grid(row=row, column=1, sticky=W+E, padx=10, pady=5)
+        else:
+            self.btn_cancel.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
+            self.btn_ok.pack(side=LEFT, fill=Y, expand=1, padx=10, pady=5)
 
     def ok(self, event=None):
         pass
@@ -567,19 +595,72 @@ class CommentDialog(TemplateDialog):
         self.destroy()
 
 
-root = Tk()
-if platform.system() == 'Windows':
-    root.state("zoomed")
-elif platform.system() == 'Linux':
-    root.attributes('-zoomed', True)
+class FormDialog(TemplateDialog):
+
+    def __init__(self, parent, input_dict, options=None, required_keys=None, title=None):
+        if not isinstance(input_dict, dict):
+            error_str = 'Second input should be a dictionary'
+            raise TypeError(error_str)
+        self.input_dict = input_dict
+        self.str_title = title
+        self.key_labels = {key: '' for key in input_dict.keys()}
+        self.key_entries = {key: '' for key in input_dict.keys()}
+        self.key_opt_menu = {key: '' for key in input_dict.keys()}
+        # [StringVar()]*len(input_dict) duplicate the StringVar(), a change in one will change the other one as well,
+        #  not the wanted behaviour. This is the solution
+        self.key_opt_var = {key: StringVar() for key in input_dict.keys()}
+        self.required_keys = required_keys
+        self.options = options
+        if not self.options:
+            self.options = {key: '' for key in input_dict.keys()}
+        if not required_keys:
+            self.required_keys = []
+        super().__init__(parent)
+
+    def body(self, parent):
+        if isinstance(self.str_title, str):
+            self.title(self.str_title)
+        else:
+            self.title('Please fill up the form')
+        for cnt, key in enumerate(self.input_dict.keys()):
+            if key in self.required_keys:
+                color = 'red'
+            else:
+                color = 'black'
+            self.key_labels[key] = Label(parent, text=key, fg=color)
+            self.key_labels[key].grid(row=cnt, sticky=W+E, padx=5, pady=5)
+            self.key_entries[key] = Entry(parent, justify=CENTER)
+            self.key_entries[key].insert(END, self.input_dict[key])
+            self.key_entries[key].grid(row=cnt, column=1, sticky=W+E, padx=5, pady=5)
+            if self.options[key]:
+                self.key_opt_menu[key] = OptionMenu(parent, self.key_opt_var[key], *self.options[key],
+                                                    command=lambda opt, k=key: self.update_entry(opt, k))
+                self.key_opt_menu[key].grid(row=cnt, column=2, sticky=W+E, padx=5, pady=5)
+        self.ok_cancel_button(parent, row=len(self.input_dict))
+        self.results = self.input_dict
+
+    def update_entry(self, idx, key):
+        print(key)
+        self.key_entries[key].delete(0, END)
+        self.key_entries[key].insert(0, idx)
+
+    def ok(self, event=None):
+        for key in self.input_dict.keys():
+            self.input_dict[key] = self.key_entries[key].get().replace(' ', '')
+        self.destroy()
 
 
-my_gui = BidsManager()
-
-# MyDialog(root)
-# The following three commands are needed so the window pops
-# up on top on Windows...
-# root.iconify()
-# root.update()
-# root.deiconify()
-root.mainloop()
+if __name__ == '__main__':
+    root = Tk()
+    if platform.system() == 'Windows':
+        root.state("zoomed")
+    elif platform.system() == 'Linux':
+        root.attributes('-zoomed', True)
+    my_gui = BidsManager()
+    # MyDialog(root)
+    # The following three commands are needed so the window pops
+    # up on top on Windows...
+    # root.iconify()
+    # root.update()
+    # root.deiconify()
+    root.mainloop()
