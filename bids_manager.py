@@ -36,8 +36,14 @@ class BidsManager(Frame):
         # fill up the bids menu
         bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
-        bids_menu.add_command(label='Show participants.tsv', command=self.print_participants_tsv, state="disabled")
-        bids_menu.add_command(label='Show source_data_trace.tsv', command=self.print_srcdata_tsv, state="disabled")
+        # bids_menu.add_command(label='Show dataset_description.json',
+        #                       command=lambda key='DatasetDescJSON': self.modify_attributes(key), state=DISABLED)
+        # bids_menu.add_command(label='Show participants.tsv', command=self.print_participants_tsv, state=DISABLED)
+        # bids_menu.add_command(label='Show source_data_trace.tsv', command=self.print_srcdata_tsv, state=DISABLED)
+
+        bids_menu.add_command(label='Show dataset_description.json', state=DISABLED)
+        bids_menu.add_command(label='Show participants.tsv', state=DISABLED)
+        bids_menu.add_command(label='Show source_data_trace.tsv', state=DISABLED)
         # fill up the issue menu
         issue_menu.add_command(label='Solve channel issues', command=self.solve_issues)
         issue_menu.add_command(label='Solve importation issues', command=self.bell)
@@ -112,6 +118,26 @@ class BidsManager(Frame):
         for item in input_list:
             list_object.insert(END, item)
 
+    def show_bids_desc(self, input_dict):
+
+        if isinstance(input_dict, bids.BidsBrick):
+            output_dict = FormDialog(root, input_dict,
+                                     required_keys=input_dict.required_keys,
+                                     title='Fill up the ' + input_dict.__class__.__name__ + 'attributes').apply()
+        elif isinstance(input_dict, bids.DatasetDescJSON):
+            temp_dict = input_dict.__class__()
+            temp_dict.copy_values(input_dict, simplify_flag=False)
+            output_dict = FormDialog(root, temp_dict,
+                                     required_keys=input_dict.required_keys,
+                                     title='Fill up the ' + input_dict.__class__.filename).apply()
+            if output_dict:
+                if not output_dict == input_dict and \
+                        messagebox.askyesno('Change ' + input_dict.__class__.filename + '?',
+                                            'You are about to modify ' + input_dict.__class__.filename +
+                                            '.\nAre you sure?'):
+                    input_dict.copy_values(output_dict)
+                    input_dict.write_file()
+
     def ask4bidsdir(self, isnew_dir=False):
         bids_dir = filedialog.askdirectory()
 
@@ -119,35 +145,41 @@ class BidsManager(Frame):
             return
         if self.curr_bids:
             self.curr_bids.clear()
+        if isnew_dir:
+            error_str = ''
+            if os.listdir(bids_dir):
+                error_str = 'The folder is not empty!'
+            else:
+                self.curr_bids = bids.BidsDataset(bids_dir)
+                output_dict = FormDialog(root, self.curr_bids['DatasetDescJSON'],
+                                         required_keys=bids.DatasetDescJSON.required_keys,
+                                         title='Fill up the ' + bids.DatasetDescJSON.filename).apply()
+                if output_dict:
+                    self.curr_bids['DatasetDescJSON'].copy_values(output_dict)
+                if not self.curr_bids['DatasetDescJSON'].is_complete and \
+                        self.curr_bids['DatasetDescJSON']['Name'] == bids.DatasetDescJSON.bids_default_unknown:
+                    error_str = bids.DatasetDescJSON.filename + ' needs at least these elements: ' +\
+                                str(bids.DatasetDescJSON.required_keys) + 'to be filled.'
+            if not error_str:
+                self.curr_bids['DatasetDescJSON'].write_file()
+            else:
+                messagebox.showerror('Error', error_str)
+                return
+        else:
+            self.curr_bids = bids.BidsDataset(bids_dir)
+
         self.info_label._default = 'Parsing BIDS directory: ' + bids_dir
         self.info_label.set(self.info_label._default)
         self.update()
-        self.curr_bids = bids.BidsDataset(bids_dir)
-        if isnew_dir:
-            if not self.curr_bids['DatasetDescJSON']['Name'] == bids.BidsJSON.bids_default_unknown:
-                error_str = 'The directory is not empty.\nBidsManager has found a dataset_description.json which is ' \
-                            'not empty.'
-                self.pack_element(self.main_frame['text'])
-                self.update_text(error_str)
-                return
-
-            else:
-                FormDialog(root, self.curr_bids['DatasetDescJSON'], required_keys=bids.DatasetDescJSON.required_keys,
-                           title='Fill up the ' + bids.DatasetDescJSON.filename)
-                self.curr_bids['DatasetDescJSON'].has_all_req_attributes()
-                if not self.curr_bids['DatasetDescJSON'].is_complete:
-                    error_str = bids.DatasetDescJSON.filename + ' needs at least these elements: ' +\
-                                str(bids.DatasetDescJSON.required_keys) + 'to be filled.'
-                    self.pack_element(self.main_frame['text'])
-                    self.update_text(error_str)
-                    return
-                self.curr_bids['DatasetDescJSON'].write_file()
-
-
         # enable all bids sub-menu
         last = self.bids_menu.index(END)
-        for i in range(0, last+1):
+        for i in range(0, last):
             self.bids_menu.entryconfigure(i, state=NORMAL)
+        self.bids_menu.entryconfigure(2, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
+        self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['ParticipantsTSV']))
+        if self.curr_bids['SourceData'] and self.curr_bids['SourceData'][-1]['SrcDataTrack']:
+            self.bids_menu.entryconfigure(4, command=lambda: self.show_bids_desc(
+                self.curr_bids['SourceData'][-1]['SrcDataTrack']), state=NORMAL)
         # enable all issue sub-menu
         last = self.issue_menu.index(END)
         for i in range(0, last + 1):
@@ -437,6 +469,14 @@ class TemplateDialog(Toplevel):
 
     def __init__(self, parent):
 
+        def center(win):
+            win.update_idletasks()
+            width = win.winfo_width()
+            height = win.winfo_height()
+            x = (win.winfo_screenwidth() // 2) - (width // 2)
+            y = (win.winfo_screenheight() // 2) - (height // 2)
+            win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+
         Toplevel.__init__(self, parent)
         self.wm_resizable(False, False)
         self.btn_ok = None
@@ -472,7 +512,7 @@ class TemplateDialog(Toplevel):
         self.deiconify()  # become visible now
 
         self.initial_focus.focus_set()
-
+        center(self)
         # wait for window to appear on screen before calling grab_set
         self.wait_visibility()
         self.grab_set()
@@ -645,8 +685,9 @@ class FormDialog(TemplateDialog):
         self.key_entries[key].insert(0, idx)
 
     def ok(self, event=None):
+        self.results = {key: self.input_dict[key] for key in self.input_dict.keys()}
         for key in self.input_dict.keys():
-            self.input_dict[key] = self.key_entries[key].get().replace(' ', '')
+            self.results[key] = self.key_entries[key].get().replace(' ', '')
         self.destroy()
 
 
