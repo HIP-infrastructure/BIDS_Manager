@@ -746,6 +746,7 @@ class BidsSidecar(object):
     inheritance = True
     modality_field = []
     allowed_modalities = []
+    required_keys = []
 
     def __init__(self, modality_field=None):
         """initiate a  dict of n/a strings for JSON imagery"""
@@ -846,7 +847,6 @@ class BidsJSON(BidsSidecar, dict):
     extension = '.json'
     modality_field = ''
     keylist = []
-    required_keys = []
 
     def __init__(self, keylist=None, required_keys=None, modality_field=None):
         """initiate a  dict of n/a strings for JSON imagery"""
@@ -945,7 +945,6 @@ class BidsTSV(BidsSidecar, list):
     extension = '.tsv'
     modality_field = ''
     header = []
-    required_fields = []
 
     def __init__(self, header=None, required_fields=None, modality_field=None):
         """initiate a  table containing the header"""
@@ -1399,9 +1398,11 @@ class DatasetDescJSON(BidsJSON):
                'ReferencesAndLinks', 'DatasetDOI']
     required_keys = ['Name', 'BIDSVersion']
     filename = 'dataset_description.json'
+    bids_version = '1.0.1'
 
     def __init__(self):
         super().__init__()
+        self['BIDSVersion'] = self.bids_version
 
     def write_file(self, jsonfilename=None):
         jsonfilename = os.path.join(BidsDataset.bids_dir, DatasetDescJSON.filename)
