@@ -44,8 +44,9 @@ class BidsManager(Frame):
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir)
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
-        issue_menu.add_command(label='Solve channel issues', command=self.solve_issues)
-        issue_menu.add_command(label='Solve importation issues', command=self.bell)
+        issue_menu.add_command(label='Solve importation issues',
+                               command=lambda: self.solve_issues(bids.Issue.keylist[0]))
+        issue_menu.add_command(label='Solve channel issues', command=lambda: self.solve_issues(bids.Issue.keylist[1]))
         # settings_menu.add_command(label='Exit', command=self.quit)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
@@ -136,6 +137,17 @@ class BidsManager(Frame):
                     input_dict.copy_values(output_dict)
                     input_dict.write_file()
 
+    @staticmethod
+    def enable_menu(menu, start_idx=0, end_idx=None):
+        if not end_idx:
+            end_idx = menu.index(END)
+        if end_idx > menu.index(END):
+            raise IndexError('End index is out of range (' + str(end_idx) + '>' + str(menu.index(END)) + ').')
+        if start_idx > end_idx:
+            raise IndexError('Start index greater than the end index (' + str(start_idx) + '>' + str(end_idx) + ').')
+        for i in range(start_idx, end_idx+1):
+            menu.entryconfigure(i, state=NORMAL)
+
     def ask4bidsdir(self, isnew_dir=False):
         bids_dir = filedialog.askdirectory()
 
@@ -170,18 +182,14 @@ class BidsManager(Frame):
             self.curr_bids = bids.BidsDataset(bids_dir)
 
         # enable all bids sub-menu
-        last = self.bids_menu.index(END)
-        for i in range(0, last):
-            self.bids_menu.entryconfigure(i, state=NORMAL)
+        self.enable_menu(self.bids_menu)
         self.bids_menu.entryconfigure(2, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
         self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['ParticipantsTSV']))
         if self.curr_bids['SourceData'] and self.curr_bids['SourceData'][-1]['SrcDataTrack']:
             self.bids_menu.entryconfigure(4, command=lambda: self.show_bids_desc(
                 self.curr_bids['SourceData'][-1]['SrcDataTrack']), state=NORMAL)
         # enable all issue sub-menu
-        last = self.issue_menu.index(END)
-        for i in range(0, last + 1):
-            self.issue_menu.entryconfigure(i, state=NORMAL)
+        self.enable_menu(self.issue_menu)
         self.info_label.set('Current BIDS directory: ' + bids_dir)
         self.pack_element(self.main_frame['text'])
         self.update_text(self.curr_bids.curr_log)
@@ -193,7 +201,9 @@ class BidsManager(Frame):
             return
         try:
             self.curr_data2import = bids.Data2Import(self.upload_dir)
+            self.enable_menu(self.uploader_menu)
             self.update_text(self.curr_data2import.curr_log)
+
         except Exception as err:
             self.update_text(str(err))
 
@@ -207,6 +217,17 @@ class BidsManager(Frame):
             self.update_text(self.make_table(self.curr_bids['SourceData'][-1]['SrcDataTrack']))
         else:
             self.update_text('Source Data Track does not exist')
+
+    def do_not_import(self, list_idx, info):
+        pass
+
+    def modify_attributes(self, list_idx, info):
+        pass
+        # temp_dict = input_dict.__class__()
+        # temp_dict.copy_values(input_dict, simplify_flag=False)
+        # output_dict = FormDialog(root, temp_dict,
+        #                          required_keys=input_dict.required_keys,
+        #                          title='Fill up the ' + input_dict.__class__.filename).apply()
 
     def select_correct_name(self, list_idx, info):
 
@@ -246,10 +267,10 @@ class BidsManager(Frame):
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
 
-    def get_entry(self, list_idx, info):
+    def get_entry(self, issue_key, list_idx, info):
         idx = info['index']
         mismtch_elec = info['MismatchedElectrode']
-        curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
+        curr_dict = self.curr_bids.issues[issue_key][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         list_new_comments = CommentDialog(self.master, '\n'.join(curr_dict.formatting(
             comment_type='Comment', elec_name=mismtch_elec))).apply()
@@ -258,10 +279,10 @@ class BidsManager(Frame):
                 curr_dict.add_comment(mismtch_elec, comment)
             issue_list.itemconfig(list_idx, bg='yellow')
 
-    def cancel_action(self, list_idx, info):
+    def cancel_action(self, issue_key, list_idx, info):
         idx = info['index']
         mismtch_elec = info['MismatchedElectrode']
-        curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
+        curr_dict = self.curr_bids.issues[issue_key][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
         for action in curr_dict['Action']:
@@ -271,23 +292,26 @@ class BidsManager(Frame):
                 action_list.insert(list_idx, '')
                 issue_list.itemconfig(list_idx, foreground='black')
 
-    def solve_issues(self):
+    def solve_issues(self, issue_key):
 
-        def whatto2menu(dlb_lst, line_map, event):
+        def whatto2menu(iss_key, dlb_lst, line_map, event):
 
             if not dlb_lst.elements['list1'].curselection():
                 return
             curr_idx = dlb_lst.elements['list1'].curselection()[0]
 
             pop_menu = Menu(self.master, tearoff=0)
-            pop_menu.add_command(label='Rename electrode', command=lambda: self.select_correct_name(curr_idx,
-                                                                                                    line_map[curr_idx]))
-            pop_menu.add_command(label='Remove group label', command=lambda: self.remove_group_name(curr_idx,
-                                                                                                    line_map[curr_idx]))
-            pop_menu.add_command(label='Read or add comment', command=lambda: self.get_entry(curr_idx,
-                                                                                             line_map[curr_idx]))
-            pop_menu.add_command(label='Cancel action', command=lambda: self.cancel_action(curr_idx,
-                                                                                           line_map[curr_idx]))
+            if iss_key == 'ChannelIssue':
+                pop_menu.add_command(label='Rename electrode',
+                                     command=lambda: self.select_correct_name(curr_idx, line_map[curr_idx]))
+                pop_menu.add_command(label='Remove group label',
+                                     command=lambda: self.remove_group_name(curr_idx, line_map[curr_idx]))
+            else:
+                pass
+            pop_menu.add_command(label='Read or add comment',
+                                 command=lambda: self.get_entry(issue_key, curr_idx, line_map[curr_idx]))
+            pop_menu.add_command(label='Cancel action',
+                                 command=lambda: self.cancel_action(issue_key, curr_idx, line_map[curr_idx]))
             pop_menu.post(event.x_root, event.y_root)
 
         dlb_list = self.main_frame['double_list']
@@ -299,18 +323,35 @@ class BidsManager(Frame):
         # self.pack_element(self.main_frame['text'], side=BOTTOM, remove_previous=False)
         self.pack_element(dlb_list)
 
-        issue_dict = self.curr_bids.issues['ChannelIssue']
+        issue_dict = self.curr_bids.issues[issue_key]
         issue_list2write = []
         action_list2write = []
         line_mapping = []
-        for issue in issue_dict:
-            for mismatch_el in issue['MismatchedElectrodes']:
-                issue_list2write.append('In file ' + os.path.basename(issue['fileLoc']) + ' of subject ' + issue['sub'] +
-                                        ', ' + mismatch_el + ' does not match electrodes.tsv reference.')
-                act_str = issue.formatting(comment_type='Action', elec_name=mismatch_el)
+        if issue_key == bids.Issue.keylist[1]:
+            for issue in issue_dict:
+                for mismatch_el in issue['MismatchedElectrodes']:
+                    issue_list2write.append('In file ' + os.path.basename(issue['fileLoc']) + ' of subject ' +
+                                            issue['sub'] + ', ' + mismatch_el +
+                                            ' does not match electrodes.tsv reference.')
+                    act_str = issue.formatting(comment_type='Action', elec_name=mismatch_el)
 
-                line_mapping.append({'index': issue_dict.index(issue), 'MismatchedElectrode': mismatch_el,
-                                     'IsComment': bool(issue.formatting(comment_type='Comment', elec_name=mismatch_el)),
+                    line_mapping.append({'index': issue_dict.index(issue), 'MismatchedElectrode': mismatch_el,
+                                         'IsComment': bool(issue.formatting(comment_type='Comment',
+                                                                            elec_name=mismatch_el)),
+                                         'IsAction': False})
+                    if act_str:
+                        action_list2write.append(act_str[0])
+                        # you can write act_str[0] because there is only one action per channel
+                        line_mapping[-1]['IsAction'] = True
+                    else:
+                        action_list2write.append('')
+        elif issue_key == bids.Issue.keylist[0]:
+            for issue in issue_dict:
+                issue_list2write.append(issue['description'])
+                act_str = issue.formatting(comment_type='Action')
+
+                line_mapping.append({'index': issue_dict.index(issue), 'MismatchedElectrode': '',
+                                     'IsComment': bool(issue.formatting(comment_type='Comment')),
                                      'IsAction': False})
                 if act_str:
                     action_list2write.append(act_str[0])
@@ -333,8 +374,8 @@ class BidsManager(Frame):
         # self.main_frame['list'].bind('<Double-Button-1>', lambda event: whatto2menu(line_mapping, event))
         # self.main_frame['list'].bind('<Return>', lambda event: whatto2menu(line_mapping, event))
         dlb_list.elements['list1'].bind('<Double-Button-1>',
-                                        lambda event: whatto2menu(dlb_list, line_mapping, event))
-        dlb_list.elements['list1'].bind('<Return>', lambda event: whatto2menu(dlb_list, line_mapping, event))
+                                        lambda event: whatto2menu(issue_key, dlb_list, line_mapping, event))
+        dlb_list.elements['list1'].bind('<Return>', lambda event: whatto2menu(issue_key, dlb_list, line_mapping, event))
 
         # def make_line(issue_dict):
         #     formatted_line = 'File ' + issue_dict['fileLoc'] + ' of subject ' + issue_dict['sub']\
@@ -370,7 +411,11 @@ class BidsManager(Frame):
         #     self.update()
 
     def import_data(self):
-        pass
+        try:
+            self.curr_bids.import_data(self.curr_data2import)
+            self.update_text(self.curr_bids.curr_log)
+        except Exception as err:
+            self.update_text(self.curr_bids.curr_log + str(err))
 
     def onExit(self):
         self.quit()
