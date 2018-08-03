@@ -922,7 +922,7 @@ class Imagery(ModalityType):
 
 
 class Electrophy(ModalityType):
-    pass
+    channel_type = ['ECG', 'EOG', 'EEG', 'SEEG', 'ECOG', 'MEG', 'OTHER']
 
 
 class ImageryJSON(BidsJSON):
@@ -1138,6 +1138,7 @@ class Ieeg(Electrophy):
     allowed_modalities = ['ieeg']
     allowed_file_formats = ['.edf', '.gdf', '.fif', '.vhdr']
     readable_file_formats = allowed_file_formats + ['.eeg', '.trc']
+    channel_type = ['SEEG', 'ECOG']
 
     def __init__(self):
         super().__init__()
@@ -1867,7 +1868,7 @@ class BidsDataset(BidsBrick):
             return False
 
         # if True:
-
+        self.__class__.clear_log()
         if isinstance(data2import, Data2Import) and data2import.has_all_req_attributes()[0]:
             if not (not BidsDataset.converters['Electrophy']['path'] or
                     os.path.isfile(BidsDataset.converters['Electrophy']['path']) and
@@ -2118,9 +2119,34 @@ class ImportIssue(BidsBrick):
         comment['description'] = desc
         self['Comment'] = comment
 
+    def add_action(self, desc, command):
+        """ImportIssue as only one issue per instance (different from channelIssue that can have as many actions as
+        there are mismatched channels)"""
+        if self['Action']:
+            self['Action'].pop(0)
+        """ add action for given mismatched electrodes """
+        action = Action()
+        action['description'] = desc
+        action['command'] = command
+        self['Action'] = action
+
+    def formatting(self, comment_type=None, elec_name=None):
+        if comment_type and (not isinstance(comment_type, str) or
+                             comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
+            raise KeyError(comment_type + ' is not a recognized key of ' + self.__class__.__name__ + '.')
+        if not comment_type:
+            comment_type = Comment.get_list_subclasses_names() + ['Comment']
+        else:
+            comment_type = [comment_type.capitalize()]
+        formatted_list = []
+        for cmnt_type in comment_type:
+            for cmnt in self[cmnt_type]:
+                formatted_list.append(cmnt.formatting())
+        return formatted_list
+
 
 class Issue(BidsBrick):
-    keylist = ['ChannelIssue', 'ImportIssue']
+    keylist = ['ImportIssue', 'ChannelIssue']
 
     def check_with_latest_issue(self):
 
@@ -2179,9 +2205,9 @@ class Issue(BidsBrick):
         return formatted_list
 
     def add_issue(self, issue_type, datadesc=None, sub=None, mod_dict=None, issue_desc=None):
-        if issue_type == self.keylist[0]:
-            raise NotImplemented()
-        elif issue_type == self.keylist[1] and (datadesc or sub or issue_desc):
+        if issue_type == self.keylist[1]:
+            raise NotImplementedError()
+        elif issue_type == self.keylist[0] and (datadesc or sub or issue_desc):
             import_iss = ImportIssue()
             import_iss['path'] = Data2Import.data2import_dir
             if datadesc and isinstance(datadesc, DatasetDescJSON):
