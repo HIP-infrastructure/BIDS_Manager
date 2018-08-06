@@ -735,7 +735,7 @@ class BidsBrick(dict):
             main_dir = BidsBrick.cwdir
 
         log_path = os.path.join(main_dir, 'derivatives', 'log')
-        log_filename = 'bids_' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M") + '.log'
+        log_filename = 'bids_' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M-%S") + '.log'
         if not os.path.isdir(log_path):
             os.makedirs(log_path)
         if not os.path.isfile(os.path.join(log_path, log_filename)):
@@ -1557,6 +1557,8 @@ class BidsDataset(BidsBrick):
     curr_log = ''
     readers = dict()
     converters = dict()
+    parsing_path = os.path.join('derivatives', 'parsing')
+    log_path = os.path.join('derivatives', 'log')
 
     def __init__(self, bids_dir):
         """initiate a  dict var for patient info"""
@@ -1567,7 +1569,44 @@ class BidsDataset(BidsBrick):
         self.curr_subject = {}
         self.issues = Issue()
         self.requirements = BidsDataset.requirements
-        self.parse_bids()
+        # check if there is a parsing file in the derivatives and load it as the current dataset state
+        flag = self.check_latest_parsing_file()
+        if flag:
+            self.parse_bids()
+
+    def check_latest_parsing_file(self):
+        def read_file(filename):
+            with gzip.open(filename, 'rb') as f_in, open(filename.replace('.gz', ''), 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            with open(filename.replace('.gz', ''), 'r') as file:
+                rd_json = json.load(file)
+            os.remove(filename.replace('.gz', ''))
+            return rd_json
+
+        if os.path.exists(os.path.join(self.bids_dir, BidsDataset.parsing_path)):
+            list_of_files = os.listdir(os.path.join(self.bids_dir, BidsDataset.parsing_path))
+            list_of_parsing_files = [os.path.join(self.bids_dir, BidsDataset.parsing_path, file)
+                                     for file in list_of_files if file.startswith('parsing')]
+            if list_of_parsing_files:
+                BidsBrick.access_time = datetime.now()
+                self.__class__.clear_log()
+                # self.write_log('Current User: ' + self.curr_user)
+                # First read requirements.json which should be in the code folder of bids dir.
+                self.get_requirements()
+                latest_parsing = max(list_of_parsing_files, key=os.path.getctime)
+                read_json = read_file(latest_parsing)
+                self.copy_values(read_json)
+                self.issues.check_with_latest_issue()
+                log_file = latest_parsing.replace('parsing_' + self.__class__.__name__.lower(), 'bids')
+                log_file = log_file.replace('parsing', 'log')
+                log_file = log_file.replace('.json.gz', '.log')
+                with open(log_file, 'r') as file:
+                    for line in file:
+                        self.__class__.curr_log += line
+                print(self.__class__.curr_log)
+                return False  # no need for parsing the dataset
+            else:
+                return True  # need to parse the dataset
 
     def parse_bids(self):
 
@@ -2167,10 +2206,10 @@ class Issue(BidsBrick):
 
         def read_file(filename):
             with open(filename, 'r') as file:
-                read_json = json.load(file)
-            return read_json
+                rd_json = json.load(file)
+            return rd_json
 
-        log_dir = os.path.join(BidsDataset.bids_dir, 'derivatives', 'log')
+        log_dir = os.path.join(BidsDataset.bids_dir, BidsDataset.log_path)
         if BidsDataset.bids_dir and os.path.isdir(log_dir):
             list_of_files = os.listdir(log_dir)
             list_of_issue_files = [os.path.join(log_dir, file) for file in list_of_files
@@ -2178,24 +2217,43 @@ class Issue(BidsBrick):
             if list_of_issue_files:
                 latest_issue = max(list_of_issue_files, key=os.path.getctime)
                 read_json = read_file(latest_issue)
-                prev_issues = Issue()
-                prev_issues.copy_values(read_json)
+                if self == Issue():
+                    self.copy_values(read_json)
+                else:
+                    prev_issues = Issue()
+                    prev_issues.copy_values(read_json)
 
-                for issue_key in self.keys():
-                    for issue in self[issue_key]:
-                        """ file in the previous issuebrick.json the comment and action concering the same file; 
-                        add_comment() and add_action() take care of the electrode matching."""
-                        idx = None
-                        for cnt, prev_iss in enumerate(prev_issues[issue_key]):
-                            if prev_iss.get_attributes() == issue.get_attributes():
-                                idx = cnt
-                                break
-                        comment_list = prev_issues[issue_key][idx]['Comment']
-                        action_list = prev_issues[issue_key][idx]['Action']
-                        for comment in comment_list:
-                            issue.add_comment(comment['label'], comment['description'])
-                        for action in action_list:
-                            issue.add_action(action['label'], action['description'], action['command'])
+                    for issue_key in self.keys():
+                        for issue in self[issue_key]:
+                            """ file in the previous issuebrick.json the comment and action concerning the same file; 
+                            add_comment() and add_action() take care of the electrode matching."""
+                            idx = None
+                            for cnt, prev_iss in enumerate(prev_issues[issue_key]):
+                                if prev_iss.get_attributes() == issue.get_attributes():
+                                    idx = cnt
+                                    break
+                            comment_list = prev_issues[issue_key][idx]['Comment']
+                            action_list = prev_issues[issue_key][idx]['Action']
+                            for comment in comment_list:
+                                issue.add_comment(comment['label'], comment['description'])
+                            for action in action_list:
+                                issue.add_action(action['label'], action['description'], action['command'])
+
+                # for issue_key in self.keys():
+                #     for issue in self[issue_key]:
+                #         """ file in the previous issuebrick.json the comment and action concerning the same file;
+                #         add_comment() and add_action() take care of the electrode matching."""
+                #         idx = None
+                #         for cnt, prev_iss in enumerate(prev_issues[issue_key]):
+                #             if prev_iss.get_attributes() == issue.get_attributes():
+                #                 idx = cnt
+                #                 break
+                #         comment_list = prev_issues[issue_key][idx]['Comment']
+                #         action_list = prev_issues[issue_key][idx]['Action']
+                #         for comment in comment_list:
+                #             issue.add_comment(comment['label'], comment['description'])
+                #         for action in action_list:
+                #             issue.add_action(action['label'], action['description'], action['command'])
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
 
