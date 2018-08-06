@@ -10,6 +10,8 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 class BidsManager(Frame):
     version = '0.0.1'
+    bids_startfile = 'D:\\roehri\\BIDs\\2048'
+    import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
     def __init__(self):
         super().__init__()
@@ -149,7 +151,8 @@ class BidsManager(Frame):
             menu.entryconfigure(i, state=NORMAL)
 
     def ask4bidsdir(self, isnew_dir=False):
-        bids_dir = filedialog.askdirectory()
+        bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
+                                           initialdir=BidsManager.bids_startfile)
 
         if not bids_dir:
             return
@@ -196,7 +199,8 @@ class BidsManager(Frame):
 
     def ask4upload_dir(self):
         self.pack_element(self.main_frame['text'])
-        self.upload_dir = filedialog.askdirectory()
+        self.upload_dir = filedialog.askdirectory(title='Please select a upload/import directory',
+                                                  initialdir=BidsManager.import_startfile)
         if not self.upload_dir:
             return
         try:
@@ -221,18 +225,43 @@ class BidsManager(Frame):
     def do_not_import(self, list_idx, info):
         pass
 
-    def modify_attributes(self, list_idx, info):
-        pass
-        # temp_dict = input_dict.__class__()
-        # temp_dict.copy_values(input_dict, simplify_flag=False)
-        # output_dict = FormDialog(root, temp_dict,
-        #                          required_keys=input_dict.required_keys,
-        #                          title='Fill up the ' + input_dict.__class__.filename).apply()
+    def modify_attributes(self, list_idx, info, in_bids=False):
+        bids_dict = None
+        if isinstance(info['Element'], bids.DatasetDescJSON):
+            bids_dict = self.curr_bids['DatasetDescJSON']
+        elif isinstance(info['Element'], bids.Subject):
+            self.curr_bids.is_subject_present(info['Element']['sub'])
+            bids_dict = self.curr_bids.curr_sub['Subject'].get_attributes(['alias', 'upload_date'])
+
+        if in_bids:
+            input_dit = bids_dict
+            option_dict = info['Element']
+        else:
+            input_dit = info['Element']
+            option_dict = bids_dict
+            if 'ses' in input_dit.keys():
+                _, ses_list = self.curr_bids.get_number_of_session4subject(input_dit['sub'])
+                option_dict['ses'] = ses_list
+        output_dict = FormDialog(self, input_dit, options=option_dict,
+                                 required_keys=info['Element'].required_keys).apply()
+        if output_dict:
+            issue_list = self.main_frame['double_list'].elements['list1']
+            action_list = self.main_frame['double_list'].elements['list2']
+            idx = info['index']
+            curr_dict = self.curr_bids.issues['ImportIssue'][idx]
+            if in_bids:
+                dir_str = ' in BIDS dir'
+            else:
+                dir_str = ' in import dir'
+            curr_dict.add_action(desc='Modify attrib. into ' + str(output_dict) + dir_str, command='To be defined')
+            action_list.delete(list_idx)
+            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
+            issue_list.itemconfig(list_idx, foreground='green')
 
     def select_correct_name(self, list_idx, info):
 
         idx = info['index']
-        mismtch_elec = info['MismatchedElectrode']
+        mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
@@ -241,16 +270,13 @@ class BidsManager(Frame):
             str_info = mismtch_elec + ' has to be renamed as ' + results + ' in the files related to ' + \
                        os.path.basename(curr_dict['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
             curr_dict.add_action(mismtch_elec, str_info, 'To be defined')
-            # self.update_text(self.curr_bids.issues.formatting(specific_issue='ChannelIssue', comment_type='action'))
-            # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ChannelIssue',
-            #                                                                  comment_type='action'))
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
 
     def remove_group_name(self, list_idx, info):
         idx = info['index']
-        mismtch_elec = info['MismatchedElectrode']
+        mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
@@ -269,28 +295,32 @@ class BidsManager(Frame):
 
     def get_entry(self, issue_key, list_idx, info):
         idx = info['index']
-        mismtch_elec = info['MismatchedElectrode']
+        mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues[issue_key][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         list_new_comments = CommentDialog(self.master, '\n'.join(curr_dict.formatting(
             comment_type='Comment', elec_name=mismtch_elec))).apply()
         if list_new_comments:
             for comment in list_new_comments:
-                curr_dict.add_comment(mismtch_elec, comment)
+                curr_dict.add_comment(comment, elec_name=mismtch_elec)
             issue_list.itemconfig(list_idx, bg='yellow')
 
     def cancel_action(self, issue_key, list_idx, info):
         idx = info['index']
-        mismtch_elec = info['MismatchedElectrode']
+        mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues[issue_key][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
-        for action in curr_dict['Action']:
-            if action['label'] == mismtch_elec:
-                curr_dict['Action'].pop(curr_dict['Action'].index(action))
-                action_list.delete(list_idx)
-                action_list.insert(list_idx, '')
-                issue_list.itemconfig(list_idx, foreground='black')
+        if issue_key == 'ChannelIssue':
+            for action in curr_dict['Action']:
+                if action['label'] == mismtch_elec:
+                    curr_dict['Action'].pop(curr_dict['Action'].index(action))
+                    break  # there is only one action per channel so break when found
+        elif issue_key == 'ImportIssue':
+            curr_dict['Action'].pop(-1)
+        action_list.delete(list_idx)
+        action_list.insert(list_idx, '')
+        issue_list.itemconfig(list_idx, foreground='black')
 
     def solve_issues(self, issue_key):
 
@@ -306,8 +336,40 @@ class BidsManager(Frame):
                                      command=lambda: self.select_correct_name(curr_idx, line_map[curr_idx]))
                 pop_menu.add_command(label='Remove group label',
                                      command=lambda: self.remove_group_name(curr_idx, line_map[curr_idx]))
-            else:
-                pass
+            elif iss_key == 'ImportIssue':
+                if isinstance(line_map[curr_idx]['Element'], bids.DatasetDescJSON):
+                    # if issue arise from DatasetDescJSON change the DatasetDescJSON object in data2import.json
+                    pop_menu.add_command(label='Modify ' + bids.DatasetDescJSON.filename + ' in current BIDS directory',
+                                         command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
+                                                                                in_bids=True))
+                    pop_menu.add_command(label='Modify ' + bids.DatasetDescJSON.filename +
+                                               ' in current Upload directory',
+                                         command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
+                                                                                in_bids=False))
+                    pop_menu.add_command(label='Do not import the whole folder',
+                                         command=lambda: print('Do not import the whole folder'))
+                elif isinstance(line_map[curr_idx]['Element'], bids.Subject):
+                    mod_flag = line_map[curr_idx]['Element'].is_empty()
+                    if mod_flag:
+                        """if issue arise from Subject and subject object has no modalities, it means that its 
+                        attributes are incomplete or wrong (e.g. age does not matched the age of this patient in bids
+                        dataset). One can either change the attributes of the subject to be imported or the ones of the
+                        already imported subject (in participatns.tsv)"""
+                        pop_menu.add_command(label='Change subject\'s attribute in ' + bids.Data2Import.filename,
+                                             command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
+                                                                                    in_bids=True))
+                        pop_menu.add_command(label='Change subject\'s attribute in ' + bids.ParticipantsTSV.filename,
+                                             command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
+                                                                                    in_bids=False))
+                    else:
+                        """if issue arise from Subject and subject object has a modality, it means that the attributes 
+                        of the modality are incomplete or wrong and has to be changed according to the description or
+                        the file remove from the list of file that will be imported"""
+                        pop_menu.add_command(label='Change modality attributes',
+                                             command=self.modify_attributes(curr_idx, line_map[curr_idx],
+                                                                            in_bids=False))
+                        pop_menu.add_command(label='Do not import', command=self.bell)
+
             pop_menu.add_command(label='Read or add comment',
                                  command=lambda: self.get_entry(issue_key, curr_idx, line_map[curr_idx]))
             pop_menu.add_command(label='Cancel action',
@@ -335,7 +397,7 @@ class BidsManager(Frame):
                                             ' does not match electrodes.tsv reference.')
                     act_str = issue.formatting(comment_type='Action', elec_name=mismatch_el)
 
-                    line_mapping.append({'index': issue_dict.index(issue), 'MismatchedElectrode': mismatch_el,
+                    line_mapping.append({'index': issue_dict.index(issue), 'Element': mismatch_el,
                                          'IsComment': bool(issue.formatting(comment_type='Comment',
                                                                             elec_name=mismatch_el)),
                                          'IsAction': False})
@@ -347,18 +409,28 @@ class BidsManager(Frame):
                         action_list2write.append('')
         elif issue_key == bids.Issue.keylist[0]:
             for issue in issue_dict:
+                element = None
+                for key in issue:
+                    if issue[key] and \
+                            key in bids.ModalityType.get_list_subclasses_names() + ['Subject', 'DatasetDescJSON']:
+                        element = issue[key]
+                        break
+                if not element:
+                    continue
+                line_mapping.append({'index': issue_dict.index(issue), 'Element': element,
+                                     'IsComment': bool(issue.formatting(comment_type='Comment')),
+                                     'IsAction': False})
                 issue_list2write.append(issue['description'])
                 act_str = issue.formatting(comment_type='Action')
 
-                line_mapping.append({'index': issue_dict.index(issue), 'MismatchedElectrode': '',
-                                     'IsComment': bool(issue.formatting(comment_type='Comment')),
-                                     'IsAction': False})
                 if act_str:
                     action_list2write.append(act_str[0])
                     # you can write act_str[0] because there is only one action per channel
                     line_mapping[-1]['IsAction'] = True
                 else:
                     action_list2write.append('')
+        else:
+            messagebox.showerror('Unknown issue', 'This issue is currently not recognize')
 
         self.populate_list(dlb_list.elements['list1'], issue_list2write)
 
@@ -411,8 +483,10 @@ class BidsManager(Frame):
         #     self.update()
 
     def import_data(self):
+        self.pack_element(self.main_frame['text'])
         try:
             self.curr_bids.import_data(self.curr_data2import)
+
             self.update_text(self.curr_bids.curr_log)
         except Exception as err:
             self.update_text(self.curr_bids.curr_log + str(err))
@@ -706,6 +780,10 @@ class FormDialog(TemplateDialog):
         self.options = options
         if not self.options:
             self.options = {key: '' for key in input_dict.keys()}
+        else:
+            for key in self.options:
+                if not isinstance(self.options[key], list):
+                    self.options[key] = [self.options[key]]
         if not required_keys:
             self.required_keys = []
         super().__init__(parent)
@@ -728,6 +806,7 @@ class FormDialog(TemplateDialog):
             if self.options[key]:
                 self.key_opt_menu[key] = OptionMenu(parent, self.key_opt_var[key], *self.options[key],
                                                     command=lambda opt, k=key: self.update_entry(opt, k))
+                self.key_opt_menu[key].config(width=self.key_entries[key]['width'])
                 self.key_opt_menu[key].grid(row=cnt, column=2, sticky=W+E, padx=5, pady=5)
         self.ok_cancel_button(parent, row=len(self.input_dict))
         self.results = self.input_dict
