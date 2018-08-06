@@ -812,7 +812,6 @@ class FormDialog(TemplateDialog):
         self.results = self.input_dict
 
     def update_entry(self, idx, key):
-        print(key)
         self.key_entries[key].delete(0, END)
         self.key_entries[key].insert(0, idx)
 
