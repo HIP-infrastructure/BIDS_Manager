@@ -692,6 +692,7 @@ class BidsBrick(dict):
                        '" ' + name_cmd + ' --bids_dir "' + Data2Import.data2import_dir + '" --bids_format vhdr'
         elif isinstance(self, GlobalSidecars):
             if self['modality'] == 'photo':
+                os.makedirs(os.path.join(BidsDataset.bids_dir, dirname), exist_ok=True)
                 shutil.copy2(os.path.join(Data2Import.data2import_dir, self['fileLoc']), os.path.join(
                     BidsDataset.bids_dir, dirname, filename + os.path.splitext(self['fileLoc'])[1]))
             return [filename + os.path.splitext(self['fileLoc'])[1]]
@@ -1605,8 +1606,7 @@ class BidsDataset(BidsBrick):
                         self.__class__.curr_log += line
                 print(self.__class__.curr_log)
                 return False  # no need for parsing the dataset
-            else:
-                return True  # need to parse the dataset
+        return True  # need to parse the dataset
 
     def parse_bids(self):
 
@@ -1822,7 +1822,7 @@ class BidsDataset(BidsBrick):
             sidecar_flag = [value for _, value in enumerate(mod_dict2import.keylist) if value in
                             BidsSidecar.get_list_subclasses_names()]
             mod_type = mod_dict2import.get_modality_type()
-            sub = bids_dst['Subject'][bids_dst.curr_subject['index']]
+            sub = bids_dst.curr_subject['Subject']
 
             # if ext2import == '.gz':
             #     fname2import, ext2import = os.path.splitext(fname2import)
@@ -1958,18 +1958,18 @@ class BidsDataset(BidsBrick):
                     # test whether the subject data have all attributes required by bids
                     [flag, missing_str] = sub.has_all_req_attributes()
                     if not flag:
-                        self.issues.add_issue(Issue.keylist[1], brick=sub, issue_desc=missing_str)
+                        self.issues.add_issue('ImportIssue', brick=sub, issue_desc=missing_str)
                         self.write_log(missing_str)
                         continue
 
                     # test whether the subject to be imported has the same attributes as the one already inside the
                     # bids dataset
                     if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date'])\
-                                           == sub.get_attributes(['alias', 'upload_date', 'fdsfs']):
+                                           == sub.get_attributes(['alias', 'upload_date']):
                         error_str = 'The subject to be imported has different attributes than the analogous subject' \
                                     ' in the bids dataset (' + str(sub.get_attributes()) + '=/=' + \
                                     str(self.curr_subject['Subject'].get_attributes()) + ').'
-                        self.issues.add_issue(Issue.keylist[1], brick=sub, issue_desc=error_str)
+                        self.issues.add_issue('ImportIssue', brick=sub, issue_desc=error_str)
                         self.write_log(error_str)
                         continue
 
@@ -2013,7 +2013,7 @@ class BidsDataset(BidsBrick):
                                                            + ' was not imported because a source file with ' \
                                                              'the same name is already present in the ' \
                                                              'bids dataset ' + self['DatasetDescJSON']['Name'] + '.'
-                                            self.issues.add_issue(Issue.keylist[1], brick=modality,
+                                            self.issues.add_issue('ImportIssue', brick=modality,
                                                                   issue_desc=string_issue)
                                             self.write_log(string_issue)
                                             continue
@@ -2022,12 +2022,6 @@ class BidsDataset(BidsBrick):
                                                        'match the one of the current dataset.\nSession label(s): '\
                                                        + ', '.join(bids_ses) + '.\nSubject ' + sub['sub'] + \
                                                        ' not imported.'
-                                        mod_issue = self.__class__()
-                                        mod_issue.update(modality.get_attributes())
-                                        if nb_ses:
-                                            mod_issue['ses'] = bids_ses[0]
-                                        else:
-                                            mod_issue['ses'] = ''
                                         self.issues.add_issue(Issue.keylist[1], brick=modality,
                                                               issue_desc=string_issue)
                                         self.write_log(string_issue)
@@ -2043,6 +2037,8 @@ class BidsDataset(BidsBrick):
                                 push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
                                 copy_data2import['Subject'][import_sub_idx][modality_type].pop(0)
                                 copy_data2import.save_as_json()
+                        # if copy_data2import['Subject'][import_sub_idx].is_empty():
+                        # pop empty subject
 
                 if self['DatasetDescJSON']:
                     self['DatasetDescJSON'].write_file()
@@ -2050,8 +2046,9 @@ class BidsDataset(BidsBrick):
                     self['ParticipantsTSV'].write_file()
                 if keep_sourcedata and keep_file_trace:
                     self['SourceData'][-1]['SrcDataTrack'].write_file()
-                data2import.clear()
-                self.parse_bids()
+                self.save_as_json()
+                # data2import.clear()
+                # self.parse_bids()
 
             # shutil.rmtree(data2import.data2import_dir)
             except Exception as err:
