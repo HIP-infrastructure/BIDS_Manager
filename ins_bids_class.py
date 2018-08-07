@@ -2168,9 +2168,9 @@ class ImportIssue(BidsBrick):
     """instance of ImportIssue allows storing information, comments and actions about issues encounter during
     importation. 'Subject' corresponds to a list of Subject(), the first one to be imported and the second to the
     current subject in the dataset and give info about subject related issue. Same for the modality keys."""
-    keylist = ['Subject'] + \
+    keylist = ['DatasetDescJSON', 'Subject'] + \
               [key for key in Subject.keylist if key in ModalityType.get_list_subclasses_names()] + \
-              ['DatasetDescJSON', 'description', 'path', 'Comment', 'Action']
+              ['description', 'path', 'Comment', 'Action']
 
     def add_comment(self, desc, elec_name=None):
         comment = Comment()
@@ -2301,10 +2301,16 @@ class Issue(BidsBrick):
                 issue[kwargs['brick'].__class__.__name__] = brick_imp_shrt
             if kwargs['description'] and isinstance(kwargs['description'], str):
                 issue['description'] = kwargs['description']
+        else:
+            return
 
-        if issue not in self[issue_type]:
-            self[issue_type] = issue
-            self.save_as_json()
+        for prev_issue in self[issue_type]:
+            kl = [key for key in prev_issue if key not in ['Comment', 'Action'] and prev_issue[key] == issue[key]]
+            if len(kl) == len(issue.keylist)-2:
+                return
+
+        self[issue_type] = issue
+        self.save_as_json()
 
     def apply_actions(self):
         pass
