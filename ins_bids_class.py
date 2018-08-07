@@ -420,10 +420,11 @@ class BidsBrick(dict):
                     flag_globalsidecar = False
                 for elmt in input_dict[key]:
                     if flag_globalsidecar:
-                        self[key] = eval(key + '(elmt["fileLoc"])')
+                        mod_dict = eval(key + '(elmt["fileLoc"])')
                     else:
-                        self[key] = eval(key + '()')
-                    self[key][-1].copy_values(elmt)
+                        mod_dict = eval(key + '()')
+                    mod_dict.copy_values(elmt)
+                    self[key] = mod_dict
             elif key in BidsSidecar.get_list_subclasses_names():
                 if 'modality' in self and not eval(key + '.modality_field'):
                     self[key] = eval(key + '(modality_field=self["modality"])')
@@ -1358,6 +1359,14 @@ class Subject(BidsBrick):
                                    'Beh', 'IeegGlobalSidecars']
     required_keys = BidsBrick.required_keys
 
+    def __setitem__(self, key, value):
+        if value and key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
+            if value['sub'] and not value['sub'] == self['sub']:
+                err_str = value['fileLoc'] + ' cannot be added to ' + self['sub'] + ' since sub: ' + value['sub']
+                self.write_log(err_str)
+                raise KeyError(err_str)
+        super().__setitem__(key, value)
+
     def get_attr_tsv(self, parttsv):
         if isinstance(parttsv, ParticipantsTSV):
             bln, sub_dict = parttsv.is_subject_present(self['sub'])
@@ -2041,6 +2050,7 @@ class BidsDataset(BidsBrick):
                                         self['SourceData'][-1]['Subject'][-1].update(sub.get_attributes())
 
                                 push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
+                                self.save_as_json()
                                 copy_data2import['Subject'][import_sub_idx][modality_type].pop(0)
                                 copy_data2import.save_as_json()
                         # if copy_data2import['Subject'][import_sub_idx].is_empty():
@@ -2053,7 +2063,6 @@ class BidsDataset(BidsBrick):
                 if keep_sourcedata and keep_file_trace:
                     self['SourceData'][-1]['SrcDataTrack'].write_file()
                 self.check_requirements()
-                self.save_as_json()
                 # data2import.clear()
                 # self.parse_bids()
 
