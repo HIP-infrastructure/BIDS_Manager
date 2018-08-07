@@ -1985,7 +1985,6 @@ class BidsDataset(BidsBrick):
                         self.write_log(error_str)
                         continue
 
-                    self['ParticipantsTSV'].add_subject(sub)
                     for modality_type in sub.keys():
                         if modality_type in BidsBrick.get_list_subclasses_names():
                             for modality in sub[modality_type]:
@@ -2044,6 +2043,7 @@ class BidsDataset(BidsBrick):
                                 else:
                                     self['Subject'] = Subject()
                                     self['Subject'][-1].update(sub.get_attributes())
+                                    self['ParticipantsTSV'].add_subject(sub)
                                     self.is_subject_present(sub['sub'])
                                     if keep_sourcedata:
                                         self['SourceData'][-1]['Subject'] = Subject()
