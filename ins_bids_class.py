@@ -121,9 +121,9 @@ class BidsBrick(dict):
                 raise TypeError(str_issue)
         else:
             str_issue = '/!\ Not recognized key: ' + str(key) + ', check ' + self.get_modality_type() +\
-                        ' class keyList /!\ '
+                        ' class keylist /!\ '
             self.write_log(str_issue)
-            raise TypeError(str_issue)
+            raise KeyError(str_issue)
 
     def __delitem__(self, key):
         if key in self.keylist:
@@ -135,7 +135,7 @@ class BidsBrick(dict):
                 self[key] = ''
         else:
             str_issue = '/!\ Not recognized key: ' + str(key) + ', check ' + self.__class__.__name__ + \
-                        ' class keyList /!\ '
+                        ' class keylist /!\ '
             print(str_issue)
 
     def update(self, input_dict, f=None):
@@ -159,7 +159,7 @@ class BidsBrick(dict):
             return value
         else:
             str_issue = '/!\ Not recognized key: ' + str(key) + ', check ' + self.__class__.__name__ + \
-                        ' class keyList /!\ '
+                        ' class keylist /!\ '
             print(str_issue)
 
     def popitem(self):
@@ -1366,6 +1366,13 @@ class Subject(BidsBrick):
                 self.write_log(err_str)
                 raise KeyError(err_str)
         super().__setitem__(key, value)
+        # if Subject 'sub' attribut changes than it changes all 'sub' of its Modality and globalsidecar objects
+        if key == 'sub' and value:
+            for subkey in self:
+                if subkey in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
+                    if self[subkey]:
+                        for modalityy in self[subkey]:
+                            modalityy['sub'] = self['sub']
 
     def get_attr_tsv(self, parttsv):
         if isinstance(parttsv, ParticipantsTSV):
