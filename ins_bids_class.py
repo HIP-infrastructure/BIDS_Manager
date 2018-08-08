@@ -522,7 +522,7 @@ class BidsBrick(dict):
                     ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
         else:
             requirements = Requirements(full_filename)
-            if 'Requirements' not in requirements.keys() and 'Subject' in self.requirements['Requirements'].keys():
+            if 'Requirements' in requirements.keys() and 'Subject' in requirements['Requirements'].keys():
                 for key in requirements['Requirements']['Subject']:
                     if key == 'keys':
                         Subject.keylist += [elmt for elmt in requirements['Requirements']['Subject'][key]
