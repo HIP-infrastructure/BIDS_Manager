@@ -1139,7 +1139,6 @@ class Ieeg(Electrophy):
 
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'IeegJSON',
                                    'IeegChannelsTSV', 'IeegEventsTSV']
-    # keybln = BidsBrick.create_keytype(keylist)
     required_keys = BidsBrick.required_keys + ['task', 'modality']
     allowed_modalities = ['ieeg']
     allowed_file_formats = ['.edf', '.gdf', '.fif', '.vhdr']
