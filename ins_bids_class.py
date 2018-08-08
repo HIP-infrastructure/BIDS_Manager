@@ -2130,7 +2130,7 @@ class Action(Comment):
     keylist = Comment.keylist + ['command']
 
 
-class ChannelIssue(BidsBrick, BidsSidecar):
+class ChannelIssue(BidsBrick):
     keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'Comment', 'Action']
 
     def add_action(self, elec_name, desc, command):
