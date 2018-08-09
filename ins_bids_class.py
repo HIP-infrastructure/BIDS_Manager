@@ -1117,8 +1117,8 @@ class Requirements(dict):
 
     def __init__(self, full_filename):
 
-        self['Requirements'] = []
         if full_filename:
+            self['Requirements'] = []
             with open(full_filename, 'r') as file:
                 json_dict = json.load(file)
                 if 'Requirements' in json_dict.keys():
@@ -1528,15 +1528,16 @@ class Data2Import(BidsBrick):
     requirements = None
     curr_log = ''
 
-    def __init__(self, data2import_dir, requirements_fileloc=None):
+    def __init__(self, data2import_dir=None, requirements_fileloc=None):
         """initiate a  dict var for Subject info"""
         self.__class__.clear_log()
+        super().__init__()
+        self.import_dir = data2import_dir
+        if data2import_dir is None:
+            return
         if os.path.isdir(data2import_dir):
             self._assign_import_dir(data2import_dir)
-            self.import_dir = data2import_dir
-            self.requirements = None
-
-            super().__init__()
+            # self.requirements = None
             if os.path.isfile(os.path.join(self.import_dir, Data2Import.filename)):
                 with open(os.path.join(self.import_dir, Data2Import.filename)) as file:
                     inter_dict = json.load(file)
@@ -1551,7 +1552,7 @@ class Data2Import(BidsBrick):
             raise NotADirectoryError(str_error)
 
     def save_as_json(self, savedir=None, file_start=None, write_date=False, compress=False):
-        super().save_as_json(savedir=self.import_dir, file_start=None, write_date=False, compress=False)
+        super().save_as_json(savedir=self.import_dir, file_start=None, write_date=write_date, compress=False)
 
     @classmethod
     def _assign_import_dir(cls, data2import_dir):
@@ -1949,11 +1950,10 @@ class BidsDataset(BidsBrick):
             '''Here we copy the data2import dictionary to pop all the imported data in order to avoid importing
             the same data twice in case there is an error and we have to launch the import procedure on the same
             folder again. The original data2import in rename by adding the date in the filename'''
-            copy_data2import = Data2Import(Data2Import.import_dir)
+            copy_data2import = Data2Import()
+            copy_data2import.copy_values(data2import)
             try:
-                shutil.copy2(os.path.join(Data2Import.import_dir, Data2Import.filename),
-                             os.path.join(Data2Import.import_dir, self.access_time.strftime("%Y-%m-%dT%H-%M-%S")
-                                          + Data2Import.filename))
+                data2import.save_as_json(write_date=True)
                 if keep_sourcedata:
                     if not self['SourceData']:
                         self['SourceData'] = SourceData()
