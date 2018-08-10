@@ -2078,9 +2078,12 @@ class BidsDataset(MetaBrick):
 
     def remove(self, element2remove):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
+        # a bit bulky rewrite to make it nice
         if element2remove is self:
             shutil.rmtree(self.bids_dir)
             print('The whole Bids dataset ' + self['DatasetDescJSON']['Name'] + ' has been removed')
+            BidsDataset.clear_log()
+            self.issues.clear()
             self.clear()
         elif isinstance(element2remove, Subject):
             self.is_subject_present(element2remove['sub'])
@@ -2107,20 +2110,23 @@ class BidsDataset(MetaBrick):
                             self.save_as_json()
                             self.write_log('Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
                                            self['DatasetDescJSON']['Name'] + ' ' + src_tsv_copy.filename + '.')
-                # remove from raw folder
-                shutil.rmtree(os.path.join(self.dirname, 'sub-' + element2remove['sub']))
-                self['Subject'].pop(self.curr_subject['index'])
-                self.save_as_json()
-                self.write_log('Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
-                               self['DatasetDescJSON']['Name'] + ' raw folder.')
                 # remove from ParticipantsTSV
                 _, _, sub_idx = self['ParticipantsTSV'].is_subject_present(element2remove['sub'])
                 if sub_idx:
                     self['ParticipantsTSV'].pop(sub_idx)
                     self['ParticipantsTSV'].write_file()
                     self.save_as_json()
-                    self.write_log('Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
-                                   self['DatasetDescJSON']['Name'] + ' ' + self['ParticipantsTSV'].filename + '.')
+                    self.write_log(
+                        'Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
+                        self['DatasetDescJSON']['Name'] + ' ' + self['ParticipantsTSV'].filename + '.')
+                # remove issues related to this patient
+                self.issues.remove(element2remove)
+                # remove from raw folder
+                shutil.rmtree(os.path.join(self.dirname, 'sub-' + element2remove['sub']))
+                self['Subject'].pop(self.curr_subject['index'])
+                self.save_as_json()
+                self.write_log('Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
+                               self['DatasetDescJSON']['Name'] + ' raw folder.')
 
         elif isinstance(element2remove, ModalityType) and element2remove.classname() in Subject.keylist:
             self.is_subject_present(element2remove['sub'])
@@ -2169,13 +2175,27 @@ class BidsDataset(MetaBrick):
                         sdcar_fname = fname
                     os.remove(os.path.join(BidsDataset.dirname, dirname, sdcar_fname +
                                            element2remove[sidecar_key].extension))
+                self.issues.remove(element2remove)
                 if isinstance(element2remove, Electrophy):
                     ext = self.converters['Electrophy']['ext']
                 elif isinstance(element2remove, Imagery):
                     ext = self.converters['Imagery']['ext']
                 for ex in ext:
                     os.remove(os.path.join(self.dirname, dirname, fname+ex))
-                print(self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx))
+                self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx)
+                self.write_log(element2remove['fileLoc'] +
+                               ' and its sidecar files were removed from Bids dataset ' +
+                               self['DatasetDescJSON']['Name'] + ' raw folder.')
+                self.save_as_json()
+        elif isinstance(element2remove, GlobalSidecars):
+            self.is_subject_present(element2remove['sub'])
+            if self.curr_subject['isPresent'] and \
+                    element2remove in self.curr_subject['Subject'][element2remove.classname()]:
+                elmt_idx = self.curr_subject['Subject'][element2remove.classname()].index(element2remove)
+                fname, dirname, ext = element2remove.create_filename_from_attributes()
+                os.remove(os.path.join(self.dirname, dirname, fname + ext))
+                self.issues.remove(element2remove)
+                self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx)
                 self.write_log(element2remove['fileLoc'] +
                                ' and its sidecar files were removed from Bids dataset ' +
                                self['DatasetDescJSON']['Name'] + ' raw folder.')
@@ -2185,6 +2205,7 @@ class BidsDataset(MetaBrick):
         save_parsing_path = os.path.join(self.dirname, 'derivatives', 'parsing')
         os.makedirs(save_parsing_path, exist_ok=True)
         super().save_as_json(savedir=save_parsing_path, file_start='parsing', write_date=True, compress=True)
+        self.issues.save_as_json()
 
     @classmethod
     def _assign_bids_dir(cls, bids_dir):
@@ -2233,7 +2254,23 @@ class Action(Comment):
     keylist = Comment.keylist + ['command']
 
 
-class ChannelIssue(BidsBrick):
+class IssueType(BidsBrick):
+
+    def add_comment(self,  desc, elec_name=None):
+
+        """verify that the given electrode name is part of the mismatched electrodes"""
+        if isinstance(self, ChannelIssue) and elec_name not in self['MismatchedElectrodes']:
+            print(elec_name + ' does not belong to the current mismatched electrode.')
+            return
+
+        comment = Comment()
+        if elec_name:  # add comment about a given mismatched electrodes
+            comment['label'] = elec_name
+        comment['description'] = desc
+        self['Comment'] = comment
+
+
+class ChannelIssue(IssueType):
     keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'Comment', 'Action']
 
     def add_action(self, elec_name, desc, command):
@@ -2255,17 +2292,6 @@ class ChannelIssue(BidsBrick):
         action['command'] = command
         self['Action'] = action
 
-    def add_comment(self,  desc, elec_name=None):
-        """verify that the given electrode name is part of the mismatched electrodes"""
-        if elec_name not in self['MismatchedElectrodes']:
-            print(elec_name + ' does not belong to the current mismatched electrode.')
-            return
-        """ add comment about a given mismatched electrodes """
-        comment = Comment()
-        comment['label'] = elec_name
-        comment['description'] = desc
-        self['Comment'] = comment
-
     def formatting(self, comment_type=None, elec_name=None):
         if comment_type and (not isinstance(comment_type, str) or
                              comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
@@ -2283,18 +2309,13 @@ class ChannelIssue(BidsBrick):
         return formatted_list
 
 
-class ImportIssue(BidsBrick):
+class ImportIssue(IssueType):
     """instance of ImportIssue allows storing information, comments and actions about issues encounter during
     importation. 'Subject' corresponds to a list of Subject(), the first one to be imported and the second to the
     current subject in the dataset and give info about subject related issue. Same for the modality keys."""
     keylist = ['DatasetDescJSON', 'Subject'] + \
               [key for key in Subject.keylist if key in ModalityType.get_list_subclasses_names()] + \
               ['description', 'path', 'Comment', 'Action']
-
-    def add_comment(self, desc, elec_name=None):
-        comment = Comment()
-        comment['description'] = desc
-        self['Comment'] = comment
 
     def add_action(self, desc, command):
         """ImportIssue as only one issue per instance (different from channelIssue that can have as many actions as
@@ -2433,6 +2454,45 @@ class Issue(BidsBrick):
 
     def apply_actions(self):
         pass
+
+    def remove(self, brick2remove):
+        new_issue = self.__class__()
+        new_issue.copy_values(self)
+        # need a copy because we cannot loop over a list and pop its content at the same time
+        for key in self:
+            if isinstance(brick2remove, Subject):
+                if key == 'ChannelIssue':
+                    for issue in self[key]:
+                        if issue['sub'] == brick2remove['sub']:
+                            new_issue[key].pop(new_issue[key].index(issue))
+                elif key == 'ImportIssue':
+                    for issue in self[key]:
+                        for k in issue:
+                            if k in BidsBrick.get_list_subclasses_names() and issue[k] and \
+                                    issue[k][0]['sub'] == brick2remove['sub']:
+                                new_issue[key].pop(new_issue[key].index(issue))
+                                break  # only one element is not empty, break when found
+            elif isinstance(brick2remove, Electrophy):
+                if key == 'ChannelIssue':
+                    for issue in self[key]:
+                        if issue['fileLoc'] == brick2remove['fileLoc']:
+                            new_issue[key].pop(new_issue[key].index(issue))
+                elif key == 'ImportIssue':
+                    for issue in self[key]:
+                        if issue[brick2remove.classname()] and \
+                                issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
+                            new_issue[key].pop(new_issue[key].index(issue))
+            elif key == 'ImportIssue' and isinstance(brick2remove, Imagery) or isinstance(brick2remove, GlobalSidecars):
+                for issue in self[key]:
+                    if issue[brick2remove.classname()] and \
+                            issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
+                        new_issue[key].pop(new_issue[key].index(issue))
+
+        self.clear()
+        self.copy_values(new_issue)
+
+
+
 
     @staticmethod
     def empty_dict():
