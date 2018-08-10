@@ -1833,7 +1833,7 @@ class BidsDataset(MetaBrick):
 
             fname2import, ext2import = os.path.splitext(mod_dict2import['fileLoc'])
             orig_ext = ext2import
-            # bsname_bids_dir = os.path.basename(bids_dst.bids_dir)
+            # bsname_bids_dir = os.path.basename(bids_dst.dirname)
             sidecar_flag = [value for _, value in enumerate(mod_dict2import.keylist) if value in
                             BidsSidecar.get_list_subclasses_names()]
             mod_type = mod_dict2import.classname()
@@ -1926,7 +1926,7 @@ class BidsDataset(MetaBrick):
 
         # if True:
         self.__class__.clear_log()
-        self.write_log(10*'=' + '\nImport of ' + data2import.import_dir + '\n' + 10*'=')
+        self.write_log(10*'=' + '\nImport of ' + data2import.dirname + '\n' + 10*'=')
         if isinstance(data2import, Data2Import) and data2import.has_all_req_attributes()[0]:
             if not (not BidsDataset.converters['Electrophy']['path'] or
                     os.path.isfile(BidsDataset.converters['Electrophy']['path']) and
@@ -2080,7 +2080,7 @@ class BidsDataset(MetaBrick):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
         # a bit bulky rewrite to make it nice
         if element2remove is self:
-            shutil.rmtree(self.bids_dir)
+            shutil.rmtree(self.dirname)
             print('The whole Bids dataset ' + self['DatasetDescJSON']['Name'] + ' has been removed')
             BidsDataset.clear_log()
             self.issues.clear()
@@ -2437,7 +2437,9 @@ class Issue(BidsBrick):
                 issue['DatasetDescJSON'] = kwargs['brick']
             elif kwargs['brick'] and isinstance(kwargs['brick'], BidsBrick):
                 brick_imp_shrt = kwargs['brick'].__class__()
+                # brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
                 brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
+                brick_imp_shrt['fileLoc'] = os.path.join(Data2Import.dirname, kwargs['brick']['fileLoc'])
                 issue[kwargs['brick'].classname()] = brick_imp_shrt
             if kwargs['description'] and isinstance(kwargs['description'], str):
                 issue['description'] = kwargs['description']
