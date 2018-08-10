@@ -279,7 +279,7 @@ class BidsManager(Frame):
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
 
-    def remove_group_name(self, list_idx, info):
+    def change_elec_type(self, list_idx, info):
         idx = info['index']
         mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
@@ -327,6 +327,13 @@ class BidsManager(Frame):
         action_list.insert(list_idx, '')
         issue_list.itemconfig(list_idx, foreground='black')
 
+    def open_file(self, issue_key, list_idx, info):
+        if issue_key == 'ChannelIssue':
+            curr_iss = self.curr_bids.issues[issue_key][info['index']]
+            os.startfile(os.path.join(self.curr_bids.dirname, curr_iss['fileLoc']))
+        else:
+            os.startfile(info['Element']['fileLoc'])
+
     def solve_issues(self, issue_key):
 
         def whatto2menu(iss_key, dlb_lst, line_map, event):
@@ -336,11 +343,14 @@ class BidsManager(Frame):
             curr_idx = dlb_lst.elements['list1'].curselection()[0]
 
             pop_menu = Menu(self.master, tearoff=0)
+
             if iss_key == 'ChannelIssue':
+                pop_menu.add_command(label='Open file',
+                                     command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))
                 pop_menu.add_command(label='Rename electrode',
                                      command=lambda: self.select_correct_name(curr_idx, line_map[curr_idx]))
                 pop_menu.add_command(label='Remove group label',
-                                     command=lambda: self.remove_group_name(curr_idx, line_map[curr_idx]))
+                                     command=lambda: self.change_elec_type(curr_idx, line_map[curr_idx]))
             elif iss_key == 'ImportIssue':
                 if isinstance(line_map[curr_idx]['Element'], bids.DatasetDescJSON):
                     # if issue arise from DatasetDescJSON change the DatasetDescJSON object in data2import.json
@@ -370,6 +380,8 @@ class BidsManager(Frame):
                         """if issue arise from a modality, it means that the attributes of the modality are incomplete
                         or wrong and has to be changed according to the description or the file remove from the list of
                          file that will be imported"""
+                        pop_menu.add_command(label='Open file',
+                                             command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))
                         pop_menu.add_command(label='Change modality attributes',
                                              command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
                                                                                     in_bids=False))
