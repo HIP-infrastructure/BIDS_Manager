@@ -549,14 +549,14 @@ class BidsBrick(dict):
                             amount += 1
 
             if amount == 0:
-                str_issue = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
+                str_iss = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
             elif amount < mod_req['amount']:
-                str_issue = 'Subject ' + sub_name + ' misses ' + str(mod_req['amount']-amount) \
+                str_iss = 'Subject ' + sub_name + ' misses ' + str(mod_req['amount']-amount) \
                             + 'files of type: ' + str(type_dict) + '.'
             else:
                 return True
 
-            self.write_log(str_issue)
+            self.write_log(str_iss)
             return False
 
         if isinstance(self, BidsDataset) and self.requirements['Requirements']:
@@ -587,6 +587,7 @@ class BidsBrick(dict):
             if sub_list and integrity_list:
                 idx_elec_name = IeegElecTSV.header.index('group')
                 idx_chan_name = IeegChannelsTSV.header.index('group')
+                idx_chan_type = IeegChannelsTSV.header.index('type')
 
                 for bidsintegrity_key in integrity_list:
                     for sub in sub_list:
@@ -630,7 +631,8 @@ class BidsBrick(dict):
                             curr_elec = []
                             [curr_elec.append(line[idx_chan_name]) for line in mod['IeegChannelsTSV'][1:]
                              if line[idx_chan_name] not in curr_elec and
-                             not line[idx_chan_name] == BidsSidecar.bids_default_unknown]
+                             not line[idx_chan_name] == BidsSidecar.bids_default_unknown and
+                             line[idx_chan_type] in mod.channel_type]
                             miss_matching_elec = [name for name in curr_elec if name not in ref_elec]
                             if miss_matching_elec:
                                 str_issue = 'File ' + mod.create_filename_from_attributes()[0] + \
