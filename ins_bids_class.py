@@ -2192,8 +2192,7 @@ class BidsDataset(MetaBrick):
             if self.curr_subject['isPresent'] and \
                     element2remove in self.curr_subject['Subject'][element2remove.classname()]:
                 elmt_idx = self.curr_subject['Subject'][element2remove.classname()].index(element2remove)
-                fname, dirname, ext = element2remove.create_filename_from_attributes()
-                os.remove(os.path.join(self.dirname, dirname, fname + ext))
+                os.remove(os.path.join(self.dirname, element2remove['fileLoc']))
                 self.issues.remove(element2remove)
                 self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx)
                 self.write_log(element2remove['fileLoc'] +
@@ -2314,7 +2313,8 @@ class ImportIssue(IssueType):
     importation. 'Subject' corresponds to a list of Subject(), the first one to be imported and the second to the
     current subject in the dataset and give info about subject related issue. Same for the modality keys."""
     keylist = ['DatasetDescJSON', 'Subject'] + \
-              [key for key in Subject.keylist if key in ModalityType.get_list_subclasses_names()] + \
+              [key for key in Subject.keylist if key in ModalityType.get_list_subclasses_names()
+               + GlobalSidecars.get_list_subclasses_names()] + \
               ['description', 'path', 'Comment', 'Action']
 
     def add_action(self, desc, command):
@@ -2482,7 +2482,8 @@ class Issue(BidsBrick):
                         if issue[brick2remove.classname()] and \
                                 issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
                             new_issue[key].pop(new_issue[key].index(issue))
-            elif key == 'ImportIssue' and isinstance(brick2remove, Imagery) or isinstance(brick2remove, GlobalSidecars):
+            elif key == 'ImportIssue' and (isinstance(brick2remove, Imagery) or
+                                           isinstance(brick2remove, GlobalSidecars)):
                 for issue in self[key]:
                     if issue[brick2remove.classname()] and \
                             issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
@@ -2490,9 +2491,6 @@ class Issue(BidsBrick):
 
         self.clear()
         self.copy_values(new_issue)
-
-
-
 
     @staticmethod
     def empty_dict():
