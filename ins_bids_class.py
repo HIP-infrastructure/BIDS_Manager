@@ -1268,7 +1268,6 @@ class FuncEventsTSV(EventsTSV):
 class Fmap(Imagery):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'dir', 'run', 'modality', 'fileLoc', 'FmapJSON']
-    # keybln = BidsBrick.create_keytype(keylist)
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_modalities = ['phasediff', 'phase1', 'phase2', 'magnitude1', 'magnitude2', 'magnitude', 'fieldmap', 'epi']
     allowed_file_formats = ['.nii']
@@ -1525,16 +1524,15 @@ class MetaBrick(BidsBrick):
         Ex: bids.is_subject_present('05') ->
         self.curr_subject = {'Subject': Suject(), 'isPresent': boolean, 'index': integer}
         """
-        index = -1
-        self.curr_subject = {'Subject': Subject(), 'isPresent': False, 'index': index}
-        for subject in self['Subject']:
-            index += 1
-            if subject['sub'] == subject_label:
-                self.curr_subject['Subject'] = subject
-                self.curr_subject.update({'isPresent': True, 'index': index})
-                return
-        if not self.curr_subject['isPresent']:
-            self.curr_subject['index'] = None
+        self.curr_subject = {'Subject': Subject(), 'isPresent': False, 'index': None}
+        sub_list = self.get_subject_list()
+        if subject_label in sub_list:
+            index = sub_list.index(subject_label)
+            self.curr_subject['Subject'] = self['Subject'][index]
+            self.curr_subject.update({'isPresent': True, 'index': index})
+
+    def get_subject_list(self):
+        return [sub['sub'] for sub in self['Subject']]
 
 
 ''' BIDS brick which contains all the information about the data to be imported '''
@@ -2211,6 +2209,52 @@ class BidsDataset(MetaBrick):
         os.makedirs(save_parsing_path, exist_ok=True)
         super().save_as_json(savedir=save_parsing_path, file_start='parsing', write_date=True, compress=True)
         self.issues.save_as_json()
+
+    def apply_issues(self):
+
+        def modify_electrodes_files(ch_issue):
+            def change_electrode(modality, issue, **kwargs):
+                print(kwargs)
+                pass
+
+            if not ch_issue['Action']:
+                return
+            modality = self.get_object_from_filename(ch_issue['fileLoc'])
+            if not modality:  # no need to update the log since get_object_from_filename does it
+                return
+            for action in ch_issue['Action']:
+                eval('change_electrode(modality,ch_issue, ' + action['command'] + ')')
+                pass
+
+        issues_copy = Issue()
+        issues_copy.copy_values(self.issues)
+        for chan_issues in self.issues['ChannelIssue']:
+            modify_electrodes_files(chan_issues)
+
+    def get_object_from_filename(self, filename):
+        if isinstance(filename, str):
+            fname = os.path.splitext(os.path.basename(filename))[0]
+            fname_pieces = fname.split('_')
+            if 'sub-' in fname_pieces[0]:
+                sub_id = fname_pieces[0].split('-')[1]
+            else:
+                error_str = 'Filename ' + filename + ' does not follow bids architecture.'
+                self.write_log(error_str)
+                return
+            subclass = [subcls for subcls in Electrophy.__subclasses__() + Imagery.__subclasses__()
+                        if fname_pieces[-1] in subcls.allowed_modalities]
+            # if fname_pieces[-1] in [for subclss in ModalityType.get_list_subclasses_names()]
+            self.is_subject_present(sub_id)
+            if self.curr_subject['Subject'] and subclass:
+                for mod_elmt in self.curr_subject['Subject'][subclass[0].__name__]:
+                    if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
+                        return mod_elmt
+            error_str = 'Subject ' + sub_id + ' filename ' + str(filename) + ' is not found in '\
+                        + self.dirname + '.'
+        else:
+            error_str = 'Filename ' + str(filename) + ' should be a string.'
+        self.write_log(error_str)
+        return
 
     @classmethod
     def _assign_bids_dir(cls, bids_dir):
