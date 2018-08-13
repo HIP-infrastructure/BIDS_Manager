@@ -629,11 +629,15 @@ class BidsBrick(dict):
 
                         for mod in curr_sub_mod:
                             curr_elec = []
-                            [curr_elec.append(line[idx_chan_name]) for line in mod['IeegChannelsTSV'][1:]
-                             if line[idx_chan_name] not in curr_elec and
+                            curr_type = []
+                            """ list all the channels of the modality type end check whether their are in the reference 
+                            list of electrodes"""
+                            [(curr_elec.append(line[idx_chan_name]), curr_type.append(line[idx_chan_type]))
+                             for line in mod['IeegChannelsTSV'][1:] if line[idx_chan_name] not in curr_elec and
                              not line[idx_chan_name] == BidsSidecar.bids_default_unknown and
                              line[idx_chan_type] in mod.channel_type]
-                            miss_matching_elec = [name for name in curr_elec if name not in ref_elec]
+                            miss_matching_elec = [{'name': name, 'type': curr_type[cnt]}
+                                                  for cnt, name in enumerate(curr_elec) if name not in ref_elec]
                             if miss_matching_elec:
                                 str_issue = 'File ' + mod.create_filename_from_attributes()[0] + \
                                             ' has inconsistent electrode name(s) ' + str(miss_matching_elec) + '.'
@@ -2224,12 +2228,13 @@ class RefElectrodes(BidsFreeFile):
     pass
 
 
-class MismatchedElectrodes(BidsFreeFile):
-    pass
+class MismatchedElectrodes(BidsBrick):
+    keylist = ['name', 'type']
+    required_keys = keylist
 
 
 class Comment(BidsBrick):
-    keylist = ['label', 'date', 'user', 'description']
+    keylist = ['name', 'date', 'user', 'description']
 
     def __init__(self, new_keys=None):
         if not new_keys:
@@ -2260,35 +2265,39 @@ class IssueType(BidsBrick):
     def add_comment(self,  desc, elec_name=None):
 
         """verify that the given electrode name is part of the mismatched electrodes"""
-        if isinstance(self, ChannelIssue) and elec_name not in self['MismatchedElectrodes']:
+        if isinstance(self, ChannelIssue) and elec_name not in self.list_mismatched_electrodes():
             print(elec_name + ' does not belong to the current mismatched electrode.')
             return
 
         comment = Comment()
         if elec_name:  # add comment about a given mismatched electrodes
-            comment['label'] = elec_name
+            comment['name'] = elec_name
         comment['description'] = desc
         self['Comment'] = comment
 
 
 class ChannelIssue(IssueType):
     keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'Comment', 'Action']
+    required_keys = BidsBrick.keylist + ['RefElectrodes', 'MismatchedElectrodes', 'fileLoc']
+
+    def list_mismatched_electrodes(self):
+        return [miselec['name'] for miselec in self['MismatchedElectrodes']]
 
     def add_action(self, elec_name, desc, command):
         """verify that the given electrode name is part of the mismatched electrodes"""
-        if elec_name not in self['MismatchedElectrodes']:
+        if elec_name not in self.list_mismatched_electrodes():
             raise NameError(elec_name + 'is not an mismatched electrode.')
         """check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
         idx2pop = None
         for act in self['Action']:
-            if act['label'] == elec_name:
+            if act['name'] == elec_name:
                 idx2pop = self['Action'].index(act)
                 break
         if idx2pop is not None:
             self['Action'].pop(idx2pop)
         """ add action for given mismatched electrodes """
-        action = Action('label')
-        action['label'] = elec_name
+        action = Action('name')
+        action['name'] = elec_name
         action['description'] = desc
         action['command'] = command
         self['Action'] = action
@@ -2304,7 +2313,7 @@ class ChannelIssue(IssueType):
         formatted_list = []
         for cmnt_type in comment_type:
             for cmnt in self[cmnt_type]:
-                if elec_name and not cmnt['label'] == elec_name:
+                if elec_name and not cmnt['name'] == elec_name:
                     continue
                 formatted_list.append(cmnt.formatting())
         return formatted_list
@@ -2381,9 +2390,9 @@ class Issue(BidsBrick):
                             comment_list = prev_issues[issue_key][idx]['Comment']
                             action_list = prev_issues[issue_key][idx]['Action']
                             for comment in comment_list:
-                                issue.add_comment(comment['label'], comment['description'])
+                                issue.add_comment(comment['name'], comment['description'])
                             for action in action_list:
-                                issue.add_action(action['label'], action['description'], action['command'])
+                                issue.add_action(action['name'], action['description'], action['command'])
 
                 # for issue_key in self.keys():
                 #     for issue in self[issue_key]:
@@ -2397,9 +2406,9 @@ class Issue(BidsBrick):
                 #         comment_list = prev_issues[issue_key][idx]['Comment']
                 #         action_list = prev_issues[issue_key][idx]['Action']
                 #         for comment in comment_list:
-                #             issue.add_comment(comment['label'], comment['description'])
+                #             issue.add_comment(comment['name'], comment['description'])
                 #         for action in action_list:
-                #             issue.add_action(action['label'], action['description'], action['command'])
+                #             issue.add_action(action['name'], action['description'], action['command'])
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
 
@@ -2430,8 +2439,16 @@ class Issue(BidsBrick):
             issue = ChannelIssue()
             for key in kwargs:
                 if key in issue.keylist:
-                    issue[key] = kwargs[key]
-
+                    if key == 'MismatchedElectrodes':
+                        if isinstance(kwargs[key], list):
+                            for elmt in kwargs[key]:
+                                melec = MismatchedElectrodes()
+                                melec.copy_values(elmt)
+                                issue[key] = melec
+                        else:
+                            issue[key] = kwargs[key]
+                    else:
+                        issue[key] = kwargs[key]
         elif issue_type == self.keylist[0] and kwargs['brick']:
             issue = ImportIssue()
             issue['path'] = Data2Import.dirname
@@ -2448,10 +2465,16 @@ class Issue(BidsBrick):
         else:
             return
 
+        # check if the same issue is already in the Issue brick by testing all the keys except Comment and Action
         for prev_issue in self[issue_type]:
             kl = [key for key in prev_issue if key not in ['Comment', 'Action'] and prev_issue[key] == issue[key]]
             if len(kl) == len(issue.keylist)-2:
                 return
+
+        # before adding the issue test whether it has all needed attributes
+        flag, missing_str = issue.has_all_req_attributes()
+        if not flag:
+            raise AttributeError(missing_str)
 
         self[issue_type] = issue
         self.save_as_json()
