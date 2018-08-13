@@ -62,8 +62,7 @@ class BidsManager(Frame):
         self.main_frame['list'] = Listbox(master=self.master, font=("Arial", 12))
 
         # area to print double linked list
-        self.main_frame['double_list'] = IssueList(self.master, self.apply_actions, self.save_actions,
-                                                   self.delete_actions)
+        self.main_frame['double_list'] = IssueList(self.master, self.apply_actions, self.delete_actions)
 
         # little band to print small infos
         self.info_label = StringVar()
@@ -89,14 +88,15 @@ class BidsManager(Frame):
     def update_text(self, str2show, delete_flag=True, location=None):
         self.main_frame['text'].update_text(str2show, delete_flag=delete_flag, location=location)
 
-    def save_actions(self):
-        self.curr_bids.issues.save_as_json()
-        info_str = 'Actions were save for another session in the log folder of the current BIDS directory'
-        self.curr_bids.write_log(info_str)
-        messagebox.showinfo('Save actions', info_str)
+    # def save_actions(self):
+    #     self.curr_bids.issues.save_as_json()
+    #     info_str = 'Actions were save for another session in the log folder of the current BIDS directory'
+    #     self.curr_bids.write_log(info_str)
+    #     messagebox.showinfo('Save actions', info_str)
 
     def apply_actions(self):
         print('actions applied (To be implemented!)')
+        self.curr_bids.apply_issues()
 
     def delete_actions(self):
         flag = messagebox.askyesno('DELETE All Actions', 'Are you sure you want to DELETE all planned actions?')
@@ -262,6 +262,7 @@ class BidsManager(Frame):
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
+            self.curr_bids.issues.save_as_json()
 
     def select_correct_name(self, list_idx, info):
 
@@ -278,37 +279,46 @@ class BidsManager(Frame):
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
+            self.curr_bids.issues.save_as_json()
 
     def change_elec_type(self, list_idx, info):
         idx = info['index']
         mismtch_elec = info['Element']
+
         curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
+        input_dict = {'type': mism_elec['type'] for mism_elec in curr_dict['MismatchedElectrodes']
+                      if mism_elec['name'] == mismtch_elec}
+        opt_dict = {'type': bids.Electrophy.channel_type}
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
-        flag = messagebox.askyesno('Remove group name', 'Do you want to remove the group label from ' +
-                                   mismtch_elec + '?')
-        if flag:
-            str_info = 'Remove group label for ' + mismtch_elec + ' in the channel file related to ' + \
+        # flag = messagebox.askyesno('Remove group name', 'Do you want to remove the group label from ' +
+        #                            mismtch_elec + '?')
+        output_dict = FormDialog(self, input_dict, title='Modify electrode type of ' + mismtch_elec + ' into:',
+                                 options=opt_dict, required_keys=input_dict).apply()
+        if output_dict:
+            str_info = 'Change electrode type of  ' + mismtch_elec + ' from ' + input_dict['type'] + ' to ' + \
+                       output_dict['type'] + ' in the electrode file related to ' + \
                        os.path.basename(curr_dict['fileLoc']) + '.\n'
             # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
-            curr_dict.add_action(mismtch_elec, str_info, 'To be defined')
+            curr_dict.add_action(mismtch_elec, str_info, 'type="{}"'.format(output_dict['type']))
             # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ChannelIssue',
             #                                                                  comment_type='action'))
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
+            self.curr_bids.issues.save_as_json()
 
     def get_entry(self, issue_key, list_idx, info):
         idx = info['index']
         mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues[issue_key][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
-        list_new_comments = CommentDialog(self.master, '\n'.join(curr_dict.formatting(
+        new_comments = CommentDialog(self.master, '\n'.join(curr_dict.formatting(
             comment_type='Comment', elec_name=mismtch_elec))).apply()
-        if list_new_comments:
-            for comment in list_new_comments:
-                curr_dict.add_comment(comment, elec_name=mismtch_elec)
+        if new_comments:
+            curr_dict.add_comment(new_comments, elec_name=mismtch_elec)
             issue_list.itemconfig(list_idx, bg='yellow')
+            self.curr_bids.issues.save_as_json()
 
     def cancel_action(self, issue_key, list_idx, info):
         idx = info['index']
@@ -318,7 +328,7 @@ class BidsManager(Frame):
         action_list = self.main_frame['double_list'].elements['list2']
         if issue_key == 'ChannelIssue':
             for action in curr_dict['Action']:
-                if action['label'] == mismtch_elec:
+                if action['name'] == mismtch_elec:
                     curr_dict['Action'].pop(curr_dict['Action'].index(action))
                     break  # there is only one action per channel so break when found
         elif issue_key == 'ImportIssue' and curr_dict['Action']:
@@ -326,6 +336,7 @@ class BidsManager(Frame):
         action_list.delete(list_idx)
         action_list.insert(list_idx, '')
         issue_list.itemconfig(list_idx, foreground='black')
+        self.curr_bids.issues.save_as_json()
 
     def open_file(self, issue_key, list_idx, info):
         if issue_key == 'ChannelIssue':
@@ -347,9 +358,9 @@ class BidsManager(Frame):
             if iss_key == 'ChannelIssue':
                 pop_menu.add_command(label='Open file',
                                      command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))
-                pop_menu.add_command(label='Rename electrode',
+                pop_menu.add_command(label='Change electrode name',
                                      command=lambda: self.select_correct_name(curr_idx, line_map[curr_idx]))
-                pop_menu.add_command(label='Remove group label',
+                pop_menu.add_command(label='Change electrode type',
                                      command=lambda: self.change_elec_type(curr_idx, line_map[curr_idx]))
             elif iss_key == 'ImportIssue':
                 if isinstance(line_map[curr_idx]['Element'], bids.DatasetDescJSON):
@@ -395,12 +406,7 @@ class BidsManager(Frame):
             pop_menu.post(event.x_root, event.y_root)
 
         dlb_list = self.main_frame['double_list']
-        # self.update_text(self.curr_bids.issues.formatting(specific_issue='ChannelIssue', comment_type='action'))
-        # self.main_frame['list'].delete(0, END)
         dlb_list.clear_list()
-        #
-        # self.pack_element(self.main_frame['list'], side=TOP, remove_previous=True)
-        # self.pack_element(self.main_frame['text'], side=BOTTOM, remove_previous=False)
         self.pack_element(dlb_list)
 
         issue_dict = self.curr_bids.issues[issue_key]
@@ -409,7 +415,7 @@ class BidsManager(Frame):
         line_mapping = []
         if issue_key == bids.Issue.keylist[1]:
             for issue in issue_dict:
-                for mismatch_el in issue['MismatchedElectrodes']:
+                for mismatch_el in issue.list_mismatched_electrodes():
                     issue_list2write.append('In file ' + os.path.basename(issue['fileLoc']) + ' of subject ' +
                                             issue['sub'] + ', ' + mismatch_el +
                                             ' does not match electrodes.tsv reference.')
@@ -566,14 +572,11 @@ class IssueList(DoubleListbox):
     validating, saving or deleting the actions chosen by the user related to the issues in the right-hand side list"""
     button_size = [2, 10]
 
-    def __init__(self, master, cmd_apply, cmd_save, cmd_delete):
+    def __init__(self, master, cmd_apply, cmd_delete):
         super().__init__(master)
         self.user_choice = None
         self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
                                         height=self.button_size[0], width=self.button_size[1])
-
-        self.elements['save'] = Button(master=master, text='Save', command=cmd_save, height=self.button_size[0],
-                                       width=self.button_size[1])
 
         self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0],
                                          width=self.button_size[1], default=ACTIVE)
@@ -581,7 +584,6 @@ class IssueList(DoubleListbox):
     def pack_elements(self):
         super().pack_elements()
         self.elements['apply'].pack(side=TOP, expand=1, padx=10, pady=5)
-        self.elements['save'].pack(side=TOP, expand=1, padx=10, pady=5)
         self.elements['delete'].pack(side=TOP, expand=1, padx=10, pady=5)
 
 
@@ -753,29 +755,29 @@ class CommentDialog(TemplateDialog):
         self.read_comment_area = DisplayText(master=parent, height=20, width=100)
         self.read_comment_area.update_text(self.previous_comment)
         self.add_comment_area = DefaultText(master=parent, height=10, width=100)
-        self.add_comment_btn = Button(parent, text='Add comment', command=self.add_new_comment,
-                                      height=self.button_size[0], width=self.button_size[1])
 
         Label(parent, text='Previous comment(s)').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
 
-        self.read_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP,)
+        self.read_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP)
         Label(parent, text='Add new comment').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
-        self.add_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP,)
+        self.add_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP)
 
-        self.add_comment_btn.pack(side=TOP, fill=X, expand=1, padx=10, pady=5)
         # add the default ok and cancel button
         self.ok_cancel_button(parent)
 
-    def add_new_comment(self):
-        new_comment = self.add_comment_area.get(1.0, END)
-        if new_comment:
-            if not self.results:
-                self.results = []
-            self.results.append(new_comment)
-            self.add_comment_area.clear_text()
-            self.read_comment_area.update_text(new_comment, delete_flag=False)
+    # def add_new_comment(self):
+    #     new_comment = self.add_comment_area.get(1.0, END)
+    #     if new_comment:
+    #         if not self.results:
+    #             self.results = []
+    #         self.results.append(new_comment)
+    #         self.add_comment_area.clear_text()
+    #         self.read_comment_area.update_text(new_comment, delete_flag=False)
 
     def ok(self, event=None):
+        new_comment = self.add_comment_area.get(1.0, END)
+        if new_comment:
+            self.results = new_comment
         self.destroy()
 
 
