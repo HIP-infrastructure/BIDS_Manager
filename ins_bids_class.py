@@ -434,9 +434,14 @@ class BidsBrick(dict):
             else:
                 self[key] = input_dict[key]
 
-    def get_modality_sidecars(self):
-        sidecar_dict = {key: self[key] for _, key in enumerate(self.keys()) if key in
-                        BidsSidecar.get_list_subclasses_names()}
+    def get_modality_sidecars(self, cls=None):
+        if cls is None:
+            sidecar_dict = {key: self[key] for key in self if key in BidsSidecar.get_list_subclasses_names()}
+        elif issubclass(cls, BidsSidecar):
+            sidecar_dict = {key: self[key] for key in self if key in cls.get_list_subclasses_names()}
+        else:
+            sidecar_dict = []
+            print('Class input is not a subclass of BidsSidecars!')
         return sidecar_dict
 
     def extract_sidecares_from_sourcedata(self):
@@ -644,7 +649,7 @@ class BidsBrick(dict):
                                 self.write_log(str_issue)
                                 filepath = mod.create_filename_from_attributes()
 
-                                self.issues.add_issue('ChannelIssue', sub=sub,
+                                self.issues.add_issue('ElectrodeIssue', sub=sub,
                                                       fileLoc=os.path.join(filepath[1], filepath[0]+filepath[2]),
                                                       RefElectrodes=ref_elec, MismatchedElectrodes=miss_matching_elec,
                                                       mod=bidsintegrity_key[0])
@@ -718,6 +723,17 @@ class BidsBrick(dict):
                 shutil.move(os.path.join(Data2Import.dirname, fname),
                             os.path.join(BidsDataset.dirname, dirname, fname))
         return list_filename
+
+    def difference(self, brick2compare):
+        """ different compare two BidsBricks from the same type and returns a dictionary of the key and values of the
+        brick2compare that are different from self. /!\ this operation is NOT commutative"""
+        if type(self) is type(brick2compare):
+            return {key: brick2compare[key] for key in self if not self[key] == brick2compare[key]}
+        else:
+            err_str = 'The type of the two instance to compare are different (' + self.classname() + ', '\
+                      + type(brick2compare).__name__ + ')'
+            self.write_log(err_str)
+            return
 
     @classmethod
     def clear_log(cls):
@@ -1070,6 +1086,16 @@ class EventsTSV(BidsTSV):
     modality_field = 'events'
 
 
+class ChannelsTSV(BidsTSV):
+    """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
+    frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
+
+    header = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
+              'description', 'status', 'status_description', 'software_filters']
+    required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
+    modality_field = 'channels'
+
+
 class GlobalSidecars(BidsBrick):
     keylist = BidsBrick.keylist + ['ses', 'space', 'modality', 'fileLoc']
     complementary_keylist = []
@@ -1124,7 +1150,7 @@ class Requirements(dict):
     def __init__(self, full_filename):
 
         if full_filename:
-            self['Requirements'] = []
+            self['Requirements'] = dict()
             with open(full_filename, 'r') as file:
                 json_dict = json.load(file)
                 if 'Requirements' in json_dict.keys():
@@ -1170,7 +1196,7 @@ class IeegJSON(BidsJSON):
         super().__init__(keylist=IeegJSON.keylist, required_keys=IeegJSON.required_keys, modality_field=modality_field)
 
 
-class IeegChannelsTSV(BidsTSV):
+class IeegChannelsTSV(ChannelsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
     frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
 
@@ -2210,26 +2236,66 @@ class BidsDataset(MetaBrick):
         super().save_as_json(savedir=save_parsing_path, file_start='parsing', write_date=True, compress=True)
         self.issues.save_as_json()
 
-    def apply_issues(self):
+    def apply_actions(self):
 
         def modify_electrodes_files(ch_issue):
-            def change_electrode(modality, issue, **kwargs):
-                print(kwargs)
-                pass
+            def change_electrode(**kwargs):
+                type_bln = False
+                name_bln = False
+                if 'type' in kwargs.keys():  # have to change the electrode type
+                    type_bln = True
+                    input_key = 'type'
+                if 'name' in kwargs.keys():  # have to change the electrode name
+                    name_bln = True
+                    input_key = 'name'
+                if type_bln ^ name_bln:
+                    #  XOR only one of them is true, cannot change both type and name!
+                    sidecar = modality.get_modality_sidecars(BidsTSV)
+                    mod_fname, dirname, ext = modality.create_filename_from_attributes()
+                    # /!\ first change the name in .vhdr and .vmrk because those are ot read during check requirements!
+                    if name_bln:
+                        pass
+                    for key in sidecar:
+                        if type_bln and all(wrd in sidecar[key].header for wrd in ['type', 'group']):
+                            idx_group = sidecar[key].header.index('group')
+                            idx_type = sidecar[key].header.index('type')
+                            """ replace current type by the new one for all channels from same electrode"""
+                            [line[idx_type].replace(line[idx_type], kwargs['type'])
+                             for line in sidecar[key][1:] if line[idx_group] == action['name']]
 
-            if not ch_issue['Action']:
-                return
+                        elif name_bln and all(wrd in sidecar[key].header for wrd in ['name', 'group']):
+                            idx_group = sidecar[key].header.index('group')
+                            idx_name = sidecar[key].header.index('name')
+                            """ replace current group by the new one for all channel from same electrode and rename 
+                            the channel accordingly"""
+                            [(line[idx_group].replace(line[idx_group], kwargs['name']),
+                              line[idx_name].replace(line[idx_group], kwargs['name']))
+                             for line in sidecar[key][1:] if line[idx_group] == action['name']]
+                        else:
+                            continue
+                        # fname2bewritten = os.path.join(BidsDataset.dirname, dirname,
+                        #                                mod_fname + sidecar[key].extension)
+                        # sidecar[key].write_file(fname2bewritten)
+                        modality.write_log('Change electrode type of ' + action['name'] +
+                                           ' to EOG in the ' + mod_fname + sidecar[key].extension + '.')
+                else:
+                    err_str = 'One cannot modify the name and the type of the electrode at the same time'
+                    ch_issue.write_log(err_str)
+
             modality = self.get_object_from_filename(ch_issue['fileLoc'])
             if not modality:  # no need to update the log since get_object_from_filename does it
                 return
             for action in ch_issue['Action']:
-                eval('change_electrode(modality,ch_issue, ' + action['command'] + ')')
+                eval('change_electrode(action, ' + action['command'] + ')')
                 pass
 
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)
-        for chan_issues in self.issues['ChannelIssue']:
+        for chan_issues in self.issues['ElectrodeIssue']:
+            if not chan_issues['Action']:
+                continue
             modify_electrodes_files(chan_issues)
+            issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(chan_issues))
 
     def get_object_from_filename(self, filename):
         if isinstance(filename, str):
@@ -2309,7 +2375,7 @@ class IssueType(BidsBrick):
     def add_comment(self,  desc, elec_name=None):
 
         """verify that the given electrode name is part of the mismatched electrodes"""
-        if isinstance(self, ChannelIssue) and elec_name not in self.list_mismatched_electrodes():
+        if isinstance(self, ElectrodeIssue) and elec_name not in self.list_mismatched_electrodes():
             print(elec_name + ' does not belong to the current mismatched electrode.')
             return
 
@@ -2320,7 +2386,7 @@ class IssueType(BidsBrick):
         self['Comment'] = comment
 
 
-class ChannelIssue(IssueType):
+class ElectrodeIssue(IssueType):
     keylist = BidsBrick.keylist + ['mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'Comment', 'Action']
     required_keys = BidsBrick.keylist + ['RefElectrodes', 'MismatchedElectrodes', 'fileLoc']
 
@@ -2399,7 +2465,7 @@ class ImportIssue(IssueType):
 
 
 class Issue(BidsBrick):
-    keylist = ['ImportIssue', 'ChannelIssue']
+    keylist = ['ImportIssue', 'ElectrodeIssue']
 
     def check_with_latest_issue(self):
 
@@ -2480,7 +2546,7 @@ class Issue(BidsBrick):
         # key used by kwarg:
         # ['sub', 'mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'brick', 'description']
         if issue_type == self.keylist[1]:
-            issue = ChannelIssue()
+            issue = ElectrodeIssue()
             for key in kwargs:
                 if key in issue.keylist:
                     if key == 'MismatchedElectrodes':
@@ -2511,8 +2577,7 @@ class Issue(BidsBrick):
 
         # check if the same issue is already in the Issue brick by testing all the keys except Comment and Action
         for prev_issue in self[issue_type]:
-            kl = [key for key in prev_issue if key not in ['Comment', 'Action'] and prev_issue[key] == issue[key]]
-            if len(kl) == len(issue.keylist)-2:
+            if all(prev_issue[key] == issue[key] for key in prev_issue if key not in ['Comment', 'Action']):
                 return
 
         # before adding the issue test whether it has all needed attributes
@@ -2532,7 +2597,7 @@ class Issue(BidsBrick):
         # need a copy because we cannot loop over a list and pop its content at the same time
         for key in self:
             if isinstance(brick2remove, Subject):
-                if key == 'ChannelIssue':
+                if key == 'ElectrodeIssue':
                     for issue in self[key]:
                         if issue['sub'] == brick2remove['sub']:
                             new_issue[key].pop(new_issue[key].index(issue))
@@ -2544,7 +2609,7 @@ class Issue(BidsBrick):
                                 new_issue[key].pop(new_issue[key].index(issue))
                                 break  # only one element is not empty, break when found
             elif isinstance(brick2remove, Electrophy):
-                if key == 'ChannelIssue':
+                if key == 'ElectrodeIssue':
                     for issue in self[key]:
                         if issue['fileLoc'] == brick2remove['fileLoc']:
                             new_issue[key].pop(new_issue[key].index(issue))
