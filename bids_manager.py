@@ -96,7 +96,7 @@ class BidsManager(Frame):
 
     def apply_actions(self):
         print('actions applied (To be implemented!)')
-        self.curr_bids.apply_issues()
+        self.curr_bids.apply_actions()
 
     def delete_actions(self):
         flag = messagebox.askyesno('DELETE All Actions', 'Are you sure you want to DELETE all planned actions?')
@@ -268,7 +268,7 @@ class BidsManager(Frame):
 
         idx = info['index']
         mismtch_elec = info['Element']
-        curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
+        curr_dict = self.curr_bids.issues['ElectrodeIssue'][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
         results = ListDialog(self.master, curr_dict['RefElectrodes'], 'Rename ' + mismtch_elec + ' as :').apply()
@@ -285,7 +285,7 @@ class BidsManager(Frame):
         idx = info['index']
         mismtch_elec = info['Element']
 
-        curr_dict = self.curr_bids.issues['ChannelIssue'][idx]
+        curr_dict = self.curr_bids.issues['ElectrodeIssue'][idx]
         input_dict = {'type': mism_elec['type'] for mism_elec in curr_dict['MismatchedElectrodes']
                       if mism_elec['name'] == mismtch_elec}
         opt_dict = {'type': bids.Electrophy.channel_type}
@@ -295,13 +295,14 @@ class BidsManager(Frame):
         #                            mismtch_elec + '?')
         output_dict = FormDialog(self, input_dict, title='Modify electrode type of ' + mismtch_elec + ' into:',
                                  options=opt_dict, required_keys=input_dict).apply()
-        if output_dict:
-            str_info = 'Change electrode type of  ' + mismtch_elec + ' from ' + input_dict['type'] + ' to ' + \
+        if output_dict and not output_dict['type'] == input_dict['type']:
+            str_info = 'Change electrode type of ' + mismtch_elec + ' from ' + input_dict['type'] + ' to ' + \
                        output_dict['type'] + ' in the electrode file related to ' + \
                        os.path.basename(curr_dict['fileLoc']) + '.\n'
             # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
-            curr_dict.add_action(mismtch_elec, str_info, 'type="{}"'.format(output_dict['type']))
-            # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ChannelIssue',
+            command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
+            curr_dict.add_action(mismtch_elec, str_info, command)
+            # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ElectrodeIssue',
             #                                                                  comment_type='action'))
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
@@ -326,7 +327,7 @@ class BidsManager(Frame):
         curr_dict = self.curr_bids.issues[issue_key][idx]
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
-        if issue_key == 'ChannelIssue':
+        if issue_key == 'ElectrodeIssue':
             for action in curr_dict['Action']:
                 if action['name'] == mismtch_elec:
                     curr_dict['Action'].pop(curr_dict['Action'].index(action))
@@ -339,7 +340,7 @@ class BidsManager(Frame):
         self.curr_bids.issues.save_as_json()
 
     def open_file(self, issue_key, list_idx, info):
-        if issue_key == 'ChannelIssue':
+        if issue_key == 'ElectrodeIssue':
             curr_iss = self.curr_bids.issues[issue_key][info['index']]
             os.startfile(os.path.join(self.curr_bids.dirname, curr_iss['fileLoc']))
         else:
@@ -355,7 +356,7 @@ class BidsManager(Frame):
 
             pop_menu = Menu(self.master, tearoff=0)
 
-            if iss_key == 'ChannelIssue':
+            if iss_key == 'ElectrodeIssue':
                 pop_menu.add_command(label='Open file',
                                      command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))
                 pop_menu.add_command(label='Change electrode name',
