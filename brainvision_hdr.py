@@ -51,7 +51,6 @@ class BrainvisionHeader(object):
         ' ab cdef'
 
 
-
 if __name__ == '__main__':
     bv_path = 'D:/roehri/BIDs/2048/sub-PaiJul/ses-01/ieeg/sub-PaiJul_ses-01_task-seizure_run-01_ieeg.vhdr'
     bv_hdr = BrainvisionHeader()
