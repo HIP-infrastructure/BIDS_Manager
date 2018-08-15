@@ -12,6 +12,7 @@ from builtins import str
 from future import standard_library
 import os
 import json
+import brainvision_hdr as bv_hdr
 from datetime import datetime
 import pprint
 import gzip
@@ -778,6 +779,7 @@ class BidsSidecar(object):
     inheritance = True
     modality_field = []
     allowed_modalities = []
+    keylist = []
     required_keys = []
 
     def __init__(self, modality_field=None):
@@ -875,7 +877,7 @@ class BidsFreeFile(BidsSidecar, list):
 
     def write_file(self, freefilename):
         with open(os.path.join(freefilename), 'w') as file:
-            for _, line in enumerate(self):
+            for line in self:
                 file.write(line + '\n')
 
 
@@ -2239,7 +2241,7 @@ class BidsDataset(MetaBrick):
     def apply_actions(self):
 
         def modify_electrodes_files(ch_issue):
-            def change_electrode(**kwargs):
+            def change_electrode(**kwargs):  # appears unused because it is called from eval()
                 type_bln = False
                 name_bln = False
                 if 'type' in kwargs.keys():  # have to change the electrode type
@@ -2254,7 +2256,9 @@ class BidsDataset(MetaBrick):
                     mod_fname, dirname, ext = modality.create_filename_from_attributes()
                     # /!\ first change the name in .vhdr and .vmrk because those are ot read during check requirements!
                     if name_bln:
-                        pass
+                        hdr = bv_hdr.BrainvisionHeader(os.path.join(self.dirname, dirname, mod_fname + ext))
+                        hdr.modify_header(action['name'], kwargs['name'])
+                        hdr.write_header()
                     for key in sidecar:
                         if type_bln and all(wrd in sidecar[key].header for wrd in ['type', 'group']):
                             idx_group = sidecar[key].header.index('group')
@@ -2273,9 +2277,9 @@ class BidsDataset(MetaBrick):
                              for line in sidecar[key][1:] if line[idx_group] == action['name']]
                         else:
                             continue
-                        # fname2bewritten = os.path.join(BidsDataset.dirname, dirname,
-                        #                                mod_fname + sidecar[key].extension)
-                        # sidecar[key].write_file(fname2bewritten)
+                        fname2bewritten = os.path.join(BidsDataset.dirname, dirname,
+                                                       mod_fname + sidecar[key].extension)
+                        sidecar[key].write_file(fname2bewritten)
                         modality.write_log('Change electrode type of ' + action['name'] +
                                            ' to EOG in the ' + mod_fname + sidecar[key].extension + '.')
                 else:
@@ -2286,16 +2290,23 @@ class BidsDataset(MetaBrick):
             if not modality:  # no need to update the log since get_object_from_filename does it
                 return
             for action in ch_issue['Action']:
-                eval('change_electrode(action, ' + action['command'] + ')')
+                eval('change_electrode(' + action['command'] + ')')
                 pass
 
-        issues_copy = Issue()
-        issues_copy.copy_values(self.issues)
-        for chan_issues in self.issues['ElectrodeIssue']:
-            if not chan_issues['Action']:
-                continue
-            modify_electrodes_files(chan_issues)
-            issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(chan_issues))
+        # issues_copy = Issue()
+        # issues_copy.copy_values(self.issues)
+        try:
+            self.write_log(10 * '=' + '\nApplying actions\n' + 10 * '=')
+            for chan_issues in self.issues['ElectrodeIssue']:
+                if not chan_issues['Action']:
+                    continue
+                modify_electrodes_files(chan_issues)
+                # issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(chan_issues))
+                # issues_copy.save_as_json()
+        except Exception as ex:
+            self.write_log(str(ex))
+        self.issues['ElectrodeIssue'] = []
+        self.check_requirements()
 
     def get_object_from_filename(self, filename):
         if isinstance(filename, str):
@@ -2632,3 +2643,23 @@ class Issue(BidsBrick):
     def empty_dict():
         keylist = ['sub', 'mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'brick', 'description']
         return {key: None for key in keylist}
+
+
+def subclasses_tree(brick_class, nb_space=0):
+    if nb_space:
+        tree_str = '|--'
+    else:
+        tree_str = ''
+    sub_classes_tree = nb_space * ' ' + tree_str + brick_class.__name__ + str(brick_class.keylist) + '\n'
+    nb_space += 2
+    for subcls in brick_class.__subclasses__():
+        sub_classes_tree += subclasses_tree(subcls, nb_space=nb_space)
+    return sub_classes_tree
+
+
+if __name__ == '__main__':
+    tree_str = subclasses_tree(BidsBrick)
+    print(tree_str)
+    tree_str = subclasses_tree(BidsSidecar)
+    print(tree_str)
+    pass
