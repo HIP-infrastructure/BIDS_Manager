@@ -97,6 +97,7 @@ class BidsManager(Frame):
     def apply_actions(self):
         print('actions applied (To be implemented!)')
         self.curr_bids.apply_actions()
+        self.update_text(self.curr_bids)
 
     def delete_actions(self):
         flag = messagebox.askyesno('DELETE All Actions', 'Are you sure you want to DELETE all planned actions?')
