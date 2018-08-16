@@ -163,6 +163,7 @@ class BidsManager(Frame):
 
         if not bids_dir:
             return
+        self.pack_element(self.main_frame['text'])
         if self.curr_bids:
             self.curr_bids = None
         if isnew_dir:
@@ -200,6 +201,9 @@ class BidsManager(Frame):
             else:
                 self.change_menu_state(self.uploader_menu, state=DISABLED)
                 self.change_menu_state(self.issue_menu, state=DISABLED)
+                self.update_text('Error: No ' + bids.DatasetDescJSON.filename + ' was found. Please set a correct ' +
+                                 'path to a BIDS directory or create a new one.')
+                return
 
         # enable all bids sub-menu
         self.change_menu_state(self.bids_menu)
@@ -213,7 +217,6 @@ class BidsManager(Frame):
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
         self.info_label.set('Current BIDS directory: ' + bids_dir)
-        self.pack_element(self.main_frame['text'])
         self.update_text(self.curr_bids.curr_log)
 
     def ask4upload_dir(self):
@@ -253,31 +256,48 @@ class BidsManager(Frame):
             self.update_text('Source Data Track does not exist')
 
     def do_not_import(self, list_idx, info):
-        pass
+        flag = messagebox.askyesno('Do Not Import', 'Are you sure that you do not want to import this element' +
+                                   str(info['Element'].get_attributes()) + '?')
+        if flag:
+            issue_list = self.main_frame['double_list'].elements['list1']
+            action_list = self.main_frame['double_list'].elements['list2']
+            idx = info['index']
+            curr_dict = self.curr_bids.issues['ImportIssue'][idx]
+            cmd = 'pop=True'
+            curr_dict.add_action(desc='Remove from element to import.', command=cmd)
+            action_list.delete(list_idx)
+            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
+            issue_list.itemconfig(list_idx, foreground='green')
+            self.curr_bids.issues.save_as_json()
 
     def modify_attributes(self, list_idx, info, in_bids=False):
-        bids_dict = None
         if isinstance(info['Element'], bids.DatasetDescJSON):
-            bids_dict = self.curr_bids['DatasetDescJSON']
+            bids_dict = type(info['Element'])()
+            bids_dict.copy_values(self.curr_bids['DatasetDescJSON'])
+            imp_dict = info['Element']
         elif isinstance(info['Element'], bids.BidsBrick):
             self.curr_bids.is_subject_present(info['Element']['sub'])
             if isinstance(info['Element'], bids.Subject):
-                bids_dict = self.curr_bids.curr_sub['Subject'].get_attributes(['alias', 'upload_date'])
+                bids_dict = self.curr_bids.curr_subject['Subject'].get_attributes(['alias', 'upload_date'])
             else:
-                pass
+                bids_dict = self.curr_bids.get_object_from_filename(info['Element']['fileLoc ']).\
+                    get_attributes('fileLoc')
+            imp_dict = info['Element'].get_attributes(['alias', 'upload_date', 'fileLoc'])
+        else:
+            return
 
         if in_bids:
-            input_dit = bids_dict
-            option_dict = info['Element'].get_attributes(['alias', 'upload_date', 'fileLoc'])
+            input_dict = bids_dict
+            option_dict = imp_dict
         else:
-            input_dit = info['Element'].get_attributes(['alias', 'upload_date', 'fileLoc'])
+            input_dict = imp_dict
             option_dict = bids_dict
-            if bids_dict and 'ses' in input_dit.keys():
-                _, ses_list = self.curr_bids.get_number_of_session4subject(input_dit['sub'])
+            if bids_dict and 'ses' in input_dict.keys():
+                _, ses_list = self.curr_bids.get_number_of_session4subject(input_dict['sub'])
                 option_dict['ses'] = ses_list
-        output_dict = FormDialog(self, input_dit, options=option_dict,
+        output_dict = FormDialog(self, input_dict, options=option_dict,
                                  required_keys=info['Element'].required_keys).apply()
-        if output_dict:
+        if output_dict and not output_dict == input_dict:
             issue_list = self.main_frame['double_list'].elements['list1']
             action_list = self.main_frame['double_list'].elements['list2']
             idx = info['index']
@@ -286,7 +306,12 @@ class BidsManager(Frame):
                 dir_str = ' in BIDS dir'
             else:
                 dir_str = ' in import dir'
-            curr_dict.add_action(desc='Modify attrib. into ' + str(output_dict) + dir_str, command='To be defined')
+            input_brick = type(info['Element'])()
+            input_brick.copy_values(input_dict)
+            output_brick = type(info['Element'])()
+            output_brick.copy_values(output_dict)
+            cmd = input_brick.write_command(output_brick, {'in_bids': in_bids})
+            curr_dict.add_action(desc='Modify attrib. into ' + str(output_dict) + dir_str, command=cmd)
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
@@ -415,10 +440,10 @@ class BidsManager(Frame):
                         """
                         pop_menu.add_command(label='Change subject\'s attribute in ' + bids.Data2Import.filename,
                                              command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
-                                                                                    in_bids=True))
+                                                                                    in_bids=False))
                         pop_menu.add_command(label='Change subject\'s attribute in ' + bids.ParticipantsTSV.filename,
                                              command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
-                                                                                    in_bids=False))
+                                                                                    in_bids=True))
                     else:
                         """if issue arise from a modality, it means that the attributes of the modality are incomplete
                         or wrong and has to be changed according to the description or the file remove from the list of
@@ -467,12 +492,7 @@ class BidsManager(Frame):
         elif issue_key == bids.Issue.keylist[0]:
             label_str = ' importation issue '
             for issue in issue_dict:
-                element = None
-                for key in issue:
-                    if issue[key] and \
-                            key in bids.ModalityType.get_list_subclasses_names() + ['Subject', 'DatasetDescJSON']:
-                        element = issue[key][0]
-                        break
+                element = issue.get_element()
                 if not element:
                     continue
                 line_mapping.append({'index': issue_dict.index(issue), 'Element': element,
