@@ -43,7 +43,7 @@ class BidsManager(Frame):
         bids_menu.add_command(label='Show participants.tsv', state=DISABLED)
         bids_menu.add_command(label='Show source_data_trace.tsv', state=DISABLED)
         # fill up the upload/import menu
-        uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir)
+        uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
         issue_menu.add_command(label='Solve importation issues',
@@ -144,7 +144,9 @@ class BidsManager(Frame):
                     input_dict.write_file()
 
     @staticmethod
-    def enable_menu(menu, start_idx=0, end_idx=None):
+    def change_menu_state(menu, start_idx=0, end_idx=None, state=None):
+        if state is None or state not in [NORMAL, DISABLED]:
+            state = NORMAL
         if not end_idx:
             end_idx = menu.index(END)
         if end_idx > menu.index(END):
@@ -152,16 +154,17 @@ class BidsManager(Frame):
         if start_idx > end_idx:
             raise IndexError('Start index greater than the end index (' + str(start_idx) + '>' + str(end_idx) + ').')
         for i in range(start_idx, end_idx+1):
-            menu.entryconfigure(i, state=NORMAL)
+            menu.entryconfigure(i, state=state)
 
     def ask4bidsdir(self, isnew_dir=False):
+        """Either set (isnew_dir = False) or create Bids directory (isnew_dir=True)"""
         bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
                                            initialdir=BidsManager.bids_startfile)
 
         if not bids_dir:
             return
         if self.curr_bids:
-            self.curr_bids.clear()
+            self.curr_bids = None
         if isnew_dir:
             error_str = ''
             if os.listdir(bids_dir):
@@ -181,22 +184,32 @@ class BidsManager(Frame):
                 self.curr_bids['DatasetDescJSON'].write_file()
             else:
                 messagebox.showerror('Error', error_str)
+                self.upload_dir = None
+                self.curr_data2import = None
+                self.change_menu_state(self.uploader_menu, state=DISABLED)
+                self.change_menu_state(self.issue_menu, state=DISABLED)
                 return
         else:
-            self.info_label._default = 'Current BIDS directory: ' + bids_dir
-            self.info_label.set(self.info_label._default)
-            self.update()
-            self.curr_bids = bids.BidsDataset(bids_dir)
+            self.upload_dir = None
+            self.curr_data2import = None
+            if os.path.isfile(os.path.join(bids_dir, bids.DatasetDescJSON.filename)):
+                self.info_label._default = 'Current BIDS directory: ' + bids_dir
+                self.info_label.set(self.info_label._default)
+                self.update()
+                self.curr_bids = bids.BidsDataset(bids_dir)
+            else:
+                self.change_menu_state(self.uploader_menu, state=DISABLED)
+                self.change_menu_state(self.issue_menu, state=DISABLED)
 
         # enable all bids sub-menu
-        self.enable_menu(self.bids_menu)
+        self.change_menu_state(self.bids_menu)
         self.bids_menu.entryconfigure(2, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
         self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['ParticipantsTSV']))
         if self.curr_bids['SourceData'] and self.curr_bids['SourceData'][-1]['SrcDataTrack']:
             self.bids_menu.entryconfigure(4, command=lambda: self.show_bids_desc(
                 self.curr_bids['SourceData'][-1]['SrcDataTrack']), state=NORMAL)
         # enable all issue sub-menu
-        self.enable_menu(self.issue_menu)
+        self.change_menu_state(self.issue_menu)
         self.info_label.set('Current BIDS directory: ' + bids_dir)
         self.pack_element(self.main_frame['text'])
         self.update_text(self.curr_bids.curr_log)
@@ -208,9 +221,20 @@ class BidsManager(Frame):
         if not self.upload_dir:
             return
         try:
-            self.curr_data2import = bids.Data2Import(self.upload_dir)
-            self.enable_menu(self.uploader_menu)
-            self.update_text(self.curr_data2import.curr_log)
+            if os.path.isfile(os.path.join(self.upload_dir, bids.Data2Import.filename)):
+                self.curr_data2import = bids.Data2Import(self.upload_dir)
+                if self.curr_data2import.is_empty():
+                    self.update_text('There is no file to import in ' + self.upload_dir)
+                    self.upload_dir = None
+                    self.curr_data2import = None
+                else:
+                    self.change_menu_state(self.uploader_menu)
+                    self.update_text(self.curr_data2import.curr_log)
+            else:
+                self.update_text('Error: data2import.json not found in ' + self.upload_dir)
+                self.upload_dir = None
+                self.curr_data2import = None
+                self.change_menu_state(self.uploader_menu, state=DISABLED, start_idx=1)
 
         except Exception as err:
             self.update_text(str(err))
@@ -460,6 +484,7 @@ class BidsManager(Frame):
                     action_list2write.append('')
         else:
             messagebox.showerror('Unknown issue', 'This issue is currently not recognize')
+            return
 
         self.populate_list(dlb_list.elements['list1'], issue_list2write)
 
@@ -511,8 +536,13 @@ class BidsManager(Frame):
     def import_data(self):
         self.pack_element(self.main_frame['text'])
         try:
-            self.curr_bids.import_data(self.curr_data2import)
-            self.update_text(self.curr_bids.curr_log)
+            if self.curr_data2import:
+                self.curr_bids.import_data(self.curr_data2import)
+                self.update_text(self.curr_bids.curr_log)
+            else:
+                self.update_text('No upload directory is set.')
+                self.change_menu_state(start_idx=1, state=DISABLED)
+
         except Exception as err:
             self.update_text(self.curr_bids.curr_log + str(err))
 
