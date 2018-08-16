@@ -97,7 +97,8 @@ class BidsManager(Frame):
     def apply_actions(self):
         print('actions applied (To be implemented!)')
         self.curr_bids.apply_actions()
-        self.update_text(self.curr_bids)
+        self.update_text(self.curr_bids.curr_log)
+        self.pack_element(self.main_frame['text'])
 
     def delete_actions(self):
         flag = messagebox.askyesno('DELETE All Actions', 'Are you sure you want to DELETE all planned actions?')
@@ -182,7 +183,7 @@ class BidsManager(Frame):
                 messagebox.showerror('Error', error_str)
                 return
         else:
-            self.info_label._default = 'Parsing BIDS directory: ' + bids_dir
+            self.info_label._default = 'Current BIDS directory: ' + bids_dir
             self.info_label.set(self.info_label._default)
             self.update()
             self.curr_bids = bids.BidsDataset(bids_dir)
@@ -416,6 +417,7 @@ class BidsManager(Frame):
         action_list2write = []
         line_mapping = []
         if issue_key == bids.Issue.keylist[1]:
+            label_str = ' electrode issue '
             for issue in issue_dict:
                 for mismatch_el in issue.list_mismatched_electrodes():
                     issue_list2write.append('In file ' + os.path.basename(issue['fileLoc']) + ' of subject ' +
@@ -434,6 +436,7 @@ class BidsManager(Frame):
                     else:
                         action_list2write.append('')
         elif issue_key == bids.Issue.keylist[0]:
+            label_str = ' importation issue '
             for issue in issue_dict:
                 element = None
                 for key in issue:
@@ -467,10 +470,7 @@ class BidsManager(Frame):
                 dlb_list.elements['list1'].itemconfig(cnt, foreground='green')
 
         self.populate_list(dlb_list.elements['list2'], action_list2write)
-
-        self.info_label.set(self.info_label._default + '\nSelect issue from list')
-        # self.main_frame['list'].bind('<Double-Button-1>', lambda event: whatto2menu(line_mapping, event))
-        # self.main_frame['list'].bind('<Return>', lambda event: whatto2menu(line_mapping, event))
+        self.info_label.set(self.info_label._default + '\nSelect issue from the ' + label_str + 'list')
         dlb_list.elements['list1'].bind('<Double-Button-1>',
                                         lambda event: whatto2menu(issue_key, dlb_list, line_mapping, event))
         dlb_list.elements['list1'].bind('<Return>', lambda event: whatto2menu(issue_key, dlb_list, line_mapping, event))
