@@ -743,7 +743,17 @@ class BidsBrick(dict):
             err_str = 'The type of the two instance to compare are different (' + self.classname() + ', '\
                       + type(brick2compare).__name__ + ')'
             self.write_log(err_str)
-            return
+            raise TypeError(err_str)
+
+    def write_command(self, brick2compare, added_info=None):
+        if added_info and not isinstance(added_info, dict):
+            print('added_info should be a dict. Set to None.')
+            added_info = None
+        diff = self.difference(brick2compare)
+        cmd_str = ', '.join([str(k + '="' + diff[k] + '"') for k in diff])
+        if added_info:
+            cmd_str += ',' + ', '.join([str(k + '="' + str(added_info[k]) + '"') for k in added_info])
+        return cmd_str
 
     @classmethod
     def clear_log(cls):
@@ -873,6 +883,9 @@ class BidsSidecar(object):
                     self.is_complete = False
         self.is_complete = True
 
+    def classname(self):
+        return self.__class__.__name__
+
     @classmethod
     def get_list_subclasses_names(cls):
         sub_classes_names = []
@@ -915,32 +928,26 @@ class BidsJSON(BidsSidecar, dict):
         for item in self.keylist:
             self[item] = BidsJSON.bids_default_unknown
 
-    # def has_all_req_attributes(self):  # check if the required attributes are not empty
-    #     if self.required_keys:
-    #         for key in self.required_keys:
-    #             if key not in self or self[key] == BidsJSON.bids_default_unknown:
-    #                 self.is_complete = False
-    #     self.is_complete = True
+    def difference(self, brick2compare):
+        """ different compare two BidsBricks from the same type and returns a dictionary of the key and values of the
+        brick2compare that are different from self. /!\ this operation is NOT commutative"""
+        if type(self) is type(brick2compare):
+            return {key: brick2compare[key] for key in self if not self[key] == brick2compare[key]}
+        else:
+            err_str = 'The type of the two instance to compare are different (' + self.classname() + ', '\
+                      + type(brick2compare).__name__ + ')'
+            self.write_log(err_str)
+            raise TypeError(err_str)
 
-    # def simplify_sidecar(self, required_only=True):
-    #     list_key2del = []
-    #     for key in self:
-    #         if (self[key] == BidsJSON.bids_default_unknown and key not in self.required_keys) or \
-    #                 (required_only and key not in self.required_keys):
-    #             list_key2del.append(key)
-    #     for key in list_key2del:
-    #         del(self[key])
-        # for k in list_key_del:
-        #     del()
-
-    # def read_file(self, filename):
-    #     if os.path.isfile(filename):
-    #         if os.path.splitext(filename)[1] == '.json':
-    #             read_json = json.load(open(filename))
-    #             for key in read_json:
-    #                 if (key in self.keylist and self[key] == BidsJSON.bids_default_unknown) or \
-    #                         key not in self.keylist:
-    #                     self[key] = read_json[key]
+    def write_command(self, brick2compare, added_info=None):
+        if added_info and not isinstance(added_info, dict):
+            print('added_info should be a dict. Set to None.')
+            added_info = None
+        diff = self.difference(brick2compare)
+        cmd_str = ', '.join([str(k + '="' + diff[k] + '"') for k in diff])
+        if added_info:
+            cmd_str += ',' + ', '.join([str(k + '="' + str(added_info[k]) + '"') for k in added_info])
+        return cmd_str
 
     def write_file(self, jsonfilename):
         if os.path.splitext(jsonfilename)[1] == '.json':
@@ -1526,8 +1533,6 @@ class ParticipantsTSV(BidsTSV):
         super().read_file(tsv_full_filename)
 
     def is_subject_present(self, sub_id):
-        # if not sub_id.startswith('sub-'):
-        #     sub_id = 'sub-' + sub_id
         participant_idx = self.header.index('participant_id')
         sub_line = [line for line in self[1:] if sub_id in line[participant_idx]]
         sub_idx = None
@@ -1975,7 +1980,7 @@ class BidsDataset(MetaBrick):
                 error_str = 'At least one converter path in requirements.json is wrongly set'
                 self.issues.add_issue(issue_type='ImportIssue', description=error_str)
                 self.write_log(error_str)
-                raise FileNotFoundError(error_str)
+                return
 
             if not data2import['DatasetDescJSON']['Name'] == self['DatasetDescJSON']['Name']:
                 error_str = 'The data to be imported (' + data2import.dirname + ') belong to a different protocol (' \
@@ -1984,7 +1989,7 @@ class BidsDataset(MetaBrick):
                 self.issues.add_issue(issue_type='ImportIssue', brick=data2import['DatasetDescJSON'],
                                       description=error_str)
                 self.write_log(error_str)
-                raise KeyError(error_str)
+                return
 
             '''Here we copy the data2import dictionary to pop all the imported data in order to avoid importing
             the same data twice in case there is an error and we have to launch the import procedure on the same
@@ -2316,35 +2321,91 @@ class BidsDataset(MetaBrick):
                 eval('change_electrode(' + action['command'] + ')')
                 pass
 
+        def modify_files(**kwargs):
+
+            elmt_iss = issue.get_element()
+            if 'in_bids' in kwargs:
+                if kwargs['in_bids'] == 'False':
+                    kwargs['in_bids'] = False
+                    curr_brick = Data2Import(issue['path'])
+                    curr_brick.save_as_json(write_date=True)
+                    loc_str = ' in import dir. ' + issue['path'] + '.'
+                else:
+                    kwargs['in_bids'] = True
+                    curr_brick = self
+                    loc_str = ' in bids dir. ' + self.dirname + '.'
+            else:
+                err_str = 'No information about whether the change has to be made in bids or import directory.'
+                self.write_log(err_str)
+                return
+            if 'pop' in kwargs and kwargs['pop'] and not kwargs['in_bids']:
+                # if pop = True => not to import this element
+                if isinstance(elmt_iss, (ModalityType, GlobalSidecars)):
+                    idx = None
+                    for elmt in curr_brick[elmt_iss.classname()]:
+                        if elmt == elmt_iss:
+                            idx = curr_brick[elmt_iss.classname()].index(elmt)
+                            break
+                    curr_brick[elmt_iss.classname()].pop(idx)
+            elif isinstance(elmt_iss, DatasetDescJSON):
+                for key in kwargs:
+                    if key in curr_brick['DatasetDescJSON']:
+                        curr_brick['DatasetDescJSON'][key] = kwargs[key]
+                if kwargs['in_bids']:
+                    # special case here since need also write the change in bids directory
+                    curr_brick['DatasetDescJSON'].write_file()
+                self.write_log('Modification of ' + DatasetDescJSON.filename + loc_str)
+            elif isinstance(elmt_iss, Subject):
+                curr_brick.is_subject_present(elmt_iss['sub'])
+                curr_sub = curr_brick.curr_subject['Subject']
+                for key in kwargs:
+                    if key in curr_sub and key not in BidsBrick.get_list_subclasses_names() and not key == 'sub':
+                        curr_sub[key] = kwargs[key]
+                if kwargs['in_bids']:
+                    # special case here since need also to update the participants.tsv
+                    _, sub_info, idx = curr_brick['ParticipantsTSV'].is_subject_present(curr_sub['sub'])
+                    curr_brick['ParticipantsTSV'].pop(idx)
+                    sub_info.update({key: kwargs[key] for key in sub_info if key in kwargs})
+                    curr_brick['ParticipantsTSV'].append(sub_info)
+                    curr_brick['ParticipantsTSV'].write_file()
+            elif isinstance(elmt_iss, (ModalityType, GlobalSidecars)):
+                pass
+            curr_brick.save_as_json()
+
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
-        # try:
-        if True:
+        try:
             self.write_log(10 * '=' + '\nApplying actions\n' + 10 * '=')
-            for issues in self.issues['ElectrodeIssue']:
-                if not issues['Action']:
+            for issue in self.issues['ElectrodeIssue']:
+                if not issue['Action']:
                     continue
-                curr_iss_cpy = issues_copy['ElectrodeIssue'][issues_copy['ElectrodeIssue'].index(issues)]
-                modify_electrodes_files(issues)
+                curr_iss_cpy = issues_copy['ElectrodeIssue'][issues_copy['ElectrodeIssue'].index(issue)]
+                modify_electrodes_files(issue)
                 if not curr_iss_cpy['MismatchedElectrodes']:
                     # only remove the issue if no more mismatched electrodes (so it keeps comment from the remaining
                     # electrodes)
                     # have to empty these since this was modified in the copied versions
-                    issues['MismatchedElectrodes'] = []
-                    issues['Action'] = []
-                    issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issues))
+                    issue['MismatchedElectrodes'] = []
+                    issue['Action'] = []
+                    issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issue))
                 issues_copy.save_as_json()
-            for issues in self.issues['ImportIssue']:
-                if not issues['Action']:
+            for issue in self.issues['ImportIssue']:
+                if not issue['Action']:
                     continue
-                # modify_files(chan_issues)
-                # issues_copy['ImportIssue'].pop(issues_copy['ImportIssue'].index(chan_issues))
-                # issues_copy.save_as_json()
-        # except Exception as ex:
-        #     self.write_log(str(ex))
-        self.issues['ElectrodeIssue'] = []
+                eval('modify_files(' + issue['Action'][0]['command'] + ')')
+                issues_copy['ImportIssue'].pop(issues_copy['ImportIssue'].index(issue))
+                issues_copy.save_as_json()
+        except Exception as ex:
+            self.write_log(str(ex))
+        if issues_copy['ElectrodeIssue'] == self.issues['ElectrodeIssue']:
+            elec_iss_bln = False
+        else:
+            elec_iss_bln = True
+        self._assign_bids_dir(self.dirname)  # because of the data2import the cwdir could change
+        self.issues = Issue()
         self.issues.copy_values(issues_copy)
-        self.check_requirements()
+        if elec_iss_bln:  # only check requirement if actions were made for ElectrodeIssues
+            self.check_requirements()
 
     def get_object_from_filename(self, filename):
         if isinstance(filename, str):
@@ -2498,6 +2559,16 @@ class ImportIssue(IssueType):
         action['command'] = command
         self['Action'] = action
 
+    def get_element(self):
+        """get_element returns the brick which produced this issue. Since there is only one brick per ImportIssue, one
+        can break the for loop when found"""
+        for key in ImportIssue.keylist:
+            if key in ModalityType.get_list_subclasses_names() + ['Subject'] and self[key]:
+                return self[key][0]
+            elif key == 'DatasetDescJSON' and self[key]:
+                return self[key]
+        return
+
     def formatting(self, comment_type=None,  elec_name=None):
         if comment_type and (not isinstance(comment_type, str) or
                              comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
@@ -2551,7 +2622,10 @@ class Issue(BidsBrick):
                             for comment in comment_list:
                                 issue.add_comment(comment['name'], comment['description'])
                             for action in action_list:
-                                issue.add_action(action['name'], action['description'], action['command'])
+                                if issue_key == 'ElectrodeIssue':
+                                    issue.add_action(action['name'], action['description'], action['command'])
+                                else:
+                                    issue.add_action(action['description'], action['command'])
 
                 # for issue_key in self.keys():
                 #     for issue in self[issue_key]:
@@ -2611,16 +2685,20 @@ class Issue(BidsBrick):
         elif issue_type == self.keylist[0] and kwargs['brick']:
             issue = ImportIssue()
             issue['path'] = Data2Import.dirname
-            if kwargs['brick'] and isinstance(kwargs['brick'], DatasetDescJSON):
-                issue['DatasetDescJSON'] = kwargs['brick']
-            elif kwargs['brick'] and isinstance(kwargs['brick'], (ModalityType, IeegGlobalSidecars)):
-                fname = os.path.join(Data2Import.dirname, kwargs['brick']['fileLoc'])
-                if isinstance(kwargs['brick'], ModalityType):
+            if kwargs['brick']:
+                if isinstance(kwargs['brick'], DatasetDescJSON):
+                    brick_imp_shrt = kwargs['brick']
+                elif isinstance(kwargs['brick'], (ModalityType, IeegGlobalSidecars)):
+                    fname = os.path.join(Data2Import.dirname, kwargs['brick']['fileLoc'])
+                    if isinstance(kwargs['brick'], ModalityType):
+                        brick_imp_shrt = kwargs['brick'].__class__()
+                    elif isinstance(kwargs['brick'], IeegGlobalSidecars):
+                        brick_imp_shrt = kwargs['brick'].__class__(fname)
+                    brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
+                    brick_imp_shrt['fileLoc'] = os.path.join(fname)
+                elif isinstance(kwargs['brick'], Subject):
                     brick_imp_shrt = kwargs['brick'].__class__()
-                elif isinstance(kwargs['brick'], IeegGlobalSidecars):
-                    brick_imp_shrt = kwargs['brick'].__class__(fname)
-                brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
-                brick_imp_shrt['fileLoc'] = os.path.join(fname)
+                    brick_imp_shrt.update(kwargs['brick'].get_attributes())
                 issue[kwargs['brick'].classname()] = brick_imp_shrt
             if kwargs['description'] and isinstance(kwargs['description'], str):
                 issue['description'] = kwargs['description']
@@ -2639,9 +2717,6 @@ class Issue(BidsBrick):
 
         self[issue_type] = issue
         self.save_as_json()
-
-    def apply_actions(self):
-        pass
 
     def remove(self, brick2remove):
         new_issue = self.__class__()
