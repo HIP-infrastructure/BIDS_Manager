@@ -597,6 +597,8 @@ class BidsBrick(dict):
 
                 for bidsintegrity_key in integrity_list:
                     for sub in sub_list:
+                        # initiate to True and mark False for any issue
+                        self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = str(True)
                         self.is_subject_present(sub)
                         sub_index = self.curr_subject['index']
                         curr_sub_mod = self['Subject'][sub_index][bidsintegrity_key[0]]
@@ -655,8 +657,6 @@ class BidsBrick(dict):
                                                       RefElectrodes=ref_elec, MismatchedElectrodes=miss_matching_elec,
                                                       mod=bidsintegrity_key[0])
                                 self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = str(False)
-                            else:
-                                self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = str(True)
 
             self.issues.check_with_latest_issue()
             self.issues.save_as_json()
@@ -2285,9 +2285,9 @@ class BidsDataset(MetaBrick):
                             the channel accordingly"""
                             for line in sidecar[key][1:]:
                                 if line[idx_group] == action['name']:
-                                    line[idx_group] = kwargs['name']
                                     # need replace here to keep the number of the channel
                                     line[idx_name] = line[idx_name].replace(line[idx_group], kwargs['name'])
+                                    line[idx_group] = kwargs['name']
                             act_str = 'Change electrode name from ' + action['name'] + ' to ' + kwargs['name'] + \
                                       ' in the ' + mod_fname + sidecar[key].extension + '.'
                         else:
@@ -2301,7 +2301,8 @@ class BidsDataset(MetaBrick):
                         [curr_iss_cpy['MismatchedElectrodes'].pop(curr_iss_cpy['MismatchedElectrodes'].index(mm_elec))
                          for mm_elec in ch_issue['MismatchedElectrodes'] if mm_elec['name'] == action['name']]
                         curr_iss_cpy['Action'].pop(curr_iss_cpy['Action'].index(action))
-                        modality[key].copy_values(sidecar[key])  # sidecar is not in self but a copy
+                        # modality[key] = []
+                        # modality[key].copy_values(sidecar[key])  # sidecar is not in self but a copy
                         self.save_as_json()
                         modality.write_log(act_str)
                 else:
