@@ -722,8 +722,17 @@ class BidsBrick(dict):
         return list_filename
 
     def is_empty(self):
-        init_inst = type(self)()
-        return self == init_inst
+        if isinstance(self, MetaBrick):
+            for sub in self['Subject']:
+                if not sub.is_empty():
+                    return False
+            return True
+        else:
+            if isinstance(self, GlobalSidecars):
+                init_inst = type(self)(self['fileLoc'])
+            else:
+                init_inst = type(self)()
+            return self == init_inst
 
     def difference(self, brick2compare):
         """ different compare two BidsBricks from the same type and returns a dictionary of the key and values of the
@@ -1415,7 +1424,8 @@ class Subject(BidsBrick):
 
     def is_empty(self):
         for key in self:
-            if key in ModalityType.get_list_subclasses_names():
+            if key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names() \
+                    and self[key]:
                 return False
         return True
 
@@ -1543,6 +1553,7 @@ class ParticipantsTSV(BidsTSV):
 
 class MetaBrick(BidsBrick):
     curr_subject = {}
+    dirname = None
 
     def is_subject_present(self, subject_label):
         """
@@ -1569,7 +1580,6 @@ class MetaBrick(BidsBrick):
 class Data2Import(MetaBrick):
     keylist = ['Subject', 'DatasetDescJSON', 'UploadDate']
     filename = 'data2import.json'
-    dirname = None
     requirements = None
     curr_log = ''
 
@@ -1618,7 +1628,6 @@ import new data or export a subset of the current dataset (not yet implemented )
 class BidsDataset(MetaBrick):
 
     keylist = ['Subject', 'SourceData', 'Derivatives', 'Code', 'Stimuli', 'DatasetDescJSON', 'ParticipantsTSV']
-    dirname = None
     requirements = dict()
     curr_log = ''
     readers = dict()
