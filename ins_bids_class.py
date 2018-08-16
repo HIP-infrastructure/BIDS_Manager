@@ -654,13 +654,9 @@ class BidsBrick(dict):
                                                       fileLoc=os.path.join(filepath[1], filepath[0]+filepath[2]),
                                                       RefElectrodes=ref_elec, MismatchedElectrodes=miss_matching_elec,
                                                       mod=bidsintegrity_key[0])
-                                self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = \
-                                    str(False)
-
-                        if self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]]\
-                                == BidsSidecar.bids_default_unknown:
-                            self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = \
-                                str(True)
+                                self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = str(False)
+                            else:
+                                self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = str(True)
 
             self.issues.check_with_latest_issue()
             self.issues.save_as_json()
@@ -724,6 +720,10 @@ class BidsBrick(dict):
                 shutil.move(os.path.join(Data2Import.dirname, fname),
                             os.path.join(BidsDataset.dirname, dirname, fname))
         return list_filename
+
+    def is_empty(self):
+        init_inst = type(self)()
+        return self == init_inst
 
     def difference(self, brick2compare):
         """ different compare two BidsBricks from the same type and returns a dictionary of the key and values of the
@@ -1610,7 +1610,6 @@ class SourceData(MetaBrick):
     dirname = 'sourcedata'
 
 
-
 ''' Main BIDS brick which contains all the information concerning the patients and the sidecars. It permits to parse a 
 given bids dataset, request information (e.g. is a given subject is present, has a given subject a given modality), 
 import new data or export a subset of the current dataset (not yet implemented ) '''
@@ -1744,7 +1743,7 @@ class BidsDataset(MetaBrick):
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
         self.__class__.clear_log()
         self.issues.clear()  # clear issue to only get the unsolved ones but
-        self.write_log('Current User: ' + self.curr_user)
+        self.write_log('Current User: ' + self.curr_user + '\n' + BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S"))
         # First read requirements.json which should be in the code folder of bids dir.
         self.get_requirements()
 
@@ -1983,6 +1982,7 @@ class BidsDataset(MetaBrick):
             folder again. The original data2import in rename by adding the date in the filename'''
             copy_data2import = Data2Import()
             copy_data2import.copy_values(data2import)
+            copy_data2import.dirname = data2import.dirname
             try:
                 data2import.save_as_json(write_date=True)
                 if keep_sourcedata:
@@ -2012,7 +2012,7 @@ class BidsDataset(MetaBrick):
 
                     # test whether the subject to be imported has the same attributes as the one already inside the
                     # bids dataset
-                    if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date'])\
+                    if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) \
                                            == sub.get_attributes(['alias', 'upload_date']):
                         error_str = 'The subject to be imported (' + data2import.dirname + \
                                     ') has different attributes than the analogous subject in the bids dataset (' \
@@ -2051,7 +2051,7 @@ class BidsDataset(MetaBrick):
                                                                ' because ' + \
                                                                modality.create_filename_from_attributes()[0] + \
                                                                ' is already present in the bids dataset ' + \
-                                                               self['DatasetDescJSON']['Name'] + ' ().'
+                                                               '(' + self['DatasetDescJSON']['Name'] + ').'
                                                 self.issues.add_issue('ImportIssue', brick=modality,
                                                                       description=string_issue)
                                                 self.write_log(string_issue)
@@ -2264,24 +2264,37 @@ class BidsDataset(MetaBrick):
                             idx_group = sidecar[key].header.index('group')
                             idx_type = sidecar[key].header.index('type')
                             """ replace current type by the new one for all channels from same electrode"""
-                            [line[idx_type].replace(line[idx_type], kwargs['type'])
-                             for line in sidecar[key][1:] if line[idx_group] == action['name']]
-
+                            for line in sidecar[key][1:]:
+                                if line[idx_group] == action['name']:
+                                    line[idx_type] = kwargs['type']
+                            act_str = 'Change electrode type of ' + action['name'] + ' to ' + kwargs['type'] + \
+                                      ' in the ' + mod_fname + sidecar[key].extension + '.'
                         elif name_bln and all(wrd in sidecar[key].header for wrd in ['name', 'group']):
                             idx_group = sidecar[key].header.index('group')
                             idx_name = sidecar[key].header.index('name')
                             """ replace current group by the new one for all channel from same electrode and rename 
                             the channel accordingly"""
-                            [(line[idx_group].replace(line[idx_group], kwargs['name']),
-                              line[idx_name].replace(line[idx_group], kwargs['name']))
-                             for line in sidecar[key][1:] if line[idx_group] == action['name']]
+                            for line in sidecar[key][1:]:
+                                if line[idx_group] == action['name']:
+                                    line[idx_group] = kwargs['name']
+                                    # need replace here to keep the number of the channel
+                                    line[idx_name] = line[idx_name].replace(line[idx_group], kwargs['name'])
+                            act_str = 'Change electrode name from ' + action['name'] + ' to ' + kwargs['name'] + \
+                                      ' in the ' + mod_fname + sidecar[key].extension + '.'
                         else:
                             continue
                         fname2bewritten = os.path.join(BidsDataset.dirname, dirname,
-                                                       mod_fname + sidecar[key].extension)
+                                                       mod_fname.replace(modality['modality'],
+                                                                         sidecar[key].modality_field)
+                                                       + sidecar[key].extension)
                         sidecar[key].write_file(fname2bewritten)
-                        modality.write_log('Change electrode type of ' + action['name'] +
-                                           ' to EOG in the ' + mod_fname + sidecar[key].extension + '.')
+                        # remove the mismatched electrode from the list, when empty the issue will be popped
+                        [curr_iss_cpy['MismatchedElectrodes'].pop(curr_iss_cpy['MismatchedElectrodes'].index(mm_elec))
+                         for mm_elec in ch_issue['MismatchedElectrodes'] if mm_elec['name'] == action['name']]
+                        curr_iss_cpy['Action'].pop(curr_iss_cpy['Action'].index(action))
+                        modality[key].copy_values(sidecar[key])  # sidecar is not in self but a copy
+                        self.save_as_json()
+                        modality.write_log(act_str)
                 else:
                     err_str = 'One cannot modify the name and the type of the electrode at the same time'
                     ch_issue.write_log(err_str)
@@ -2293,19 +2306,34 @@ class BidsDataset(MetaBrick):
                 eval('change_electrode(' + action['command'] + ')')
                 pass
 
-        # issues_copy = Issue()
-        # issues_copy.copy_values(self.issues)
-        try:
+        issues_copy = Issue()
+        issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
+        # try:
+        if True:
             self.write_log(10 * '=' + '\nApplying actions\n' + 10 * '=')
-            for chan_issues in self.issues['ElectrodeIssue']:
-                if not chan_issues['Action']:
+            for issues in self.issues['ElectrodeIssue']:
+                if not issues['Action']:
                     continue
-                modify_electrodes_files(chan_issues)
-                # issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(chan_issues))
+                curr_iss_cpy = issues_copy['ElectrodeIssue'][issues_copy['ElectrodeIssue'].index(issues)]
+                modify_electrodes_files(issues)
+                if not curr_iss_cpy['MismatchedElectrodes']:
+                    # only remove the issue if no more mismatched electrodes (so it keeps comment from the remaining
+                    # electrodes)
+                    # have to empty these since this was modified in the copied versions
+                    issues['MismatchedElectrodes'] = []
+                    issues['Action'] = []
+                    issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issues))
+                issues_copy.save_as_json()
+            for issues in self.issues['ImportIssue']:
+                if not issues['Action']:
+                    continue
+                # modify_files(chan_issues)
+                # issues_copy['ImportIssue'].pop(issues_copy['ImportIssue'].index(chan_issues))
                 # issues_copy.save_as_json()
-        except Exception as ex:
-            self.write_log(str(ex))
+        # except Exception as ex:
+        #     self.write_log(str(ex))
         self.issues['ElectrodeIssue'] = []
+        self.issues.copy_values(issues_copy)
         self.check_requirements()
 
     def get_object_from_filename(self, filename):
@@ -2407,7 +2435,7 @@ class ElectrodeIssue(IssueType):
     def add_action(self, elec_name, desc, command):
         """verify that the given electrode name is part of the mismatched electrodes"""
         if elec_name not in self.list_mismatched_electrodes():
-            raise NameError(elec_name + 'is not an mismatched electrode.')
+            return
         """check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
         idx2pop = None
         for act in self['Action']:
@@ -2575,11 +2603,14 @@ class Issue(BidsBrick):
             issue['path'] = Data2Import.dirname
             if kwargs['brick'] and isinstance(kwargs['brick'], DatasetDescJSON):
                 issue['DatasetDescJSON'] = kwargs['brick']
-            elif kwargs['brick'] and isinstance(kwargs['brick'], BidsBrick):
-                brick_imp_shrt = kwargs['brick'].__class__()
-                # brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
+            elif kwargs['brick'] and isinstance(kwargs['brick'], (ModalityType, IeegGlobalSidecars)):
+                fname = os.path.join(Data2Import.dirname, kwargs['brick']['fileLoc'])
+                if isinstance(kwargs['brick'], ModalityType):
+                    brick_imp_shrt = kwargs['brick'].__class__()
+                elif isinstance(kwargs['brick'], IeegGlobalSidecars):
+                    brick_imp_shrt = kwargs['brick'].__class__(fname)
                 brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
-                brick_imp_shrt['fileLoc'] = os.path.join(Data2Import.dirname, kwargs['brick']['fileLoc'])
+                brick_imp_shrt['fileLoc'] = os.path.join(fname)
                 issue[kwargs['brick'].classname()] = brick_imp_shrt
             if kwargs['description'] and isinstance(kwargs['description'], str):
                 issue['description'] = kwargs['description']
@@ -2658,8 +2689,7 @@ def subclasses_tree(brick_class, nb_space=0):
 
 
 if __name__ == '__main__':
-    tree_str = subclasses_tree(BidsBrick)
-    print(tree_str)
-    tree_str = subclasses_tree(BidsSidecar)
-    print(tree_str)
-    pass
+    cls_tree_str = subclasses_tree(BidsBrick)
+    print(cls_tree_str)
+    cls_tree_str = subclasses_tree(BidsSidecar)
+    print(cls_tree_str)
