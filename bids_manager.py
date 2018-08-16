@@ -147,7 +147,7 @@ class BidsManager(Frame):
     def change_menu_state(menu, start_idx=0, end_idx=None, state=None):
         if state is None or state not in [NORMAL, DISABLED]:
             state = NORMAL
-        if not end_idx:
+        if end_idx is None:
             end_idx = menu.index(END)
         if end_idx > menu.index(END):
             raise IndexError('End index is out of range (' + str(end_idx) + '>' + str(menu.index(END)) + ').')
@@ -208,6 +208,8 @@ class BidsManager(Frame):
         if self.curr_bids['SourceData'] and self.curr_bids['SourceData'][-1]['SrcDataTrack']:
             self.bids_menu.entryconfigure(4, command=lambda: self.show_bids_desc(
                 self.curr_bids['SourceData'][-1]['SrcDataTrack']), state=NORMAL)
+        # enable selection of upload directory
+        self.change_menu_state(self.uploader_menu, end_idx=0)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
         self.info_label.set('Current BIDS directory: ' + bids_dir)
@@ -301,7 +303,8 @@ class BidsManager(Frame):
         if results:
             str_info = mismtch_elec + ' has to be renamed as ' + results + ' in the files related to ' + \
                        os.path.basename(curr_dict['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
-            curr_dict.add_action(mismtch_elec, str_info, 'To be defined')
+            command = 'name="' + results + '"'
+            curr_dict.add_action(mismtch_elec, str_info, command)
             action_list.delete(list_idx)
             action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
             issue_list.itemconfig(list_idx, foreground='green')
@@ -326,7 +329,9 @@ class BidsManager(Frame):
                        output_dict['type'] + ' in the electrode file related to ' + \
                        os.path.basename(curr_dict['fileLoc']) + '.\n'
             # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
-            command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
+            # to fancy, used for others
+            # command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
+            command = 'type="' + output_dict['type'] + '"'
             curr_dict.add_action(mismtch_elec, str_info, command)
             # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ElectrodeIssue',
             #                                                                  comment_type='action'))
