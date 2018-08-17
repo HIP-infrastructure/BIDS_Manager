@@ -397,8 +397,8 @@ class BidsBrick(dict):
         return self.__class__.__name__
 
     def get_attributes(self, keys2remove=None):
-        attr_dict = {key: self[key] for _, key in enumerate(self.keys()) if key not in
-                     BidsBrick.get_list_subclasses_names() and key not in BidsSidecar.get_list_subclasses_names()}
+        attr_dict = {key: self[key] for key in self.keys() if key not in
+                     BidsBrick.get_list_subclasses_names() + BidsSidecar.get_list_subclasses_names()}
         if keys2remove:
             if not isinstance(keys2remove, list):
                 keys2remove = [keys2remove]
@@ -671,6 +671,7 @@ class BidsBrick(dict):
                     self['ParticipantsTSV'][1 + sub_list.index(sub)][subject_ready_idx] = str(True)
                 else:
                     self['ParticipantsTSV'][1 + sub_list.index(sub)][subject_ready_idx] = str(False)
+            self['ParticipantsTSV'].write_file()
 
     def convert(self):
         filename, dirname, ext = self.create_filename_from_attributes()
@@ -1768,7 +1769,6 @@ class BidsDataset(MetaBrick):
 
         parse_bids_dir(self, self.dirname)
         self.check_requirements()
-        self['ParticipantsTSV'].write_file()
         self.save_as_json()
 
     def has_subject_modality_type(self, subject_label, modality_type):
@@ -1849,8 +1849,8 @@ class BidsDataset(MetaBrick):
         func_schema['task'] = 'bapa'
         N = bids.get_number_of_runs(func_schema)
         """
-        nb_runs = 0
-        highest_run = 0
+        nb_runs = None
+        highest_run = None
         if 'run' in mod_dict_with_attr.keylist:
             mod_type = mod_dict_with_attr.classname()
             if mod_type in ModalityType.get_list_subclasses_names():
@@ -1865,8 +1865,11 @@ class BidsDataset(MetaBrick):
                         # compare every attributes but fileLoc and run
                         for mod in self['Subject'][sub_index][mod_type]:
                             mod_attr = mod.get_attributes('fileLoc')
-                            idx_run = int(mod_attr.pop('run'))
-                            if mod_input_attr == mod_attr:
+                            idx_run = mod_attr.pop('run')
+                            if mod_input_attr == mod_attr and idx_run:
+                                if nb_runs is None:
+                                    nb_runs = 0
+                                idx_run = int(idx_run)
                                 nb_runs += 1
                                 highest_run = max(nb_runs, idx_run)
         return nb_runs, highest_run
@@ -1902,12 +1905,13 @@ class BidsDataset(MetaBrick):
                 os.makedirs(scr_data_dirname, exist_ok=True)
                 path_src = os.path.join(Data2Import.dirname, mod_dict2import['fileLoc'])
                 path_dst = os.path.join(scr_data_dirname, mod_dict2import['fileLoc'])
-                if os.path.isdir(path_src):
-                    # use copytree for directories (e.g. DICOM)
-                    shutil.copytree(path_src, path_dst)
-                else:
-                    # use copy2 for files
-                    shutil.copy2(path_src, path_dst)
+                # if os.path.isdir(path_src):
+                #     # use copytree for directories (e.g. DICOM)
+                #     shutil.copytree(path_src, path_dst)
+                # else:
+                #     # use copy2 for files
+                #     shutil.copy2(path_src, path_dst)
+                shutil.move(path_src, path_dst)
                 src_data_sub = bids_dst['SourceData'][-1]['Subject'][bids_dst.curr_subject['index']]
                 src_data_sub[mod_type] = eval(mod_type + '()')
                 tmp_attr = mod_dict2import.get_attributes()
@@ -1958,12 +1962,12 @@ class BidsDataset(MetaBrick):
                         # if run if a key check the JSON and possibly increment the run integer of mod_
                         # dict2import to import it
                         mod_dict2import_dep = mod_dict2import.extract_sidecares_from_sourcedata()
-                        numb_runs = bids_dst.get_number_of_runs(mod_dict2import)[0]
+                        highest_run = bids_dst.get_number_of_runs(mod_dict2import)[1]
                         mod_in_bids_dep = mod.get_modality_sidecars()
                         if not mod_dict2import_dep == mod_in_bids_dep:
                             # check the sidecar files to verify whether they are the same data, in that the case
                             # add current nb_runs to 'run' if available otherwise do not import
-                            mod_dict2import['run'] = str(1 + numb_runs).zfill(2)
+                            mod_dict2import['run'] = str(1 + highest_run).zfill(2)
                             return False
 
                     return True
@@ -2107,6 +2111,14 @@ class BidsDataset(MetaBrick):
                         # if copy_data2import['Subject'][import_sub_idx].is_empty():
                         # pop empty subject
 
+                if copy_data2import.is_empty():
+                    if all(file.endswith('.json') or file.endswith('.tsv')
+                           for file in os.listdir(copy_data2import.dirname)):
+                        # if there are only the data2import.json and the sidecar files created during conversions,
+                        # the import dir can be removed
+                        shutil.rmtree(copy_data2import.dirname)
+                        self.write_log(copy_data2import.dirname + ' is now empty and will be removed.')
+
                 if self['DatasetDescJSON']:
                     self['DatasetDescJSON'].write_file()
                 if self['ParticipantsTSV']:
@@ -2122,7 +2134,7 @@ class BidsDataset(MetaBrick):
                 self.write_log(str(err))
                 copy_data2import.save_as_json()
 
-    def remove(self, element2remove):
+    def remove(self, element2remove, with_issues=True):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
         # a bit bulky rewrite to make it nice
         if element2remove is self:
@@ -2165,8 +2177,9 @@ class BidsDataset(MetaBrick):
                     self.write_log(
                         'Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
                         self['DatasetDescJSON']['Name'] + ' ' + self['ParticipantsTSV'].filename + '.')
-                # remove issues related to this patient
-                self.issues.remove(element2remove)
+                if with_issues:
+                    # remove issues related to this patient
+                    self.issues.remove(element2remove)
                 # remove from raw folder
                 shutil.rmtree(os.path.join(self.dirname, 'sub-' + element2remove['sub']))
                 self['Subject'].pop(self.curr_subject['index'])
@@ -2221,7 +2234,8 @@ class BidsDataset(MetaBrick):
                         sdcar_fname = fname
                     os.remove(os.path.join(BidsDataset.dirname, dirname, sdcar_fname +
                                            element2remove[sidecar_key].extension))
-                self.issues.remove(element2remove)
+                if with_issues:
+                    self.issues.remove(element2remove)
                 if isinstance(element2remove, Electrophy):
                     ext = self.converters['Electrophy']['ext']
                 elif isinstance(element2remove, Imagery):
@@ -2239,7 +2253,8 @@ class BidsDataset(MetaBrick):
                     element2remove in self.curr_subject['Subject'][element2remove.classname()]:
                 elmt_idx = self.curr_subject['Subject'][element2remove.classname()].index(element2remove)
                 os.remove(os.path.join(self.dirname, element2remove['fileLoc']))
-                self.issues.remove(element2remove)
+                if with_issues:
+                    self.issues.remove(element2remove)
                 self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx)
                 self.write_log(element2remove['fileLoc'] +
                                ' and its sidecar files were removed from Bids dataset ' +
@@ -2323,17 +2338,20 @@ class BidsDataset(MetaBrick):
 
         def modify_files(**kwargs):
 
+            if 'remove_issue' in kwargs and kwargs['remove_issue']:
+                # nothing else to do since the issue will be popped anyway ^_^
+                return
             elmt_iss = issue.get_element()
             if 'in_bids' in kwargs:
-                if kwargs['in_bids'] == 'False':
+                if kwargs['in_bids'] == 'True' or kwargs['in_bids'] is True:
+                    kwargs['in_bids'] = True
+                    curr_brick = self
+                    loc_str = ' in bids dir. ' + self.dirname + '.'
+                else:
                     kwargs['in_bids'] = False
                     curr_brick = Data2Import(issue['path'])
                     curr_brick.save_as_json(write_date=True)
                     loc_str = ' in import dir. ' + issue['path'] + '.'
-                else:
-                    kwargs['in_bids'] = True
-                    curr_brick = self
-                    loc_str = ' in bids dir. ' + self.dirname + '.'
             else:
                 err_str = 'No information about whether the change has to be made in bids or import directory.'
                 self.write_log(err_str)
@@ -2342,11 +2360,18 @@ class BidsDataset(MetaBrick):
                 # if pop = True => not to import this element
                 if isinstance(elmt_iss, (ModalityType, GlobalSidecars)):
                     idx = None
-                    for elmt in curr_brick[elmt_iss.classname()]:
-                        if elmt == elmt_iss:
-                            idx = curr_brick[elmt_iss.classname()].index(elmt)
+                    curr_brick.is_subject_present(elmt_iss['sub'])
+                    curr_sub = curr_brick.curr_subject['Subject']
+                    for elmt in curr_sub[elmt_iss.classname()]:
+                        if elmt.get_attributes('fileLoc') == elmt_iss.get_attributes('fileLoc') and \
+                                elmt['fileLoc'] == os.path.basename(elmt_iss['fileLoc']):
+                            # remember that is issues the fileLoc are absolute path, therefore one has to tests the
+                            # basename
+                            idx = curr_sub[elmt_iss.classname()].index(elmt)
                             break
-                    curr_brick[elmt_iss.classname()].pop(idx)
+                    curr_sub[elmt_iss.classname()].pop(idx)
+                    self.write_log('Element ' + elmt_iss['fileLoc'] + ' has been removed from the data to import'
+                                   + loc_str + '.')
             elif isinstance(elmt_iss, DatasetDescJSON):
                 for key in kwargs:
                     if key in curr_brick['DatasetDescJSON']:
@@ -2366,14 +2391,41 @@ class BidsDataset(MetaBrick):
                     _, sub_info, idx = curr_brick['ParticipantsTSV'].is_subject_present(curr_sub['sub'])
                     curr_brick['ParticipantsTSV'].pop(idx)
                     sub_info.update({key: kwargs[key] for key in sub_info if key in kwargs})
+                    sub_info['participant_id'] = sub_info['sub']
                     curr_brick['ParticipantsTSV'].append(sub_info)
                     curr_brick['ParticipantsTSV'].write_file()
+                self.write_log('Modification of ' + ParticipantsTSV.filename + ' for ' + curr_sub['sub'] + loc_str)
             elif isinstance(elmt_iss, (ModalityType, GlobalSidecars)):
-                pass
+                if 'remove' in kwargs and kwargs['in_bids']:
+                    mod_brick = curr_brick.get_object_from_filename(kwargs['remove'])
+                    curr_brick.remove(mod_brick, with_issues=False)
+                elif not kwargs['in_bids']:
+                    curr_brick.is_subject_present(elmt_iss['sub'])
+                    curr_sub = curr_brick.curr_subject['Subject']
+                    idx = None
+                    for elmt in curr_sub[elmt_iss.classname()]:
+                        if elmt.get_attributes('fileLoc') == elmt_iss.get_attributes('fileLoc') and \
+                                elmt['fileLoc'] == os.path.basename(elmt_iss['fileLoc']):
+                            idx = curr_sub[elmt_iss.classname()].index(elmt)
+                            break
+                    elmt = curr_sub[elmt_iss.classname()][idx]
+                    for key in kwargs:
+                        if key in elmt and key not in ['sub', 'fileLoc']:
+                            if isinstance(kwargs[key], str):
+                                if kwargs[key].isdigit:
+                                    val = kwargs[key].zfill(2)
+                                else:
+                                    val = kwargs[key]
+                            else:
+                                val = str(kwargs[key]).zfill(2)
+                            elmt[key] = val
+                    self.write_log('Modification of ' + elmt['fileLoc'] + ' has been done ' + loc_str)
             curr_brick.save_as_json()
 
+        BidsBrick.access_time = datetime.now()
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
+        file_removal = False
         try:
             self.write_log(10 * '=' + '\nApplying actions\n' + 10 * '=')
             for issue in self.issues['ElectrodeIssue']:
@@ -2393,11 +2445,13 @@ class BidsDataset(MetaBrick):
                 if not issue['Action']:
                     continue
                 eval('modify_files(' + issue['Action'][0]['command'] + ')')
+                if 'removal' in issue['Action'][0]['command']:
+                    file_removal = True
                 issues_copy['ImportIssue'].pop(issues_copy['ImportIssue'].index(issue))
                 issues_copy.save_as_json()
         except Exception as ex:
             self.write_log(str(ex))
-        if issues_copy['ElectrodeIssue'] == self.issues['ElectrodeIssue']:
+        if issues_copy['ElectrodeIssue'] == self.issues['ElectrodeIssue'] and not file_removal:
             elec_iss_bln = False
         else:
             elec_iss_bln = True
