@@ -10,7 +10,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 class BidsManager(Frame):
     version = '0.0.1'
-    bids_startfile = 'D:\\roehri\\BIDs\\2048'
+    bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
     def __init__(self):
@@ -235,6 +235,7 @@ class BidsManager(Frame):
                 else:
                     self.change_menu_state(self.uploader_menu)
                     self.update_text(self.curr_data2import.curr_log)
+                    self.update_text(self.curr_data2import, delete_flag=False)
             else:
                 self.update_text('Error: data2import.json not found in ' + self.upload_dir)
                 self.upload_dir = None
@@ -255,20 +256,48 @@ class BidsManager(Frame):
         else:
             self.update_text('Source Data Track does not exist')
 
+    def update_issue_list(self, list_idx, info):
+        curr_dict = self.curr_bids.issues['ImportIssue'][info['index']]
+        issue_list = self.main_frame['double_list'].elements['list1']
+        action_list = self.main_frame['double_list'].elements['list2']
+        action_list.delete(list_idx)
+        if curr_dict['Action']:
+            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
+        else:
+            action_list.insert(list_idx, '')
+        issue_list.itemconfig(list_idx, foreground='green')
+        self.curr_bids.issues.save_as_json()
+
+    def remove_file(self, list_idx, info):
+        flag = messagebox.askyesno('Remove file in BIDS', 'Are you sure that you want to remove ' +
+                                   str(info['Element'].get_attributes('fileLoc')) + 'from BIDS ?')
+        if flag:
+            idx = info['index']
+            curr_dict = self.curr_bids.issues['ImportIssue'][idx]
+            fname, dirn, ext = info['Element'].create_filename_from_attributes()
+            cmd = 'remove="' + fname + ext + '", in_bids=True'
+            curr_dict.add_action(desc='Remove element ' + str(info['Element'].get_attributes('fileLoc')) +
+                                      ' from data to import.', command=cmd)
+            self.update_issue_list(list_idx, info)
+
+    def remove_issue(self, list_idx, info):
+        flag = messagebox.askyesno('Remove issue', 'Are you sure that you want to remove this issue?')
+        if flag:
+            idx = info['index']
+            curr_dict = self.curr_bids.issues['ImportIssue'][idx]
+            cmd = 'remove_issue=True'
+            curr_dict.add_action(desc='Remove issue from the list.', command=cmd)
+            self.update_issue_list(list_idx, info)
+
     def do_not_import(self, list_idx, info):
         flag = messagebox.askyesno('Do Not Import', 'Are you sure that you do not want to import this element' +
                                    str(info['Element'].get_attributes()) + '?')
         if flag:
-            issue_list = self.main_frame['double_list'].elements['list1']
-            action_list = self.main_frame['double_list'].elements['list2']
             idx = info['index']
             curr_dict = self.curr_bids.issues['ImportIssue'][idx]
-            cmd = 'pop=True'
+            cmd = 'pop=True, in_bids=False'
             curr_dict.add_action(desc='Remove from element to import.', command=cmd)
-            action_list.delete(list_idx)
-            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
-            issue_list.itemconfig(list_idx, foreground='green')
-            self.curr_bids.issues.save_as_json()
+            self.update_issue_list(list_idx, info)
 
     def modify_attributes(self, list_idx, info, in_bids=False):
         if isinstance(info['Element'], bids.DatasetDescJSON):
@@ -280,8 +309,20 @@ class BidsManager(Frame):
             if isinstance(info['Element'], bids.Subject):
                 bids_dict = self.curr_bids.curr_subject['Subject'].get_attributes(['alias', 'upload_date'])
             else:
-                bids_dict = self.curr_bids.get_object_from_filename(info['Element']['fileLoc ']).\
+                fname, dirn, ext = info['Element'].create_filename_from_attributes()
+                bids_dict = self.curr_bids.get_object_from_filename(os.path.join(dirn, fname+ext)).\
                     get_attributes('fileLoc')
+                if 'run' in bids_dict.keys():
+                    tmp_brick = type(info['Element'])()
+                    tmp_brick.copy_values(bids_dict)
+                    _, highest = self.curr_bids.get_number_of_runs(tmp_brick)
+                    if highest:
+                        bids_dict['run'] = highest + 1
+                if 'ses' in bids_dict.keys():
+                    _, ses_list = self.curr_bids.get_number_of_session4subject(bids_dict['sub'])
+                    bids_dict['ses'] = ses_list
+                if 'modality' in bids_dict:
+                    bids_dict['modality'] = info['Element'].allowed_modalities
             imp_dict = info['Element'].get_attributes(['alias', 'upload_date', 'fileLoc'])
         else:
             return
@@ -292,14 +333,9 @@ class BidsManager(Frame):
         else:
             input_dict = imp_dict
             option_dict = bids_dict
-            if bids_dict and 'ses' in input_dict.keys():
-                _, ses_list = self.curr_bids.get_number_of_session4subject(input_dict['sub'])
-                option_dict['ses'] = ses_list
         output_dict = FormDialog(self, input_dict, options=option_dict,
                                  required_keys=info['Element'].required_keys).apply()
         if output_dict and not output_dict == input_dict:
-            issue_list = self.main_frame['double_list'].elements['list1']
-            action_list = self.main_frame['double_list'].elements['list2']
             idx = info['index']
             curr_dict = self.curr_bids.issues['ImportIssue'][idx]
             if in_bids:
@@ -312,28 +348,20 @@ class BidsManager(Frame):
             output_brick.copy_values(output_dict)
             cmd = input_brick.write_command(output_brick, {'in_bids': in_bids})
             curr_dict.add_action(desc='Modify attrib. into ' + str(output_dict) + dir_str, command=cmd)
-            action_list.delete(list_idx)
-            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
-            issue_list.itemconfig(list_idx, foreground='green')
-            self.curr_bids.issues.save_as_json()
+            self.update_issue_list(list_idx, info)
 
     def select_correct_name(self, list_idx, info):
 
         idx = info['index']
         mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues['ElectrodeIssue'][idx]
-        issue_list = self.main_frame['double_list'].elements['list1']
-        action_list = self.main_frame['double_list'].elements['list2']
         results = ListDialog(self.master, curr_dict['RefElectrodes'], 'Rename ' + mismtch_elec + ' as :').apply()
         if results:
             str_info = mismtch_elec + ' has to be renamed as ' + results + ' in the files related to ' + \
                        os.path.basename(curr_dict['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
             command = 'name="' + results + '"'
             curr_dict.add_action(mismtch_elec, str_info, command)
-            action_list.delete(list_idx)
-            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
-            issue_list.itemconfig(list_idx, foreground='green')
-            self.curr_bids.issues.save_as_json()
+            self.update_issue_list(list_idx, info)
 
     def change_elec_type(self, list_idx, info):
         idx = info['index']
@@ -343,8 +371,6 @@ class BidsManager(Frame):
         input_dict = {'type': mism_elec['type'] for mism_elec in curr_dict['MismatchedElectrodes']
                       if mism_elec['name'] == mismtch_elec}
         opt_dict = {'type': bids.Electrophy.channel_type}
-        issue_list = self.main_frame['double_list'].elements['list1']
-        action_list = self.main_frame['double_list'].elements['list2']
         # flag = messagebox.askyesno('Remove group name', 'Do you want to remove the group label from ' +
         #                            mismtch_elec + '?')
         output_dict = FormDialog(self, input_dict, title='Modify electrode type of ' + mismtch_elec + ' into:',
@@ -358,12 +384,7 @@ class BidsManager(Frame):
             # command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
             command = 'type="' + output_dict['type'] + '"'
             curr_dict.add_action(mismtch_elec, str_info, command)
-            # self.populate_list(action_list, self.curr_bids.issues.formatting(specific_issue='ElectrodeIssue',
-            #                                                                  comment_type='action'))
-            action_list.delete(list_idx)
-            action_list.insert(list_idx, curr_dict['Action'][-1].formatting())
-            issue_list.itemconfig(list_idx, foreground='green')
-            self.curr_bids.issues.save_as_json()
+            self.update_issue_list(list_idx, info)
 
     def get_entry(self, issue_key, list_idx, info):
         idx = info['index']
@@ -381,8 +402,6 @@ class BidsManager(Frame):
         idx = info['index']
         mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues[issue_key][idx]
-        issue_list = self.main_frame['double_list'].elements['list1']
-        action_list = self.main_frame['double_list'].elements['list2']
         if issue_key == 'ElectrodeIssue':
             for action in curr_dict['Action']:
                 if action['name'] == mismtch_elec:
@@ -390,10 +409,7 @@ class BidsManager(Frame):
                     break  # there is only one action per channel so break when found
         elif issue_key == 'ImportIssue' and curr_dict['Action']:
             curr_dict['Action'].pop(-1)
-        action_list.delete(list_idx)
-        action_list.insert(list_idx, '')
-        issue_list.itemconfig(list_idx, foreground='black')
-        self.curr_bids.issues.save_as_json()
+        self.update_issue_list(list_idx, info)
 
     def open_file(self, issue_key, list_idx, info):
         if issue_key == 'ElectrodeIssue':
@@ -453,8 +469,14 @@ class BidsManager(Frame):
                         pop_menu.add_command(label='Change modality attributes',
                                              command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
                                                                                     in_bids=False))
+                        pop_menu.add_command(label='Remove file in BIDS',
+                                             command=lambda: self.remove_file(curr_idx, line_map[curr_idx]))
 
-                    pop_menu.add_command(label='Do not import', command=self.bell)
+                    # in case you wrongly chose a folder
+                    pop_menu.add_command(label='Remove issue',
+                                         command=lambda: self.remove_issue(curr_idx, line_map[curr_idx]))
+                    pop_menu.add_command(label='Do not import',
+                                         command=lambda: self.do_not_import(curr_idx, line_map[curr_idx]))
 
             pop_menu.add_command(label='Read or add comment',
                                  command=lambda: self.get_entry(issue_key, curr_idx, line_map[curr_idx]))
@@ -566,10 +588,11 @@ class BidsManager(Frame):
                 self.update_text(self.curr_bids.curr_log)
             else:
                 self.update_text('No upload directory is set.')
-                self.change_menu_state(start_idx=1, state=DISABLED)
-
         except Exception as err:
             self.update_text(self.curr_bids.curr_log + str(err))
+        self.curr_data2import = None
+        self.upload_dir = None
+        self.change_menu_state(self.uploader_menu, start_idx=1, state=DISABLED)
 
     def onExit(self):
         self.quit()
@@ -858,7 +881,7 @@ class FormDialog(TemplateDialog):
             self.options = {key: '' for key in input_dict.keys()}
         else:
             for key in self.options:
-                if not isinstance(self.options[key], list):
+                if self.options[key] and not isinstance(self.options[key], list):
                     self.options[key] = [self.options[key]]
         if not required_keys:
             self.required_keys = []
