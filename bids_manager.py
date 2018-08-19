@@ -47,9 +47,9 @@ class BidsManager(Frame):
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
         issue_menu.add_command(label='Solve importation issues',
-                               command=lambda: self.solve_issues(bids.Issue.keylist[0]), state=DISABLED)
+                               command=lambda: self.solve_issues('ImportIssue'), state=DISABLED)
         issue_menu.add_command(label='Solve channel issues',
-                               command=lambda: self.solve_issues(bids.Issue.keylist[1]), state=DISABLED)
+                               command=lambda: self.solve_issues('ElectrodeIssue'), state=DISABLED)
         # settings_menu.add_command(label='Exit', command=self.quit)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
@@ -492,7 +492,7 @@ class BidsManager(Frame):
         issue_list2write = []
         action_list2write = []
         line_mapping = []
-        if issue_key == bids.Issue.keylist[1]:
+        if issue_key == 'ElectrodeIssue':
             label_str = ' electrode issue '
             for issue in issue_dict:
                 for mismatch_el in issue.list_mismatched_electrodes():
@@ -511,7 +511,7 @@ class BidsManager(Frame):
                         line_mapping[-1]['IsAction'] = True
                     else:
                         action_list2write.append('')
-        elif issue_key == bids.Issue.keylist[0]:
+        elif issue_key == 'ImportIssue':
             label_str = ' importation issue '
             for issue in issue_dict:
                 element = issue.get_element()
