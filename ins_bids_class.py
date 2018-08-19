@@ -194,7 +194,7 @@ class BidsBrick(dict):
                 ''' source data, derivatives, code do not have requirements yet'''
                 continue
             if self.required_keys:
-                if key in self.required_keys and not self[key]:
+                if key in self.required_keys and (self[key] == '' or self[key] == []):
                     missing_elements += 'In ' + type(self).__name__ + ', key ' + str(key) + ' is missing.\n'
             if self[key] and isinstance(self[key], list):  # check if self has modality brick, if not empty than
                 # recursively check whether it has also all req attributes
@@ -1608,7 +1608,7 @@ class Data2Import(MetaBrick):
                 self['UploadDate'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             self.get_requirements(requirements_fileloc)
         else:
-            str_error = data2import_dir + 'is not a directory.'
+            str_error = data2import_dir + ' is not a directory.'
             self.write_log(str_error)
             raise NotADirectoryError(str_error)
 
@@ -1977,6 +1977,12 @@ class BidsDataset(MetaBrick):
         self.__class__.clear_log()
         self.write_log(10*'=' + '\nImport of ' + data2import.dirname + '\n' + 10*'=')
         if isinstance(data2import, Data2Import) and data2import.has_all_req_attributes()[0]:
+
+            if not self.verif_upload_issues(data2import.dirname):
+                error_str = 'Some elements in ' + data2import.dirname + ' have not been verified.'
+                self.write_log(error_str)
+                return
+
             if not (not BidsDataset.converters['Electrophy']['path'] or
                     os.path.isfile(BidsDataset.converters['Electrophy']['path']) and
                     (not BidsDataset.converters['Imagery']['path'] or
@@ -1998,6 +2004,8 @@ class BidsDataset(MetaBrick):
             '''Here we copy the data2import dictionary to pop all the imported data in order to avoid importing
             the same data twice in case there is an error and we have to launch the import procedure on the same
             folder again. The original data2import in rename by adding the date in the filename'''
+            if not BidsBrick.cwdir == data2import.dirname:
+                Data2Import._assign_import_dir(data2import.dirname)
             copy_data2import = Data2Import()
             copy_data2import.copy_values(data2import)
             copy_data2import.dirname = data2import.dirname
@@ -2091,7 +2099,7 @@ class BidsDataset(MetaBrick):
                                                        'match the one of the current dataset.\nSession label(s): ' \
                                                        + ', '.join(bids_ses) + '.\nSubject ' + sub['sub'] + \
                                                        ' not imported.'
-                                        self.issues.add_issue(Issue.keylist[1], brick=modality,
+                                        self.issues.add_issue('ImportIssue', brick=modality,
                                                               description=string_issue)
                                         self.write_log(string_issue)
                                         continue
@@ -2486,6 +2494,28 @@ class BidsDataset(MetaBrick):
         self.write_log(error_str)
         return
 
+    def make_upload_issues(self, data2import, force_verif=False):
+        """ each time a data2import is instantiated, one has to create upload issues to force the user to verify that
+        the files have the correct attributes. """
+        if not isinstance(data2import, Data2Import):
+            self.write_log('Current method takes instance of Data2Import.')
+            return
+        if force_verif is True:
+            state = 'verified'
+        else:
+            state = 'not verified'
+        self._assign_bids_dir(self.dirname)
+        for sub in data2import['Subject']:
+            for key in sub:
+                if key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
+                    for mod_brick in sub[key]:
+                        self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
+                                              sub=mod_brick['sub'], path=data2import.dirname,
+                                              state=state)
+
+    def verif_upload_issues(self, import_dir):
+        return self.issues.verif_upload_issues(import_dir)
+
     @classmethod
     def _assign_bids_dir(cls, bids_dir):
         cls.dirname = bids_dir
@@ -2548,6 +2578,12 @@ class IssueType(BidsBrick):
             comment['name'] = elec_name
         comment['description'] = desc
         self['Comment'] = comment
+
+
+class UpldFldrIssue(IssueType):
+    keylist = BidsBrick.keylist + ['path', 'state', 'fileLoc', 'Comment', 'Action']
+    required_keys = BidsBrick.keylist + ['path', 'validated', 'fileLoc']
+    pass
 
 
 class ElectrodeIssue(IssueType):
@@ -2639,10 +2675,11 @@ class ImportIssue(IssueType):
 
 
 class Issue(BidsBrick):
-    keylist = ['ImportIssue', 'ElectrodeIssue']
+    keylist = ['UpldFldrIssue', 'ImportIssue', 'ElectrodeIssue']
 
     def check_with_latest_issue(self):
-
+        """ This method verified in the lastest issue.json if there are issues corresponding to the current Issue().
+        If so, it loads previous Comments and Actions and State (for the upload issues) of the related issue."""
         def read_file(filename):
             with open(filename, 'r') as file:
                 rd_json = json.load(file)
@@ -2654,23 +2691,37 @@ class Issue(BidsBrick):
             list_of_issue_files = [os.path.join(log_dir, file) for file in list_of_files
                                    if file.startswith(self.classname().lower()) and os.path.splitext(file)[0]]
             if list_of_issue_files:
+                # find the latest issue.json file
                 latest_issue = max(list_of_issue_files, key=os.path.getctime)
                 read_json = read_file(latest_issue)
+
+                # remove all import dir that were removed, it will raise an error in the fileLOc test otherwise
+                cpy_read_json = read_file(latest_issue)
+                for issue_key in cpy_read_json.keys():
+                    for issue in read_json[issue_key]:
+                        if not os.path.exists(issue['path']):
+                            self.write_log(issue['path'] + ' does not exist anymore. Related ' +
+                                           issue_key + ' issues are removed')
+                            read_json[issue_key].pop(read_json[issue_key].index(issue))
+
                 if self == Issue():
                     self.copy_values(read_json)
+                    if not read_json == cpy_read_json:
+                        self.save_as_json()
                 else:
                     prev_issues = Issue()
                     prev_issues.copy_values(read_json)
 
                     for issue_key in self.keys():
                         for issue in self[issue_key]:
-                            """ file in the previous issuebrick.json the comment and action concerning the same file; 
+                            """ find in the previous issue.json the comment and action concerning the same file; 
                             add_comment() and add_action() take care of the electrode matching."""
                             idx = None
                             for cnt, prev_iss in enumerate(prev_issues[issue_key]):
                                 if prev_iss.get_attributes() == issue.get_attributes():
                                     idx = cnt
                                     break
+                            # could pop prev_iss from prev_issues to make it fasted
                             comment_list = prev_issues[issue_key][idx]['Comment']
                             action_list = prev_issues[issue_key][idx]['Action']
                             for comment in comment_list:
@@ -2680,22 +2731,6 @@ class Issue(BidsBrick):
                                     issue.add_action(action['name'], action['description'], action['command'])
                                 else:
                                     issue.add_action(action['description'], action['command'])
-
-                # for issue_key in self.keys():
-                #     for issue in self[issue_key]:
-                #         """ file in the previous issuebrick.json the comment and action concerning the same file;
-                #         add_comment() and add_action() take care of the electrode matching."""
-                #         idx = None
-                #         for cnt, prev_iss in enumerate(prev_issues[issue_key]):
-                #             if prev_iss.get_attributes() == issue.get_attributes():
-                #                 idx = cnt
-                #                 break
-                #         comment_list = prev_issues[issue_key][idx]['Comment']
-                #         action_list = prev_issues[issue_key][idx]['Action']
-                #         for comment in comment_list:
-                #             issue.add_comment(comment['name'], comment['description'])
-                #         for action in action_list:
-                #             issue.add_action(action['name'], action['description'], action['command'])
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
 
@@ -2722,7 +2757,7 @@ class Issue(BidsBrick):
     def add_issue(self, issue_type, **kwargs):
         # key used by kwarg:
         # ['sub', 'mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'brick', 'description']
-        if issue_type == self.keylist[1]:
+        if issue_type == 'ElectrodeIssue':
             issue = ElectrodeIssue()
             for key in kwargs:
                 if key in issue.keylist:
@@ -2736,7 +2771,7 @@ class Issue(BidsBrick):
                             issue[key] = kwargs[key]
                     else:
                         issue[key] = kwargs[key]
-        elif issue_type == self.keylist[0] and kwargs['brick']:
+        elif issue_type == 'ImportIssue' and kwargs['brick']:
             issue = ImportIssue()
             issue['path'] = Data2Import.dirname
             if kwargs['brick']:
@@ -2756,12 +2791,19 @@ class Issue(BidsBrick):
                 issue[kwargs['brick'].classname()] = brick_imp_shrt
             if kwargs['description'] and isinstance(kwargs['description'], str):
                 issue['description'] = kwargs['description']
+        elif issue_type == 'UpldFldrIssue':
+            issue = UpldFldrIssue()
+            if 'fileLoc' in kwargs.keys() and 'path' in kwargs.keys():
+                kwargs['fileLoc'] = os.path.join(kwargs['path'], kwargs['fileLoc'])
+            for key in kwargs:
+                if key in issue.keylist:
+                    issue[key] = kwargs[key]
         else:
             return
 
-        # check if the same issue is already in the Issue brick by testing all the keys except Comment and Action
+        # check if the same issue is already in the Issue brick by testing all the keys except Comment, Action and State
         for prev_issue in self[issue_type]:
-            if all(prev_issue[key] == issue[key] for key in prev_issue if key not in ['Comment', 'Action']):
+            if all(prev_issue[key] == issue[key] for key in prev_issue if key not in ['Comment', 'Action', 'state']):
                 return
 
         # before adding the issue test whether it has all needed attributes
@@ -2808,6 +2850,9 @@ class Issue(BidsBrick):
 
         self.clear()
         self.copy_values(new_issue)
+
+    def verif_upload_issues(self, import_dir):
+        return all(up_iss['state'] == 'verified' for up_iss in self['UpldFldrIssue'] if up_iss['path'] == import_dir)
 
     @staticmethod
     def empty_dict():
