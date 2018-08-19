@@ -1137,7 +1137,7 @@ class GlobalSidecars(BidsBrick):
             self['fileLoc'] = filename + ext
         # elif ext in self.allowed_file_formats and filename.split('_')[-1] == 'photo':
         else:
-            photo_key = [value for counter, value in enumerate(self.complementary_keylist) if value in
+            photo_key = [value for value in self.complementary_keylist if value in
                          BidsBrick.get_list_subclasses_names()][0]
             if ext.lower() in eval(photo_key + '.allowed_file_formats'):
                 super().__init__(keylist=eval(photo_key + '.keylist'), required_keys=eval(photo_key + '.required_keys'))
@@ -1146,9 +1146,10 @@ class GlobalSidecars(BidsBrick):
             else:
                 err_str = 'Not recognise file type for ' + self.classname() + '.'
                 self.write_log(err_str)
+                raise TypeError(err_str)
 
 
-class Photo(GlobalSidecars):
+class Photo(BidsBrick):
     keylist = BidsBrick.keylist + ['ses', 'acq', 'modality', 'fileLoc']
     required_keys = BidsBrick.required_keys + ['modality']
     allowed_file_formats = ['.jpg', '.jpeg', '.png', '.bmp', '.pdf', '.ppt', '.pptx']
@@ -1254,6 +1255,7 @@ class IeegGlobalSidecars(GlobalSidecars):
     complementary_keylist = ['IeegElecTSV', 'IeegCoordSysJSON', 'IeegPhoto']
     required_keys = BidsBrick.required_keys
     allowed_file_formats = ['.tsv', '.json'] + IeegPhoto.allowed_file_formats
+    allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
 
 
 """ Anat brick with its file-specific sidecar files."""
@@ -1579,6 +1581,39 @@ class MetaBrick(BidsBrick):
     def get_subject_list(self):
         return [sub['sub'] for sub in self['Subject']]
 
+    def get_object_from_filename(self, filename, sub_id=None):
+        if isinstance(filename, str):
+            sub_list = self.get_subject_list()
+            if isinstance(self, BidsDataset):
+                fname = os.path.splitext(os.path.basename(filename))[0]
+                fname_pieces = fname.split('_')
+                if 'sub-' in fname_pieces[0]:
+                    sub_id = fname_pieces[0].split('-')[1]
+                else:
+                    error_str = 'Filename ' + filename + ' does not follow bids architecture.'
+                    self.write_log(error_str)
+                    return
+                subclass = [subcls for subcls in Electrophy.__subclasses__() + Imagery.__subclasses__() +
+                            GlobalSidecars.__subclasses__() if fname_pieces[-1] in subcls.allowed_modalities]
+            else:
+                if sub_id in sub_list:
+                    sub_list = [sub_id]
+                subclass = Electrophy.__subclasses__() + Imagery.__subclasses__() + GlobalSidecars.__subclasses__()
+            # if fname_pieces[-1] in [for subclss in ModalityType.get_list_subclasses_names()]
+            for sub_id in sub_list:
+                self.is_subject_present(sub_id)
+                if self.curr_subject['Subject'] and subclass:
+                    for subclss in subclass:
+                        for mod_elmt in self.curr_subject['Subject'][subclss.__name__]:
+                            if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
+                                return mod_elmt
+            error_str = 'Subject ' + sub_id + ' filename ' + str(filename) + ' is not found in '\
+                        + self.dirname + '.'
+        else:
+            error_str = 'Filename ' + str(filename) + ' should be a string.'
+        self.write_log(error_str)
+        return
+
 
 ''' BIDS brick which contains all the information about the data to be imported '''
 
@@ -1603,7 +1638,7 @@ class Data2Import(MetaBrick):
                 with open(os.path.join(self.dirname, Data2Import.filename)) as file:
                     inter_dict = json.load(file)
                     self.copy_values(inter_dict)
-                    self.write_log('Importation procedure ready!')
+                    # self.write_log('Importation procedure ready!')
             else:
                 self['UploadDate'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             self.get_requirements(requirements_fileloc)
@@ -2346,10 +2381,18 @@ class BidsDataset(MetaBrick):
 
         def modify_files(**kwargs):
 
+            elmt_iss = issue.get_element()
             if 'remove_issue' in kwargs and kwargs['remove_issue']:
                 # nothing else to do since the issue will be popped anyway ^_^
+                self.write_log('Issue concerning ' + elmt_iss['fileLoc'] + ' has been removed.')
                 return
-            elmt_iss = issue.get_element()
+            if 'state' in kwargs and kwargs['state'] and isinstance(issue, UpldFldrIssue):
+                # simple command to modify the state
+                curr_iss = issues_copy['UpldFldrIssue'][issues_copy['UpldFldrIssue'].index(issue)]
+                curr_iss['state'] = kwargs['state']
+                curr_iss['Action'] = []
+                self.write_log('State of file ' + elmt_iss['fileLoc'] + ' has been set to ' + curr_iss['state'] + '.')
+                return
             if 'in_bids' in kwargs:
                 if kwargs['in_bids'] == 'True' or kwargs['in_bids'] is True:
                     kwargs['in_bids'] = True
@@ -2380,6 +2423,9 @@ class BidsDataset(MetaBrick):
                     curr_sub[elmt_iss.classname()].pop(idx)
                     self.write_log('Element ' + elmt_iss['fileLoc'] + ' has been removed from the data to import'
                                    + loc_str + '.')
+                if isinstance(issue, UpldFldrIssue):
+                    # UpldFldrIssue are normally not popped, thus need to add this line
+                    issues_copy['UpldFldrIssue'].pop(issues_copy['UpldFldrIssue'].index(issue))
             elif isinstance(elmt_iss, DatasetDescJSON):
                 for key in kwargs:
                     if key in curr_brick['DatasetDescJSON']:
@@ -2427,15 +2473,20 @@ class BidsDataset(MetaBrick):
                             else:
                                 val = str(kwargs[key]).zfill(2)
                             elmt[key] = val
-                    self.write_log('Modification of ' + elmt['fileLoc'] + ' has been done ' + loc_str)
+                    self.write_log('Modification of ' + elmt['fileLoc'] + ' has been done' + loc_str)
+            if isinstance(issue, UpldFldrIssue):
+                curr_iss = issues_copy['UpldFldrIssue'][issues_copy['UpldFldrIssue'].index(issue)]
+                curr_iss['Action'] = []
             curr_brick.save_as_json()
 
         BidsBrick.access_time = datetime.now()
+        self._assign_bids_dir(self.dirname)
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
         file_removal = False
         try:
             self.write_log(10 * '=' + '\nApplying actions\n' + 10 * '=')
+            # could optimize/make nicer
             for issue in self.issues['ElectrodeIssue']:
                 if not issue['Action']:
                     continue
@@ -2457,6 +2508,14 @@ class BidsDataset(MetaBrick):
                     file_removal = True
                 issues_copy['ImportIssue'].pop(issues_copy['ImportIssue'].index(issue))
                 issues_copy.save_as_json()
+            for issue in self.issues['UpldFldrIssue']:
+                if not issue['Action']:
+                    continue
+                eval('modify_files(' + issue['Action'][0]['command'] + ')')
+                # here issues are not popped out because in import_data() they are checked to make sure files were
+                # verified
+                issues_copy.save_as_json()
+
         except Exception as ex:
             self.write_log(str(ex))
         if issues_copy['ElectrodeIssue'] == self.issues['ElectrodeIssue'] and not file_removal:
@@ -2468,31 +2527,6 @@ class BidsDataset(MetaBrick):
         self.issues.copy_values(issues_copy)
         if elec_iss_bln:  # only check requirement if actions were made for ElectrodeIssues
             self.check_requirements()
-
-    def get_object_from_filename(self, filename):
-        if isinstance(filename, str):
-            fname = os.path.splitext(os.path.basename(filename))[0]
-            fname_pieces = fname.split('_')
-            if 'sub-' in fname_pieces[0]:
-                sub_id = fname_pieces[0].split('-')[1]
-            else:
-                error_str = 'Filename ' + filename + ' does not follow bids architecture.'
-                self.write_log(error_str)
-                return
-            subclass = [subcls for subcls in Electrophy.__subclasses__() + Imagery.__subclasses__()
-                        if fname_pieces[-1] in subcls.allowed_modalities]
-            # if fname_pieces[-1] in [for subclss in ModalityType.get_list_subclasses_names()]
-            self.is_subject_present(sub_id)
-            if self.curr_subject['Subject'] and subclass:
-                for mod_elmt in self.curr_subject['Subject'][subclass[0].__name__]:
-                    if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
-                        return mod_elmt
-            error_str = 'Subject ' + sub_id + ' filename ' + str(filename) + ' is not found in '\
-                        + self.dirname + '.'
-        else:
-            error_str = 'Filename ' + str(filename) + ' should be a string.'
-        self.write_log(error_str)
-        return
 
     def make_upload_issues(self, data2import, force_verif=False):
         """ each time a data2import is instantiated, one has to create upload issues to force the user to verify that
@@ -2579,6 +2613,63 @@ class IssueType(BidsBrick):
         comment['description'] = desc
         self['Comment'] = comment
 
+    def get_element(self):
+        if isinstance(self, ImportIssue):
+            """get_element returns the brick which produced this issue. Since there is only one brick per ImportIssue,
+            one can break the for loop when found"""
+            for key in ImportIssue.keylist:
+                if key == 'DatasetDescJSON' and self[key]:
+                    return self[key]
+                elif key in ModalityType.get_list_subclasses_names() + ['Subject'] and self[key]:
+                    return self[key][0]
+        elif isinstance(self, UpldFldrIssue):
+            tmp_data2import = Data2Import(self['path'])
+            return tmp_data2import.get_object_from_filename(self['fileLoc'])
+        return
+
+    def formatting(self, comment_type=None, elec_name=None):
+        if comment_type and (not isinstance(comment_type, str) or
+                             comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
+            raise KeyError(comment_type + ' is not a recognized key of ' + self.classname() + '.')
+        if not comment_type:
+            comment_type = Comment.get_list_subclasses_names() + ['Comment']
+        else:
+            comment_type = [comment_type.capitalize()]
+        formatted_list = []
+        for cmnt_type in comment_type:
+            for cmnt in self[cmnt_type]:
+                if isinstance(self, ElectrodeIssue):
+                    if elec_name and not cmnt['name'] == elec_name:
+                        continue
+                formatted_list.append(cmnt.formatting())
+        return formatted_list
+
+    def add_action(self, desc, command, elec_name=None):
+        action = Action()
+        if isinstance(self, ElectrodeIssue):
+            """verify that the given electrode name is part of the mismatched electrodes"""
+            if elec_name not in self.list_mismatched_electrodes():
+                return
+            """check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
+            idx2pop = None
+            for act in self['Action']:
+                if act['name'] == elec_name:
+                    idx2pop = self['Action'].index(act)
+                    break
+            if idx2pop is not None:
+                self['Action'].pop(idx2pop)
+            """ add action for given mismatched electrodes """
+            action['name'] = elec_name
+        else:
+            """ImportIssue and UpldFldrIssue have only one issue per instance (different from channelIssue that can have
+             as many actions as there are mismatched channels)"""
+            if self['Action']:
+                self['Action'].pop(0)
+        """ add action for given mismatched electrodes """
+        action['description'] = desc
+        action['command'] = command
+        self['Action'] = action
+
 
 class UpldFldrIssue(IssueType):
     keylist = BidsBrick.keylist + ['path', 'state', 'fileLoc', 'Comment', 'Action']
@@ -2593,41 +2684,6 @@ class ElectrodeIssue(IssueType):
     def list_mismatched_electrodes(self):
         return [miselec['name'] for miselec in self['MismatchedElectrodes']]
 
-    def add_action(self, elec_name, desc, command):
-        """verify that the given electrode name is part of the mismatched electrodes"""
-        if elec_name not in self.list_mismatched_electrodes():
-            return
-        """check whether a mismatched electrode already has an action. Only one action per electrode is permitted"""
-        idx2pop = None
-        for act in self['Action']:
-            if act['name'] == elec_name:
-                idx2pop = self['Action'].index(act)
-                break
-        if idx2pop is not None:
-            self['Action'].pop(idx2pop)
-        """ add action for given mismatched electrodes """
-        action = Action('name')
-        action['name'] = elec_name
-        action['description'] = desc
-        action['command'] = command
-        self['Action'] = action
-
-    def formatting(self, comment_type=None, elec_name=None):
-        if comment_type and (not isinstance(comment_type, str) or
-                             comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
-            raise KeyError(comment_type + ' is not a recognized key of ' + self.classname() + '.')
-        if not comment_type:
-            comment_type = Comment.get_list_subclasses_names() + ['Comment']
-        else:
-            comment_type = [comment_type.capitalize()]
-        formatted_list = []
-        for cmnt_type in comment_type:
-            for cmnt in self[cmnt_type]:
-                if elec_name and not cmnt['name'] == elec_name:
-                    continue
-                formatted_list.append(cmnt.formatting())
-        return formatted_list
-
 
 class ImportIssue(IssueType):
     """instance of ImportIssue allows storing information, comments and actions about issues encounter during
@@ -2637,41 +2693,6 @@ class ImportIssue(IssueType):
               [key for key in Subject.keylist if key in ModalityType.get_list_subclasses_names()
                + GlobalSidecars.get_list_subclasses_names()] + \
               ['description', 'path', 'Comment', 'Action']
-
-    def add_action(self, desc, command):
-        """ImportIssue as only one issue per instance (different from channelIssue that can have as many actions as
-        there are mismatched channels)"""
-        if self['Action']:
-            self['Action'].pop(0)
-        """ add action for given mismatched electrodes """
-        action = Action()
-        action['description'] = desc
-        action['command'] = command
-        self['Action'] = action
-
-    def get_element(self):
-        """get_element returns the brick which produced this issue. Since there is only one brick per ImportIssue, one
-        can break the for loop when found"""
-        for key in ImportIssue.keylist:
-            if key in ModalityType.get_list_subclasses_names() + ['Subject'] and self[key]:
-                return self[key][0]
-            elif key == 'DatasetDescJSON' and self[key]:
-                return self[key]
-        return
-
-    def formatting(self, comment_type=None,  elec_name=None):
-        if comment_type and (not isinstance(comment_type, str) or
-                             comment_type.capitalize() not in Comment.get_list_subclasses_names() + ['Comment']):
-            raise KeyError(comment_type + ' is not a recognized key of ' + self.classname() + '.')
-        if not comment_type:
-            comment_type = Comment.get_list_subclasses_names() + ['Comment']
-        else:
-            comment_type = [comment_type.capitalize()]
-        formatted_list = []
-        for cmnt_type in comment_type:
-            for cmnt in self[cmnt_type]:
-                formatted_list.append(cmnt.formatting())
-        return formatted_list
 
 
 class Issue(BidsBrick):
@@ -2699,7 +2720,7 @@ class Issue(BidsBrick):
                 cpy_read_json = read_file(latest_issue)
                 for issue_key in cpy_read_json.keys():
                     for issue in read_json[issue_key]:
-                        if not os.path.exists(issue['path']):
+                        if 'path' in issue and not os.path.exists(issue['path']):
                             self.write_log(issue['path'] + ' does not exist anymore. Related ' +
                                            issue_key + ' issues are removed')
                             read_json[issue_key].pop(read_json[issue_key].index(issue))
