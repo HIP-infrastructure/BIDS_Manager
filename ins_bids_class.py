@@ -701,11 +701,11 @@ class BidsBrick(dict):
             cmd_line = converter_path + ' --seegBIDS "' + os.path.join(Data2Import.dirname, self['fileLoc']) + \
                        '" ' + name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr'
         elif isinstance(self, GlobalSidecars):
-            if self['modality'] == 'photo':
-                os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
-                shutil.copy2(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
-                    BidsDataset.dirname, dirname, filename + os.path.splitext(self['fileLoc'])[1]))
-            return [filename + os.path.splitext(self['fileLoc'])[1]]
+            fname = filename + os.path.splitext(self['fileLoc'])[1]
+            os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
+            shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
+                BidsDataset.dirname, dirname, fname))
+            return [fname]
         else:
             str_issue = os.path.basename(self['fileLoc']) + ' cannot be converted!'
             self.write_log(str_issue)
@@ -796,6 +796,7 @@ class BidsBrick(dict):
 
 class BidsSidecar(object):
     bids_default_unknown = 'n/a'
+    extension = ''
     inheritance = True
     modality_field = []
     allowed_modalities = []
@@ -1634,6 +1635,7 @@ class Data2Import(MetaBrick):
         if os.path.isdir(data2import_dir):
             self._assign_import_dir(data2import_dir)
             # self.requirements = None
+            self.get_requirements(requirements_fileloc)
             if os.path.isfile(os.path.join(self.dirname, Data2Import.filename)):
                 with open(os.path.join(self.dirname, Data2Import.filename)) as file:
                     inter_dict = json.load(file)
@@ -1641,7 +1643,6 @@ class Data2Import(MetaBrick):
                     # self.write_log('Importation procedure ready!')
             else:
                 self['UploadDate'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-            self.get_requirements(requirements_fileloc)
         else:
             str_error = data2import_dir + ' is not a directory.'
             self.write_log(str_error)
@@ -1976,12 +1977,18 @@ class BidsDataset(MetaBrick):
             mod_dict2import.write_log(mod_dict2import['fileLoc'] + ' was imported as ' + filename)
 
         def have_data_same_source_file(bids_dict, mod_dict):
-            if bids_dict['SourceData'] and bids_dict['SourceData'][-1]['SrcDataTrack']:
-                filename, dirname, ext = mod_dict.create_filename_from_attributes()
-                original_src = bids_dict['SourceData'][-1]['SrcDataTrack'].get_source_from_raw_filename(filename)[0]
-                return os.path.basename(mod_dict['fileLoc']) == original_src
-
-            return False
+            flg = False
+            if bids_dict['SourceData']:
+                src_dict = bids_dict['SourceData'][-1]
+                input_basefname = os.path.basename(mod_dict['fileLoc'])
+                if src_dict['SrcDataTrack']:
+                    flg = any(line[0] == input_basefname for line in src_dict['SrcDataTrack'][1:])
+                else:
+                    src_dict.is_subject_present(mod_dict['sub'])
+                    src_sub = src_dict.curr_subject['Subject']
+                    flg = any(os.path.basename(mod_brick['fileLoc']) == input_basefname
+                              for mod_brick in src_sub[mod_dict.classname()])
+            return flg
 
         def have_data_same_attrs_and_sidecars(bids_dst, mod_dict2import, sub_idx):
             """
@@ -2147,8 +2154,10 @@ class BidsDataset(MetaBrick):
                                         self['SourceData'][-1]['Subject'] = Subject()
                                         self['SourceData'][-1]['Subject'][-1].update(sub.get_attributes())
 
+                                self.issues.remove(modality)
                                 push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
                                 self.save_as_json()
+                                self.issues.save_as_json()
                                 copy_data2import['Subject'][import_sub_idx][modality_type].pop(0)
                                 copy_data2import.save_as_json()
                         # if copy_data2import['Subject'][import_sub_idx].is_empty():
@@ -2164,10 +2173,6 @@ class BidsDataset(MetaBrick):
 
                 if self['DatasetDescJSON']:
                     self['DatasetDescJSON'].write_file()
-                if self['ParticipantsTSV']:
-                    self['ParticipantsTSV'].write_file()
-                if keep_sourcedata and keep_file_trace:
-                    self['SourceData'][-1]['SrcDataTrack'].write_file()
                 self.check_requirements()
                 # data2import.clear()
                 # self.parse_bids()
@@ -2176,6 +2181,12 @@ class BidsDataset(MetaBrick):
             except Exception as err:
                 self.write_log(str(err))
                 copy_data2import.save_as_json()
+
+            # could make it fast by just appending a new line instead of writing the whole file again
+            self['ParticipantsTSV'].write_file()
+            if self['SourceData'] and self['SourceData'][-1]['SrcDataTrack']:
+                # could make it fast by just appending a new line instead of writing the whole file again
+                self['SourceData'][-1]['SrcDataTrack'].write_file()
 
     def remove(self, element2remove, with_issues=True):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
@@ -2423,9 +2434,6 @@ class BidsDataset(MetaBrick):
                     curr_sub[elmt_iss.classname()].pop(idx)
                     self.write_log('Element ' + elmt_iss['fileLoc'] + ' has been removed from the data to import'
                                    + loc_str + '.')
-                if isinstance(issue, UpldFldrIssue):
-                    # UpldFldrIssue are normally not popped, thus need to add this line
-                    issues_copy['UpldFldrIssue'].pop(issues_copy['UpldFldrIssue'].index(issue))
             elif isinstance(elmt_iss, DatasetDescJSON):
                 for key in kwargs:
                     if key in curr_brick['DatasetDescJSON']:
@@ -2475,11 +2483,16 @@ class BidsDataset(MetaBrick):
                             elmt[key] = val
                     self.write_log('Modification of ' + elmt['fileLoc'] + ' has been done' + loc_str)
             if isinstance(issue, UpldFldrIssue):
-                curr_iss = issues_copy['UpldFldrIssue'][issues_copy['UpldFldrIssue'].index(issue)]
-                curr_iss['Action'] = []
+                if 'pop' in kwargs:
+                    # UpldFldrIssue are normally not popped, thus need to add this line
+                    issues_copy['UpldFldrIssue'].pop(issues_copy['UpldFldrIssue'].index(issue))
+                else:
+                    curr_iss = issues_copy['UpldFldrIssue'][issues_copy['UpldFldrIssue'].index(issue)]
+                    curr_iss['Action'] = []
             curr_brick.save_as_json()
 
         BidsBrick.access_time = datetime.now()
+        self.clear_log()
         self._assign_bids_dir(self.dirname)
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
@@ -2515,7 +2528,6 @@ class BidsDataset(MetaBrick):
                 # here issues are not popped out because in import_data() they are checked to make sure files were
                 # verified
                 issues_copy.save_as_json()
-
         except Exception as ex:
             self.write_log(str(ex))
         if issues_copy['ElectrodeIssue'] == self.issues['ElectrodeIssue'] and not file_removal:
@@ -2554,9 +2566,6 @@ class BidsDataset(MetaBrick):
     def _assign_bids_dir(cls, bids_dir):
         cls.dirname = bids_dir
         BidsBrick.cwdir = bids_dir
-
-    # def __repr__(self):
-    #     return 'bids = BidsDataset("C:/Users/datasetdir/your_bids_dir")'
 
 
 ''' Additional class to handle issues and relative actions '''
@@ -2716,7 +2725,7 @@ class Issue(BidsBrick):
                 latest_issue = max(list_of_issue_files, key=os.path.getctime)
                 read_json = read_file(latest_issue)
 
-                # remove all import dir that were removed, it will raise an error in the fileLOc test otherwise
+                # remove all import dir that were removed, it will raise an error in the fileLoc test otherwise
                 cpy_read_json = read_file(latest_issue)
                 for issue_key in cpy_read_json.keys():
                     for issue in read_json[issue_key]:
@@ -2853,21 +2862,24 @@ class Issue(BidsBrick):
                                 new_issue[key].pop(new_issue[key].index(issue))
                                 break  # only one element is not empty, break when found
             elif isinstance(brick2remove, Electrophy):
-                if key == 'ElectrodeIssue':
-                    for issue in self[key]:
-                        if issue['fileLoc'] == brick2remove['fileLoc']:
-                            new_issue[key].pop(new_issue[key].index(issue))
-                elif key == 'ImportIssue':
+                if key == 'ImportIssue':
                     for issue in self[key]:
                         if issue[brick2remove.classname()] and \
                                 issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
                             new_issue[key].pop(new_issue[key].index(issue))
-            elif key == 'ImportIssue' and (isinstance(brick2remove, Imagery) or
-                                           isinstance(brick2remove, GlobalSidecars)):
+                            break
+                else:
+                    for issue in self[key]:
+                        if issue['fileLoc'] == brick2remove['fileLoc']:
+                            new_issue[key].pop(new_issue[key].index(issue))
+                            break
+            elif not key == 'ElectrodeIssue' and (isinstance(brick2remove, Imagery) or
+                                                  isinstance(brick2remove, GlobalSidecars)):
                 for issue in self[key]:
                     if issue[brick2remove.classname()] and \
                             issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
                         new_issue[key].pop(new_issue[key].index(issue))
+                        break
 
         self.clear()
         self.copy_values(new_issue)
