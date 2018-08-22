@@ -39,12 +39,15 @@ class BidsManager(Frame):
         # fill up the bids menu
         bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
-        bids_menu.add_command(label='Show current log', command=self.bell, state=DISABLED)
+        bids_menu.add_command(label='Show current log', command=lambda: self.pack_element(self.main_frame['text']),
+                              state=DISABLED)
         bids_menu.add_command(label='Show dataset_description.json', state=DISABLED)
         bids_menu.add_command(label='Show participants.tsv', state=DISABLED)
         bids_menu.add_command(label='Show source_data_trace.tsv', state=DISABLED)
+        bids_menu.add_command(label='Subject', state=DISABLED)
         # fill up the upload/import menu
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
+        uploader_menu.add_command(label='Add elements to import', command=self.bell, state=DISABLED)
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
         issue_menu.add_command(label='Verify upload folder content',
@@ -68,9 +71,10 @@ class BidsManager(Frame):
         self.main_frame['double_list'] = IssueList(self.master, self.apply_actions, self.delete_actions)
 
         # little band to print small infos
-        self.info_label = StringVar()
-        self.info_band = Label(self.master, textvariable=self.info_label, bg="blue", fg="white", font=("Arial", 15))
-        self.info_band.pack(fill=X, side=TOP)
+        self.banner_label = StringVar()
+        self.banner_color = StringVar()
+        self.banner = Label(self.master, textvariable=self.banner_label, bg="blue", fg="white", font=("Arial", 15))
+        self.banner.pack(fill=X, side=TOP)
 
     def pack_element(self, element, side=None, remove_previous=True):
 
@@ -91,17 +95,16 @@ class BidsManager(Frame):
     def update_text(self, str2show, delete_flag=True, location=None):
         self.main_frame['text'].update_text(str2show, delete_flag=delete_flag, location=location)
 
-    # def save_actions(self):
-    #     self.curr_bids.issues.save_as_json()
-    #     info_str = 'Actions were save for another session in the log folder of the current BIDS directory'
-    #     self.curr_bids.write_log(info_str)
-    #     messagebox.showinfo('Save actions', info_str)
-
     def apply_actions(self):
-        print('actions applied (To be implemented!)')
-        self.curr_bids.apply_actions()
-        self.update_text(self.curr_bids.curr_log)
-        self.pack_element(self.main_frame['text'])
+        flag = messagebox.askyesno('Apply all actions', 'Are you sure you want to apply actions of all issues?')
+        if flag:
+            self.make_idle('Appling actions')
+            self.curr_bids.apply_actions()
+            if self.upload_dir:
+                self.curr_data2import = bids.Data2Import(self.upload_dir)
+            self.update_text(self.curr_bids.curr_log)
+            self.pack_element(self.main_frame['text'])
+            self.make_available()
 
     def delete_actions(self):
         flag = messagebox.askyesno('DELETE All Actions', 'Are you sure you want to DELETE all planned actions?')
@@ -197,9 +200,8 @@ class BidsManager(Frame):
             self.upload_dir = None
             self.curr_data2import = None
             if os.path.isfile(os.path.join(bids_dir, bids.DatasetDescJSON.filename)):
-                self.info_label._default = 'Current BIDS directory: ' + bids_dir
-                self.info_label.set(self.info_label._default)
-                self.update()
+                self.banner_label._default = 'Current BIDS directory: ' + bids_dir
+                self.make_idle('Parsing BIDS directory.')
                 self.curr_bids = bids.BidsDataset(bids_dir)
             else:
                 self.change_menu_state(self.uploader_menu, state=DISABLED)
@@ -210,17 +212,17 @@ class BidsManager(Frame):
 
         # enable all bids sub-menu
         self.change_menu_state(self.bids_menu)
-        self.bids_menu.entryconfigure(2, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
-        self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['ParticipantsTSV']))
+        self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
+        self.bids_menu.entryconfigure(4, command=lambda: self.show_bids_desc(self.curr_bids['ParticipantsTSV']))
         if self.curr_bids['SourceData'] and self.curr_bids['SourceData'][-1]['SrcDataTrack']:
-            self.bids_menu.entryconfigure(4, command=lambda: self.show_bids_desc(
+            self.bids_menu.entryconfigure(5, command=lambda: self.show_bids_desc(
                 self.curr_bids['SourceData'][-1]['SrcDataTrack']), state=NORMAL)
         # enable selection of upload directory
         self.change_menu_state(self.uploader_menu, end_idx=0)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
-        self.info_label.set('Current BIDS directory: ' + bids_dir)
         self.update_text(self.curr_bids.curr_log)
+        self.make_available()
 
     def ask4upload_dir(self):
         self.pack_element(self.main_frame['text'])
@@ -228,8 +230,10 @@ class BidsManager(Frame):
                                                   initialdir=BidsManager.import_startfile)
         if not self.upload_dir:
             return
+        self.make_idle()
         try:
             if os.path.isfile(os.path.join(self.upload_dir, bids.Data2Import.filename)):
+
                 self.curr_data2import = bids.Data2Import(self.upload_dir)
                 if self.curr_data2import.is_empty():
                     self.update_text('There is no file to import in ' + self.upload_dir)
@@ -238,8 +242,9 @@ class BidsManager(Frame):
                 else:
                     self.change_menu_state(self.uploader_menu)
                     self.curr_bids.make_upload_issues(self.curr_data2import)
-                    self.update_text(self.curr_data2import.curr_log)
-                    self.update_text(self.curr_data2import, delete_flag=False)
+                    # self.update_text(self.curr_data2import.curr_log)
+                    # self.update_text(self.curr_data2import, delete_flag=False)
+                    self.solve_issues('UpldFldrIssue')
             else:
                 self.update_text('Error: data2import.json not found in ' + self.upload_dir)
                 self.upload_dir = None
@@ -248,6 +253,7 @@ class BidsManager(Frame):
 
         except Exception as err:
             self.update_text(str(err))
+        self.make_available()
 
     def print_participants_tsv(self):
         self.pack_element(self.main_frame['text'])
@@ -294,7 +300,7 @@ class BidsManager(Frame):
             curr_dict.add_action(desc='Remove issue from the list.', command=cmd)
             self.update_issue_list(curr_dict, list_idx, info)
 
-    def do_not_import(self,iss_key, list_idx, info):
+    def do_not_import(self, iss_key, list_idx, info):
         flag = messagebox.askyesno('Do Not Import', 'Are you sure that you do not want to import this element' +
                                    str(info['Element'].get_attributes()) + '?')
         if flag:
@@ -443,7 +449,7 @@ class BidsManager(Frame):
 
     def solve_issues(self, issue_key):
 
-        def whatto2menu(iss_key, dlb_lst, line_map, event):
+        def what2domenu(iss_key, dlb_lst, line_map, event):
 
             if not dlb_lst.elements['list1'].curselection():
                 return
@@ -526,7 +532,7 @@ class BidsManager(Frame):
         action_list2write = []
         line_mapping = []
         if issue_key == 'ElectrodeIssue':
-            label_str = ' electrode issue '
+            label_str = 'electrode issue'
             for issue in issue_dict:
                 for mismatch_el in issue.list_mismatched_electrodes():
                     issue_list2write.append('In file ' + os.path.basename(issue['fileLoc']) + ' of subject ' +
@@ -546,9 +552,9 @@ class BidsManager(Frame):
                         action_list2write.append('')
         elif issue_key == 'ImportIssue' or issue_key == 'UpldFldrIssue':
             if issue_key == 'ImportIssue':
-                label_str = ' importation issue '
+                label_str = 'importation issue'
             else:
-                label_str = ' upload folder issue '
+                label_str = 'upload folder issue'
             for issue in issue_dict:
                 element = issue.get_element()
                 if not element:
@@ -581,10 +587,10 @@ class BidsManager(Frame):
                 dlb_list.elements['list1'].itemconfig(cnt, foreground='green')
 
         self.populate_list(dlb_list.elements['list2'], action_list2write)
-        self.info_label.set(self.info_label._default + '\nSelect issue from the ' + label_str + 'list')
+        self.banner_label.set(self.banner_label._default + '\nSelect issue from the ' + label_str + ' list')
         dlb_list.elements['list1'].bind('<Double-Button-1>',
-                                        lambda event: whatto2menu(issue_key, dlb_list, line_mapping, event))
-        dlb_list.elements['list1'].bind('<Return>', lambda event: whatto2menu(issue_key, dlb_list, line_mapping, event))
+                                        lambda event: what2domenu(issue_key, dlb_list, line_mapping, event))
+        dlb_list.elements['list1'].bind('<Return>', lambda event: what2domenu(issue_key, dlb_list, line_mapping, event))
 
     def import_data(self):
         self.pack_element(self.main_frame['text'])
@@ -602,6 +608,26 @@ class BidsManager(Frame):
 
     def onExit(self):
         self.quit()
+
+    def make_idle(self, str2print=None):
+        if str2print is None:
+            str2print = ''
+        else:
+            str2print = '\n' + str2print
+        root.config(cursor="wait")
+        for key in self.main_frame:
+            self.main_frame[key].config(cursor="wait")
+        self.banner.configure(bg="red")
+        self.banner_label.set(self.banner_label._default + str2print)
+        self.update()
+
+    def make_available(self):
+        root.config(cursor="")
+        for key in self.main_frame:
+            self.main_frame[key].config(cursor="")
+        self.banner.configure(bg="blue")
+        self.banner_label.set(self.banner_label._default)
+        self.update()  # may not be necessary if at the end of method but is needed otherwise...
 
     @staticmethod
     def make_table(table):
@@ -671,6 +697,10 @@ class IssueList(DoubleListbox):
         super().pack_elements()
         self.elements['apply'].pack(side=TOP, expand=1, padx=10, pady=5)
         self.elements['delete'].pack(side=TOP, expand=1, padx=10, pady=5)
+
+    def config(self, **kwargs):
+        for key in self.elements:
+            self.elements[key].config(**kwargs)
 
 
 class DefaultText(scrolledtext.ScrolledText):
@@ -760,8 +790,9 @@ class TemplateDialog(Toplevel):
         self.btn_cancel = Button(parent, text='Cancel', command=self.cancel, height=self.button_size[0],
                                  width=self.button_size[1], default=ACTIVE)
         if row:
-            self.btn_ok.grid(row=row, column=0, sticky=W+E, padx=10, pady=5)
-            self.btn_cancel.grid(row=row, column=1, sticky=W+E, padx=10, pady=5)
+
+            self.btn_ok.grid(row=row, column=0, sticky=W+E, padx=5, pady=5)
+            self.btn_cancel.grid(row=row, column=self.body_widget.grid_size()[0]-1, sticky=W+E, padx=5, pady=5)
         else:
             self.btn_cancel.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
             self.btn_ok.pack(side=LEFT, fill=Y, expand=1, padx=10, pady=5)
@@ -869,31 +900,43 @@ class CommentDialog(TemplateDialog):
 
 class FormDialog(TemplateDialog):
 
-    def __init__(self, parent, input_dict, options=None, required_keys=None, title=None):
+    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None):
+        def init_dict(keylist, list_attr):
+            for att in list_attr:
+                setattr(self, att, {key: '' for key in keylist})
+
         if not isinstance(input_dict, dict):
             error_str = 'Second input should be a dictionary'
             raise TypeError(error_str)
         self.input_dict = input_dict
         self.str_title = title
-        self.key_labels = {key: '' for key in input_dict.keys()}
-        self.key_entries = {key: '' for key in input_dict.keys()}
-        self.key_opt_menu = {key: '' for key in input_dict.keys()}
+        init_dict(input_dict.keys(), ['key_labels', 'key_disabled', 'key_entries', 'key_opt_menu'])
         # [StringVar()]*len(input_dict) duplicate the StringVar(), a change in one will change the other one as well,
         #  not the wanted behaviour. This is the solution
         self.key_opt_var = {key: StringVar() for key in input_dict.keys()}
         self.required_keys = required_keys
-        self.options = options
-        if not self.options:
+        if not options:
             self.options = {key: '' for key in input_dict.keys()}
         else:
-            for key in self.options:
-                if self.options[key] and not isinstance(self.options[key], list):
-                    self.options[key] = [self.options[key]]
+            for key in options:
+                if key in self.input_dict.keys():
+                    if options[key] and not isinstance(self.options[key], list):
+                        self.options[key] = [options[key]]
+                    else:
+                        self.options[key] = [options[key]]
+        if isinstance(disabled, list):
+            for key in disabled:
+                    self.key_disabled[key] = DISABLED
         if not required_keys:
             self.required_keys = []
         super().__init__(parent)
 
     def body(self, parent):
+        self.main_form(parent)
+        self.ok_cancel_button(parent, row=len(self.input_dict))
+        self.results = self.input_dict
+
+    def main_form(self, parent):
         if isinstance(self.str_title, str):
             self.title(self.str_title)
         else:
@@ -904,17 +947,19 @@ class FormDialog(TemplateDialog):
             else:
                 color = 'black'
             self.key_labels[key] = Label(parent, text=key, fg=color)
-            self.key_labels[key].grid(row=cnt, sticky=W+E, padx=5, pady=5)
-            self.key_entries[key] = Entry(parent, justify=CENTER)
-            self.key_entries[key].insert(END, self.input_dict[key])
-            self.key_entries[key].grid(row=cnt, column=1, sticky=W+E, padx=5, pady=5)
+            self.key_labels[key].grid(row=cnt, sticky=W, padx=5, pady=5)
+            if self.key_disabled[key]:
+                self.key_entries[key] = Label(parent, text=self.input_dict[key])
+            else:
+                self.key_entries[key] = Entry(parent, justify=CENTER)
+                self.key_entries[key].insert(END, self.input_dict[key])
+            self.key_entries[key].grid(row=cnt, column=1, sticky=W, padx=5, pady=5)
+
             if key in self.options.keys() and self.options[key]:
                 self.key_opt_menu[key] = OptionMenu(parent, self.key_opt_var[key], *self.options[key],
                                                     command=lambda opt, k=key: self.update_entry(opt, k))
                 self.key_opt_menu[key].config(width=self.key_entries[key]['width'])
                 self.key_opt_menu[key].grid(row=cnt, column=2, sticky=W+E, padx=5, pady=5)
-        self.ok_cancel_button(parent, row=len(self.input_dict))
-        self.results = self.input_dict
 
     def update_entry(self, idx, key):
         self.key_entries[key].delete(0, END)
@@ -923,16 +968,124 @@ class FormDialog(TemplateDialog):
     def ok(self, event=None):
         self.results = {key: self.input_dict[key] for key in self.input_dict.keys()}
         for key in self.input_dict.keys():
-            self.results[key] = self.key_entries[key].get()
+            if isinstance(self.key_entries[key], Entry):
+                self.results[key] = self.key_entries[key].get()
         self.destroy()
+
+
+class BidsBrickDialog(FormDialog):
+
+    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None):
+        if not isinstance(input_dict, (bids.BidsBrick, bids.BidsJSON)):
+            raise TypeError('Second input should be a BidsBrick instance.')
+        if isinstance(input_dict, (bids.BidsDataset, bids.Data2Import)):
+            self.attr_dict = input_dict['DatasetDescJSON']
+            self.input_dict = dict()
+            self.input_dict['Subject'] = input_dict['Subject']
+            title = input_dict.classname() + ': ' + input_dict['DatasetDescJSON']['Name']
+            if disabled is None:
+                disabled = []
+            disabled += self.attr_dict.keylist
+        elif isinstance(input_dict, bids.BidsJSON):
+            self.attr_dict = input_dict
+            self.input_dict = dict()
+        else:
+            self.attr_dict = input_dict.get_attributes()
+            self.input_dict = input_dict
+            if isinstance(input_dict, bids.Subject):
+                title = 'Subject: ' + input_dict['sub']
+            else:
+                title = os.path.basename(input_dict['fileLoc'])
+        self.main_brick = input_dict
+        self.key_button_lbl = {key: '' for key in self.input_dict.keys()
+                               if key in bids.BidsBrick.get_list_subclasses_names() +
+                               bids.BidsSidecar.get_list_subclasses_names()}
+        self.key_listw = {key: '' for key in self.input_dict.keys()
+                          if key in bids.BidsBrick.get_list_subclasses_names() +
+                          bids.BidsSidecar.get_list_subclasses_names()}
+        self.key_button = {key: '' for key in self.input_dict.keys()
+                           if key in bids.BidsBrick.get_list_subclasses_names() +
+                           bids.BidsSidecar.get_list_subclasses_names()}
+        # # [StringVar()]*len(input_dict) duplicate the StringVar(), a change in one will change the other one as well,
+        # #  not the wanted behaviour. This is the solution
+        # self.key_opt_var = {key: StringVar() for key in input_dict.keys()}
+        super().__init__(parent, input_dict=self.attr_dict,
+                         required_keys=input_dict.required_keys, disabled=disabled, title=title)
+
+    def body(self, parent):
+        self.main_form(parent)
+        cnt_tot = len(self.input_dict)
+        for cnt, key in enumerate(self.key_button_lbl.keys()):
+            self.key_button_lbl[key] = Label(parent, text=key, fg="black")
+            self.key_button_lbl[key].grid(row=cnt+cnt_tot, sticky=W, padx=5, pady=5)
+            self.key_listw[key] = Listbox(parent, height=3)
+            self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
+            self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
+            self.populate_list(self.key_listw[key], self.main_brick[key])
+            self.key_listw[key].grid(row=cnt + cnt_tot, column=1, columnspan=2, sticky=W+E, padx=5, pady=5)
+            if not self.key_disabled[key] == DISABLED:
+                self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
+                                              command=lambda: print('coucou'))
+                self.key_button[key].grid(row=cnt+cnt_tot, column=3, sticky=W+E, padx=5, pady=5)
+            # self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
+            #                               command=lambda: print('coucou'))
+            # self.key_button[key].grid(row=cnt + cnt_tot, column=3, sticky=W + E, padx=5, pady=5)
+        # self.ok_cancel_button(parent, row=cnt_tot+len(self.key_button_lbl))
+        if len(self.key_button_lbl):
+            for i in range(self.body_widget.grid_size()[0]):
+                    self.body_widget.grid_columnconfigure(i, weight=1, uniform='test')
+        self.results = self.input_dict
+
+    @staticmethod
+    def populate_list(list_obj, list_of_bbricks):
+        if not list_of_bbricks:
+            return
+        list_of_elmts = []
+        if isinstance(list_of_bbricks, bids.BidsSidecar):
+            list_of_elmts.append(list_of_bbricks.modality_field + list_of_bbricks.extension)
+        elif isinstance(list_of_bbricks[0], (bids.ModalityType, bids.GlobalSidecars)):
+            for mod_brick in list_of_bbricks:
+                list_of_elmts.append(os.path.basename(mod_brick['fileLoc']))
+        elif isinstance(list_of_bbricks[0], bids.Subject):
+            for sub in list_of_bbricks:
+                list_of_elmts.append(sub['sub'])
+        else:
+            raise TypeError('not allowed object type')
+        BidsManager.populate_list(list_obj, list_of_elmts)
+
+    def open_new_window(self, key, event):
+        if not self.key_listw[key].curselection():
+            return
+        curr_idx = self.key_listw[key].curselection()[0]
+        if key == 'Subject':
+            sub = self.main_brick[key][curr_idx]
+            BidsBrickDialog(self, sub, disabled=sub.keylist,
+                            title=sub.classname() + ': ' + sub['sub'])
+        elif key in bids.BidsJSON.get_list_subclasses_names():
+            sdcr_file = self.main_brick[key]
+            BidsBrickDialog(self, sdcr_file, disabled=list(sdcr_file.keys()),
+                            title=sdcr_file.classname())
+        elif key in bids.ModalityType.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
+            mod_brick = self.main_brick[key][curr_idx]
+            fname = mod_brick['fileLoc']
+            pop_menu = Menu(self.body_widget, tearoff=0)
+            if not mod_brick['modality'] in ['electrodes', 'coordsystem']:
+                pop_menu.add_command(label='Open file',
+                                     command=lambda f=fname: self.open_file(f))
+            pop_menu.add_command(label='Show attributes',
+                                 command=lambda brick=mod_brick: BidsBrickDialog(self, brick,
+                                                                                 disabled=brick.keylist))
+            pop_menu.post(event.x_root, event.y_root)
+        else:
+            print('coucou')
+
+    @staticmethod
+    def open_file(fname):
+        os.startfile(os.path.join(bids.BidsBrick.cwdir, fname))
 
 
 if __name__ == '__main__':
     root = Tk()
-    if platform.system() == 'Windows':
-        root.state("zoomed")
-    elif platform.system() == 'Linux':
-        root.attributes('-zoomed', True)
     my_gui = BidsManager()
     # MyDialog(root)
     # The following three commands are needed so the window pops
