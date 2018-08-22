@@ -11,6 +11,7 @@ from builtins import range
 from builtins import str
 from future import standard_library
 import os
+from sys import modules
 import json
 import brainvision_hdr as bv_hdr
 from datetime import datetime
@@ -184,7 +185,8 @@ class BidsBrick(dict):
             else:
                 self[key] = ''
 
-    def has_all_req_attributes(self, missing_elements=None):  # check if the required attributes are not empty to create
+    def has_all_req_attributes(self, missing_elements=None, nested=True):
+        # check if the required attributes are not empty to create
         # the filename (/!\ Json or coordsystem checked elsewhere)
         if not missing_elements:
             missing_elements = ''
@@ -196,7 +198,7 @@ class BidsBrick(dict):
             if self.required_keys:
                 if key in self.required_keys and (self[key] == '' or self[key] == []):
                     missing_elements += 'In ' + type(self).__name__ + ', key ' + str(key) + ' is missing.\n'
-            if self[key] and isinstance(self[key], list):  # check if self has modality brick, if not empty than
+            if self[key] and isinstance(self[key], list) and nested:  # check if self has modality brick, if not empty than
                 # recursively check whether it has also all req attributes
                 for item in self[key]:
                     if issubclass(type(item), BidsBrick):
@@ -513,6 +515,9 @@ class BidsBrick(dict):
                                                             elmt not in ParticipantsTSV.required_fields]
                         Subject.keylist += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
                                             if elmt not in Subject.keylist]
+                        Subject.required_keys += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
+                                                  if elmt not in Subject.required_keys
+                                                  and elmt not in ['alias', 'upload_date']]
                     elif key in BidsBrick.get_list_subclasses_names() and key + self.requirements.keywords[0] \
                             not in ParticipantsTSV.header:
                         ParticipantsTSV.header.append(key + self.requirements.keywords[0])
@@ -533,6 +538,9 @@ class BidsBrick(dict):
                     if key == 'keys':
                         Subject.keylist += [elmt for elmt in requirements['Requirements']['Subject'][key]
                                             if elmt not in Subject.keylist]
+                        Subject.required_keys += [elmt for elmt in requirements['Requirements']['Subject'][key]
+                                                  if elmt not in Subject.required_keys
+                                                  and elmt not in ['alias', 'upload_date']]
 
     def check_requirements(self):
 
@@ -1135,6 +1143,7 @@ class GlobalSidecars(BidsBrick):
                         filename.split('_')[-1]]
             super().__init__(keylist=self.__class__.keylist + comp_key,
                              required_keys=self.__class__.required_keys)
+            self['modality'] = getattr(modules[__name__], comp_key[0]).modality_field
             self['fileLoc'] = filename + ext
         # elif ext in self.allowed_file_formats and filename.split('_')[-1] == 'photo':
         else:
