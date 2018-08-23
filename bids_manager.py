@@ -123,6 +123,24 @@ class BidsManager(Frame):
 
     def add_elmt2data2import(self):
         self.curr_data2import._assign_import_dir(self.curr_data2import.dirname)
+        self.curr_data2import.save_as_json(write_date=True)
+        results = BidsBrickDialog(root, self.curr_data2import, disabled=None,
+                                  title=self.curr_data2import.classname()).apply()
+        if results is not None and messagebox.askyesno('Change ' + self.curr_data2import.classname() + '?',
+                                                       'You are about to permanently modify ' +
+                                                       self.curr_data2import.classname() + '.\nAre you sure?'):
+            self.curr_data2import.save_as_json()
+            if self.curr_data2import.is_empty():
+                self.update_text('There is no file to import in ' + self.upload_dir)
+                self.upload_dir = None
+                self.curr_data2import = None
+            else:
+                self.curr_bids.make_upload_issues(self.curr_data2import)
+                self.solve_issues('UpldFldrIssue')
+            # self.update_text(self.curr_data2import)
+
+
+
 
 
     @staticmethod
@@ -1208,8 +1226,8 @@ class BidsBrickDialog(FormDialog):
                 disbl = mod_brick.keylist
             else:
                 disbl = None
-                pop_menu.add_command(label='Remove',
-                                     command=lambda idx=curr_idx, k=key: self.remove_element(k, idx))
+                # pop_menu.add_command(label='Remove',
+                #                      command=lambda idx=curr_idx, k=key: self.remove_element(k, idx))
             pop_menu.add_command(label='Show attributes',
                                  command=lambda brick=mod_brick, dsbl=disbl: BidsBrickDialog(self, brick,
                                                                                              disabled=dsbl))
@@ -1236,55 +1254,58 @@ class BidsBrickDialog(FormDialog):
         self.update_fields()
         opt = None
         disbld = ['sub', 'fileLoc']
-        if isinstance(self.main_brick, bids.Subject):
+        try:
+            if isinstance(self.main_brick, bids.Subject):
 
-            flag, miss_str = self.main_brick.has_all_req_attributes(nested=False)
-            if not flag:
-                messagebox.showerror('Incomplete subject', miss_str)
-                return
-            if key in bids.GlobalSidecars.get_list_subclasses_names():
-                fname = filedialog.askopenfilename(title='Please select a file',
-                                                   filetypes=[
-                                                       ('sidecar', "*.tsv;*.json"),
-                                                       ('photo', "*" + ",*".join(bids.Photo.allowed_file_formats))],
-                                                   initialdir=bids.BidsBrick.cwdir)
-            elif key in bids.Imagery.get_list_subclasses_names():
-                fname = filedialog.askdirectory(title='Please select a file', initialdir=bids.BidsBrick.cwdir)
-            else:
-                file_formats = [formt for formt in getattr(bids, key).readable_file_formats
-                                if formt not in getattr(bids, key).allowed_file_formats]
-                fname = filedialog.askopenfilename(title='Please select a file',
-                                                   filetypes=[(key, "*" + ";*".join(file_formats))],
-                                                   initialdir=bids.BidsBrick.cwdir)
+                flag, miss_str = self.main_brick.has_all_req_attributes(nested=False)
+                if not flag:
+                    messagebox.showerror('Incomplete subject', miss_str)
+                    return
+                if key in bids.GlobalSidecars.get_list_subclasses_names():
+                    fname = filedialog.askopenfilename(title='Please select a file',
+                                                       filetypes=[
+                                                           ('sidecar', "*.tsv;*.json"),
+                                                           ('photo', "*" + ",*".join(bids.Photo.allowed_file_formats))],
+                                                       initialdir=bids.BidsBrick.cwdir)
+                elif key in bids.Imagery.get_list_subclasses_names():
+                    fname = filedialog.askdirectory(title='Please select a file', initialdir=bids.BidsBrick.cwdir)
+                else:
+                    file_formats = [formt for formt in getattr(bids, key).readable_file_formats
+                                    if formt not in getattr(bids, key).allowed_file_formats]
+                    fname = filedialog.askopenfilename(title='Please select a file',
+                                                       filetypes=[(key, "*" + ";*".join(file_formats))],
+                                                       initialdir=bids.BidsBrick.cwdir)
 
-            if not fname:
-                return
-            if not os.path.normpath(os.path.dirname(fname)) == os.path.normpath(bids.BidsBrick.cwdir):
-                messagebox.showerror('File not in data2import folder', "File should be in " + bids.BidsBrick.cwdir
-                                     + ".")
-                return
-            if key in bids.GlobalSidecars.get_list_subclasses_names():
-                new_brick = getattr(bids, key)(fname)
-                disbld.append('modality')
+                if not fname:
+                    return
+                if not os.path.normpath(os.path.dirname(fname)) == os.path.normpath(bids.BidsBrick.cwdir):
+                    messagebox.showerror('File not in data2import folder', "File should be in " + bids.BidsBrick.cwdir
+                                         + ".")
+                    return
+                if key in bids.GlobalSidecars.get_list_subclasses_names():
+                    new_brick = getattr(bids, key)(fname)
+                    disbld.append('modality')
+                else:
+                    new_brick = getattr(bids, key)()
+                    new_brick['fileLoc'] = os.path.basename(fname)
+                    opt = {'modality': new_brick.allowed_modalities}
+
+                new_brick['sub'] = self.main_brick['sub']
+
             else:
                 new_brick = getattr(bids, key)()
-                new_brick['fileLoc'] = os.path.basename(fname)
-                opt = {'modality': new_brick.allowed_modalities}
-
-            new_brick['sub'] = self.main_brick['sub']
-
-        else:
-            new_brick = getattr(bids, key)()
-        result_brick = BidsBrickDialog(self, new_brick, disabled=disbld, options=opt,
-                                      required_keys=new_brick.required_keys, title=new_brick.classname()).apply()
-        if result_brick is not None:
-            new_brick.copy_values(result_brick)
-            flag, miss_str = new_brick.has_all_req_attributes()
-            if not flag:
-                messagebox.showerror('Missing attributes', miss_str)
-                return
-            self.main_brick[key] = new_brick
-            self.populate_list(self.key_listw[key], self.main_brick[key])
+            result_brick = BidsBrickDialog(self, new_brick, disabled=disbld, options=opt,
+                                           required_keys=new_brick.required_keys, title=new_brick.classname()).apply()
+            if result_brick is not None:
+                new_brick.copy_values(result_brick)
+                flag, miss_str = new_brick.has_all_req_attributes()
+                if not flag:
+                    messagebox.showerror('Missing attributes', miss_str)
+                    return
+                self.main_brick[key] = new_brick
+                self.populate_list(self.key_listw[key], self.main_brick[key])
+        except Exception as err:
+            messagebox.showerror('Error Occurred!', str(err))
 
     def update_fields(self):
         for key in self.key_entries.keys():
