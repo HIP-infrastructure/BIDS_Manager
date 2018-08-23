@@ -113,7 +113,16 @@ class BidsBrick(dict):
                         raise TypeError(str_issue)
                 else:
                     dict.__setitem__(self, key, value)
-
+            elif key == 'run':
+                if value:
+                    if isinstance(value, int) or (value.__class__.__name__ in ['str', 'unicode'] and value.isdigit()):
+                        dict.__setitem__(self, key, value)
+                    else:
+                        str_issue = 'run value ' + str(value) + ' should be a digit (integer of string).'
+                        self.write_log(str_issue)
+                        raise TypeError(str_issue)
+                else:
+                    dict.__setitem__(self, key, value)
             elif value.__class__.__name__ in ['str', 'unicode', 'int'] or \
                     key in BidsFreeFile.get_list_subclasses_names():
                 dict.__setitem__(self, key, value)
@@ -256,6 +265,8 @@ class BidsBrick(dict):
                 ext = BidsDataset.converters['Electrophy']['ext'][0]
             elif isinstance(self, Imagery):
                 ext = BidsDataset.converters['Imagery']['ext'][0]
+            else:
+                ext = os.path.splitext(self['fileLoc'])[1]
         return filename, dirname, ext
 
     def get_sidecar_files(self, in_bids_dir=True, input_dirname=None, input_filename=None):
@@ -2167,7 +2178,8 @@ class BidsDataset(MetaBrick):
                                 push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
                                 self.save_as_json()
                                 self.issues.save_as_json()
-                                copy_data2import['Subject'][import_sub_idx][modality_type].pop(0)
+                                copy_data2import['Subject'][import_sub_idx][modality_type].pop(
+                                    copy_data2import['Subject'][import_sub_idx][modality_type].index(modality))
                                 copy_data2import.save_as_json()
                         # if copy_data2import['Subject'][import_sub_idx].is_empty():
                         # pop empty subject
@@ -2638,7 +2650,8 @@ class IssueType(BidsBrick):
             for key in ImportIssue.keylist:
                 if key == 'DatasetDescJSON' and self[key]:
                     return self[key]
-                elif key in ModalityType.get_list_subclasses_names() + ['Subject'] and self[key]:
+                elif key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names() \
+                        + ['Subject'] and self[key]:
                     return self[key][0]
         elif isinstance(self, UpldFldrIssue):
             tmp_data2import = Data2Import(self['path'])
@@ -2816,11 +2829,11 @@ class Issue(BidsBrick):
             if kwargs['brick']:
                 if isinstance(kwargs['brick'], DatasetDescJSON):
                     brick_imp_shrt = kwargs['brick']
-                elif isinstance(kwargs['brick'], (ModalityType, IeegGlobalSidecars)):
+                elif isinstance(kwargs['brick'], (ModalityType, GlobalSidecars)):
                     fname = os.path.join(Data2Import.dirname, kwargs['brick']['fileLoc'])
                     if isinstance(kwargs['brick'], ModalityType):
                         brick_imp_shrt = kwargs['brick'].__class__()
-                    elif isinstance(kwargs['brick'], IeegGlobalSidecars):
+                    elif isinstance(kwargs['brick'], GlobalSidecars):
                         brick_imp_shrt = kwargs['brick'].__class__(fname)
                     brick_imp_shrt.update(kwargs['brick'].get_attributes('fileLoc'))
                     brick_imp_shrt['fileLoc'] = os.path.join(fname)
@@ -2870,7 +2883,7 @@ class Issue(BidsBrick):
                                     issue[k][0]['sub'] == brick2remove['sub']:
                                 new_issue[key].pop(new_issue[key].index(issue))
                                 break  # only one element is not empty, break when found
-            elif isinstance(brick2remove, Electrophy):
+            elif isinstance(brick2remove, (ModalityType, GlobalSidecars)):
                 if key == 'ImportIssue':
                     for issue in self[key]:
                         if issue[brick2remove.classname()] and \
@@ -2879,16 +2892,16 @@ class Issue(BidsBrick):
                             break
                 else:
                     for issue in self[key]:
-                        if issue['fileLoc'] == brick2remove['fileLoc']:
+                        if os.path.basename(issue['fileLoc']) == brick2remove['fileLoc']:
                             new_issue[key].pop(new_issue[key].index(issue))
                             break
-            elif not key == 'ElectrodeIssue' and (isinstance(brick2remove, Imagery) or
-                                                  isinstance(brick2remove, GlobalSidecars)):
-                for issue in self[key]:
-                    if issue[brick2remove.classname()] and \
-                            issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
-                        new_issue[key].pop(new_issue[key].index(issue))
-                        break
+            # elif not key == 'ElectrodeIssue' and (isinstance(brick2remove, Imagery) or
+            #                                       isinstance(brick2remove, GlobalSidecars)):
+            #     for issue in self[key]:
+            #         if issue[brick2remove.classname()] and \
+            #                 issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
+            #             new_issue[key].pop(new_issue[key].index(issue))
+            #             break
 
         self.clear()
         self.copy_values(new_issue)
