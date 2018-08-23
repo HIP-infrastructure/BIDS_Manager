@@ -45,7 +45,7 @@ class BidsManager(Frame):
         bids_menu.add_command(label='Explore Bids dataset', state=DISABLED)
         # fill up the upload/import menu
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
-        uploader_menu.add_command(label='Add elements to import', command=self.bell, state=DISABLED)
+        uploader_menu.add_command(label='Add elements to import', command=self.add_elmt2data2import, state=DISABLED)
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
         issue_menu.add_command(label='Verify upload folder content',
@@ -120,6 +120,10 @@ class BidsManager(Frame):
             self.curr_bids.write_log(info_str)
             self.curr_bids.issues.save_as_json()
             messagebox.showinfo('Delete actions', info_str)
+
+    def add_elmt2data2import(self):
+        self.curr_data2import._assign_import_dir(self.curr_data2import.dirname)
+
 
     @staticmethod
     def populate_list(list_object, input_list):
@@ -722,7 +726,7 @@ class DisplayText(DefaultText):
 
 class TemplateDialog(Toplevel):
     button_size = [2, 10]
-    default_pad = [5, 5]
+    default_pad = [2, 2]
 
     def __init__(self, parent):
 
@@ -786,8 +790,9 @@ class TemplateDialog(Toplevel):
                                  width=self.button_size[1], default=ACTIVE)
         if row:
 
-            self.btn_ok.grid(row=row, column=0, sticky=W+E, padx=5, pady=5)
-            self.btn_cancel.grid(row=row, column=self.body_widget.grid_size()[0]-1, sticky=W+E, padx=5, pady=5)
+            self.btn_ok.grid(row=row, column=0, sticky=W+E, padx=self.default_pad[0], pady=self.default_pad[1])
+            self.btn_cancel.grid(row=row, column=self.body_widget.grid_size()[0]-1, sticky=W+E,
+                                 padx=self.default_pad[0], pady=self.default_pad[1])
         else:
             self.btn_cancel.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
             self.btn_ok.pack(side=LEFT, fill=Y, expand=1, padx=10, pady=5)
@@ -831,9 +836,11 @@ class ListDialog(TemplateDialog):
     def body(self, parent):
 
         self.title = 'Choose from list'
-        Label(parent, text=self.label_str).pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
+        Label(parent, text=self.label_str).pack(expand=1, fill=BOTH, side=TOP,
+                                                padx=self.default_pad[0], pady=self.default_pad[1])
         self.list = Listbox(parent, selectmode=self.selection_style)
-        self.list.pack(expand=1, fill=BOTH, padx=5, pady=5)
+        self.list.pack(expand=1, fill=BOTH,
+                       padx=self.default_pad[0], pady=self.default_pad[1])
 
         for item in self.input_list:
             self.list.insert(END, item)
@@ -868,10 +875,10 @@ class CommentDialog(TemplateDialog):
         self.read_comment_area.update_text(self.previous_comment)
         self.add_comment_area = DefaultText(master=parent, height=10, width=100)
 
-        Label(parent, text='Previous comment(s)').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
+        Label(parent, text='Previous comment(s)').pack(expand=1, fill=BOTH, side=TOP, padx=self.default_pad[0], pady=self.default_pad[1])
 
         self.read_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP)
-        Label(parent, text='Add new comment').pack(expand=1, fill=BOTH, side=TOP, padx=5, pady=5)
+        Label(parent, text='Add new comment').pack(expand=1, fill=BOTH, side=TOP, padx=self.default_pad[0], pady=self.default_pad[1])
         self.add_comment_area.pack(fill=BOTH, expand=1, padx=5, pady=10, side=TOP)
 
         # add the default ok and cancel button
@@ -891,6 +898,123 @@ class CommentDialog(TemplateDialog):
         if new_comment:
             self.results = new_comment
         self.destroy()
+
+
+class BidsTSVDialog(TemplateDialog):
+
+    max_lines = 20
+    bln_color = {'True': 'green', 'False': 'red', True: 'green', False: 'red', 'good': 'green', 'bad': 'red'}
+
+    def __init__(self, parent, tsv_table, title=None):
+        if not isinstance(tsv_table, bids.BidsTSV):
+            error_str = 'Second input should be a BidsTSV instance'
+            raise TypeError(error_str)
+        self.idx = 0
+        self.str_title = title
+        self.main_brick = type(tsv_table)()  # copy the table some when reordering does not affect BidsTSV
+        self.main_brick.copy_values(tsv_table)
+        self.n_lines = len(tsv_table) - 1
+        self.n_columns = len(tsv_table.header)
+        self.key_button = {key: '' for key in tsv_table.header}
+        self.next_btn = None
+        self.prev_btn = None
+        self.max_lines = min(self.n_lines, self.max_lines)
+        self.key_labels = [[] for k in range(0, self.max_lines)]
+        self.n_pages = round(self.n_lines / self.max_lines)
+        self.page_label_var = StringVar()
+        self.page_label = None
+        self.clmn_width = 0
+        self.row_height = 0
+        self.table2show = tsv_table[1:self.max_lines + 1]
+        super().__init__(parent)
+
+    def body(self, parent):
+        self.make_header(parent)
+        self.make_table(parent)
+        self.page_label = Label(parent, textvariable=self.page_label_var)
+        self.page_label.grid(row=self.max_lines+1, column=0, columnspan=self.n_columns-2, sticky=W+E)
+        if not self.n_pages == 1:
+            self.prev_btn = Button(parent, text='Previous', state=DISABLED,
+                                   command=lambda prnt=parent, stp=-1: self.change_page(prnt, stp))
+            self.prev_btn.grid(row=self.max_lines + 1, column=self.n_columns - 2, sticky=W + E)
+            self.next_btn = Button(parent, text='Next', command=lambda prnt=parent, stp=1: self.change_page(prnt, stp))
+            self.next_btn.grid(row=self.max_lines+1, column=self.n_columns-1, sticky=W+E)
+            self.update_page_number()
+        # for i in range(self.max_lines):
+        #     self.body_widget.grid_rowconfigure(i, weight=1, uniform='test')
+
+    def make_header(self, parent):
+        for cnt, key in enumerate(self.key_button):
+            self.key_button[key] = Button(parent, text=key, command=lambda k=key, prnt=parent: self.reorder(k, prnt))
+            self.key_button[key].grid(row=0, column=cnt, sticky=W+E)
+
+    def make_table(self, parent):
+        for line in range(0, min(self.max_lines, len(self.table2show))):
+            for clmn in range(0, self.n_columns):
+                lbl = self.table2show[line][clmn]
+                self.key_labels[line].append(Label(parent, text=lbl, relief=RIDGE))
+                self.key_labels[line][-1].grid(row=line+1, column=clmn, sticky=W+E)
+                if isinstance(self.main_brick, (bids.ParticipantsTSV, bids.ChannelsTSV)) \
+                        and lbl in self.bln_color.keys():
+                    self.key_labels[line][-1].config(fg='white', bg=self.bln_color[lbl])
+
+    def update_table(self):
+        for line in range(0, min(self.max_lines, len(self.table2show))):
+            for clmn in range(0, self.n_columns):
+                lbl = self.table2show[line][clmn]
+                self.key_labels[line][clmn]['text'] = lbl
+                if isinstance(self.main_brick, (bids.ParticipantsTSV, bids.ChannelsTSV))\
+                        and lbl in self.bln_color.keys():
+                    self.key_labels[line][clmn].config(fg='white', bg=self.bln_color[lbl])
+
+    def change_page(self, parent, pg_step):
+        self.clear_table()
+        self.idx += pg_step
+        self.update_page_number()
+        start_idx = 1+self.idx*self.max_lines
+        end_idx = start_idx + self.max_lines
+        if end_idx > self.n_lines+1:
+            end_idx = self.n_lines+1
+        self.table2show = [line for line in self.main_brick[start_idx:end_idx]]
+        self.update_table()
+
+    def update_page_number(self):
+        if self.n_pages == 1:
+            return
+        self.page_label_var.set('Page ' + str(self.idx + 1) + '/' + str(self.n_pages))
+        if self.idx == self.n_pages-1:
+            self.next_btn.config(state=DISABLED)
+        elif self.idx == 0:
+            self.next_btn.config(state=NORMAL)
+            self.prev_btn.config(state=DISABLED)
+        elif self.idx > 0:
+            if self.next_btn['state'] == DISABLED:
+                self.next_btn.config(state=NORMAL)
+            if self.prev_btn['state'] == DISABLED:
+                self.prev_btn.config(state=NORMAL)
+        else:
+            self.prev_btn.config(state=DISABLED)
+
+    def reorder(self, key, parent):
+        self.idx = 0
+        self.update_page_number()
+        self.clear_table()
+        key_idx = self.main_brick.header.index(key)
+        tmp_list = [line[key_idx] for line in self.main_brick[1:]]
+        sorted_idx = sorted(range(len(tmp_list)), key=tmp_list.__getitem__)
+        tmp_brick = [self.main_brick.header]
+        tmp_brick += [self.main_brick[idx+1] for idx in sorted_idx]
+        self.main_brick = type(self.main_brick)()
+        self.main_brick.copy_values(tmp_brick)
+        self.table2show = [self.main_brick[idx+1] for idx in range(0, self.max_lines)]
+        self.update_table()
+
+    def clear_table(self):
+        for line in range(0, min(self.max_lines, len(self.table2show))):
+            for clmn in range(0, self.n_columns):
+                # self.key_labels[line][clmn].grid_forget()
+                self.key_labels[line][clmn]['text'] = ''
+            # self.key_labels[line] = []
 
 
 class FormDialog(TemplateDialog):
@@ -941,19 +1065,20 @@ class FormDialog(TemplateDialog):
             else:
                 color = 'black'
             self.key_labels[key] = Label(parent, text=key, fg=color)
-            self.key_labels[key].grid(row=cnt, sticky=W, padx=5, pady=5)
+            self.key_labels[key].grid(row=cnt, sticky=W, padx=self.default_pad[0], pady=self.default_pad[1])
             if self.key_disabled[key]:
                 self.key_entries[key] = Label(parent, text=self.input_dict[key])
             else:
                 self.key_entries[key] = Entry(parent, justify=CENTER)
                 self.key_entries[key].insert(END, self.input_dict[key])
-            self.key_entries[key].grid(row=cnt, column=1, sticky=W, padx=5, pady=5)
+            self.key_entries[key].grid(row=cnt, column=1, sticky=W, padx=self.default_pad[0], pady=self.default_pad[1])
 
             if key in self.options.keys() and self.options[key]:
                 self.key_opt_menu[key] = OptionMenu(parent, self.key_opt_var[key], *self.options[key],
                                                     command=lambda opt, k=key: self.update_entry(opt, k))
                 self.key_opt_menu[key].config(width=self.key_entries[key]['width'])
-                self.key_opt_menu[key].grid(row=cnt, column=2, sticky=W+E, padx=5, pady=5)
+                self.key_opt_menu[key].grid(row=cnt, column=2, sticky=W+E, padx=self.default_pad[0],
+                                            pady=self.default_pad[1])
 
     def update_entry(self, idx, key):
         self.key_entries[key].delete(0, END)
@@ -980,6 +1105,7 @@ class BidsBrickDialog(FormDialog):
             if disabled is None:
                 disabled = []
             if isinstance(input_dict, bids.BidsDataset):
+                self.input_dict['ParticipantsTSV'] = input_dict['ParticipantsTSV']
                 disabled = input_dict.keylist
                 disabled += self.attr_dict.keylist
         elif isinstance(input_dict, bids.BidsJSON):
@@ -1013,20 +1139,22 @@ class BidsBrickDialog(FormDialog):
         cnt_tot = len(self.input_dict)
         for cnt, key in enumerate(self.key_button_lbl.keys()):
             self.key_button_lbl[key] = Label(parent, text=key, fg="black")
-            self.key_button_lbl[key].grid(row=cnt+cnt_tot, sticky=W, padx=5, pady=5)
+            self.key_button_lbl[key].grid(row=cnt+cnt_tot, sticky=W, padx=self.default_pad[0], pady=self.default_pad[1])
             self.key_listw[key] = Listbox(parent, height=3)
             self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
             self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
             self.populate_list(self.key_listw[key], self.main_brick[key])
-            self.key_listw[key].grid(row=cnt + cnt_tot, column=1, columnspan=2, sticky=W+E, padx=5, pady=5)
+            self.key_listw[key].grid(row=cnt + cnt_tot, column=1, columnspan=2, sticky=W+E, padx=self.default_pad[0],
+                                     pady=self.default_pad[1])
             if key not in bids.BidsSidecar.get_list_subclasses_names() and \
                     (key not in self.key_disabled or not self.key_disabled[key] == DISABLED):
                 self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
                                               command=lambda k=key: self.add_new_brick(k))
-                self.key_button[key].grid(row=cnt+cnt_tot, column=3, sticky=W+E, padx=5, pady=5)
+                self.key_button[key].grid(row=cnt+cnt_tot, column=3, sticky=W+E, padx=self.default_pad[0],
+                                          pady=self.default_pad[1])
             # self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
             #                               command=lambda: print('coucou'))
-            # self.key_button[key].grid(row=cnt + cnt_tot, column=3, sticky=W + E, padx=5, pady=5)
+            # self.key_button[key].grid(row=cnt + cnt_tot, column=3, sticky=W+E, padx=5, pady=5)
         self.ok_cancel_button(parent, row=cnt_tot+len(self.key_button_lbl))
         if len(self.key_button_lbl):
             for i in range(self.body_widget.grid_size()[0]):
@@ -1039,7 +1167,9 @@ class BidsBrickDialog(FormDialog):
         if not list_of_bbricks:
             return
         list_of_elmts = []
-        if isinstance(list_of_bbricks, bids.BidsSidecar):
+        if isinstance(list_of_bbricks, (bids.ParticipantsTSV, bids.SrcDataTrack)):
+            list_of_elmts.append(list_of_bbricks.filename)
+        elif isinstance(list_of_bbricks, bids.BidsSidecar):
             list_of_elmts.append(list_of_bbricks.modality_field + list_of_bbricks.extension)
         elif isinstance(list_of_bbricks[0], (bids.ModalityType, bids.GlobalSidecars)):
             for mod_brick in list_of_bbricks:
@@ -1084,6 +1214,13 @@ class BidsBrickDialog(FormDialog):
                                  command=lambda brick=mod_brick, dsbl=disbl: BidsBrickDialog(self, brick,
                                                                                              disabled=dsbl))
             pop_menu.post(event.x_root, event.y_root)
+        elif key in bids.BidsTSV.get_list_subclasses_names():
+            sdcr_file = self.main_brick[key]
+            title = None
+            if isinstance(self.main_brick, bids.ModalityType):
+                title = os.path.splitext(os.path.basename(self.main_brick['fileLoc']).replace(
+                    self.main_brick['modality'], self.main_brick[key].modality_field))[0]
+            BidsTSVDialog(self, sdcr_file, title=title)
         else:
             print('coucou')
 
@@ -1157,6 +1294,7 @@ class BidsBrickDialog(FormDialog):
 
 if __name__ == '__main__':
     root = Tk()
+    root.option_add("*Font", "10")
     my_gui = BidsManager()
     if platform.system() == 'Windows':
         root.state("zoomed")
