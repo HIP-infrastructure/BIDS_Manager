@@ -2060,176 +2060,179 @@ class BidsDataset(MetaBrick):
         # if True:
         self.__class__.clear_log()
         self.write_log(10*'=' + '\nImport of ' + data2import.dirname + '\n' + 10*'=')
-        if isinstance(data2import, Data2Import) and data2import.has_all_req_attributes()[0]:
+        if not isinstance(data2import, Data2Import) or not data2import.has_all_req_attributes()[0]:
+            flag, missing_str = data2import.has_all_req_attributes()
+            self.write_log(missing_str)
+            return
 
-            if not self.verif_upload_issues(data2import.dirname):
-                error_str = 'Some elements in ' + data2import.dirname + ' have not been verified.'
-                self.write_log(error_str)
-                return
+        if not self.verif_upload_issues(data2import.dirname):
+            error_str = 'Some elements in ' + data2import.dirname + ' have not been verified.'
+            self.write_log(error_str)
+            return
 
-            if not (not BidsDataset.converters['Electrophy']['path'] or
-                    os.path.isfile(BidsDataset.converters['Electrophy']['path']) and
-                    (not BidsDataset.converters['Imagery']['path'] or
-                    os.path.isfile(BidsDataset.converters['Imagery']['path']))):
-                error_str = 'At least one converter path in requirements.json is wrongly set'
-                self.issues.add_issue(issue_type='ImportIssue', description=error_str)
-                self.write_log(error_str)
-                return
+        if not BidsDataset.converters['Electrophy']['path'] or \
+                not os.path.isfile(BidsDataset.converters['Electrophy']['path']) or \
+                not BidsDataset.converters['Imagery']['path'] or \
+                not os.path.isfile(BidsDataset.converters['Imagery']['path']):
+            error_str = 'At least one converter path in requirements.json is wrongly set'
+            self.issues.add_issue(issue_type='ImportIssue', description=error_str, brick=None)
+            self.write_log(error_str)
+            return
 
-            if not data2import['DatasetDescJSON']['Name'] == self['DatasetDescJSON']['Name']:
-                error_str = 'The data to be imported (' + data2import.dirname + ') belong to a different protocol (' \
-                            + data2import['DatasetDescJSON']['Name'] + ') than the current bids dataset (' \
-                            + self['DatasetDescJSON']['Name'] + ').'
-                self.issues.add_issue(issue_type='ImportIssue', brick=data2import['DatasetDescJSON'],
-                                      description=error_str)
-                self.write_log(error_str)
-                return
+        if not data2import['DatasetDescJSON']['Name'] == self['DatasetDescJSON']['Name']:
+            error_str = 'The data to be imported (' + data2import.dirname + ') belong to a different protocol (' \
+                        + data2import['DatasetDescJSON']['Name'] + ') than the current bids dataset (' \
+                        + self['DatasetDescJSON']['Name'] + ').'
+            self.issues.add_issue(issue_type='ImportIssue', brick=data2import['DatasetDescJSON'],
+                                  description=error_str)
+            self.write_log(error_str)
+            return
 
-            '''Here we copy the data2import dictionary to pop all the imported data in order to avoid importing
-            the same data twice in case there is an error and we have to launch the import procedure on the same
-            folder again. The original data2import in rename by adding the date in the filename'''
-            if not BidsBrick.cwdir == data2import.dirname:
-                Data2Import._assign_import_dir(data2import.dirname)
-            copy_data2import = Data2Import()
-            copy_data2import.copy_values(data2import)
-            copy_data2import.dirname = data2import.dirname
-            try:
-                data2import.save_as_json(write_date=True)
-                if keep_sourcedata:
-                    if not self['SourceData']:
-                        self['SourceData'] = SourceData()
-                        if keep_file_trace:
-                            self['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
+        '''Here we copy the data2import dictionary to pop all the imported data in order to avoid importing
+        the same data twice in case there is an error and we have to launch the import procedure on the same
+        folder again. The original data2import in rename by adding the date in the filename'''
+        if not BidsBrick.cwdir == data2import.dirname:
+            Data2Import._assign_import_dir(data2import.dirname)
+        copy_data2import = Data2Import()
+        copy_data2import.copy_values(data2import)
+        copy_data2import.dirname = data2import.dirname
+        try:
+            data2import.save_as_json(write_date=True)
+            if keep_sourcedata:
+                if not self['SourceData']:
+                    self['SourceData'] = SourceData()
+                    if keep_file_trace:
+                        self['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
 
-                self._assign_bids_dir(self.dirname)  # make sure to import in the current bids_dir
-                for sub in data2import['Subject']:
-                    import_sub_idx = data2import['Subject'].index(sub)
-                    # test if subject is already present
-                    if not self.curr_subject or not self.curr_subject['Subject']['sub'] == sub['sub']:
-                        # check whether the required subject is the current subject otherwise make it the
-                        # current one
-                        self.is_subject_present(sub['sub'])
-                    sub_present = self.curr_subject['isPresent']
-                    sub_index = self.curr_subject['index']
+            self._assign_bids_dir(self.dirname)  # make sure to import in the current bids_dir
+            for sub in data2import['Subject']:
+                import_sub_idx = data2import['Subject'].index(sub)
+                # test if subject is already present
+                if not self.curr_subject or not self.curr_subject['Subject']['sub'] == sub['sub']:
+                    # check whether the required subject is the current subject otherwise make it the
+                    # current one
+                    self.is_subject_present(sub['sub'])
+                sub_present = self.curr_subject['isPresent']
+                sub_index = self.curr_subject['index']
 
-                    # test whether the subject data have all attributes required by bids
-                    [flag, missing_str] = sub.has_all_req_attributes()
-                    if not flag:
-                        self.issues.add_issue('ImportIssue', brick=sub,
-                                              description=missing_str + ' (' + data2import.dirname + ')')
-                        self.write_log(missing_str)
-                        continue
+                # test whether the subject data have all attributes required by bids
+                [flag, missing_str] = sub.has_all_req_attributes()
+                if not flag:
+                    self.issues.add_issue('ImportIssue', brick=sub,
+                                          description=missing_str + ' (' + data2import.dirname + ')')
+                    self.write_log(missing_str)
+                    continue
 
-                    # test whether the subject to be imported has the same attributes as the one already inside the
-                    # bids dataset
-                    if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) \
-                                           == sub.get_attributes(['alias', 'upload_date']):
-                        error_str = 'The subject to be imported (' + data2import.dirname + \
-                                    ') has different attributes than the analogous subject in the bids dataset (' \
-                                    + str(sub.get_attributes()) + '=/=' + \
-                                    str(self.curr_subject['Subject'].get_attributes()) + ').'
-                        self.issues.add_issue('ImportIssue', brick=sub, description=error_str)
-                        self.write_log(error_str)
-                        continue
+                # test whether the subject to be imported has the same attributes as the one already inside the
+                # bids dataset
+                if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) \
+                                       == sub.get_attributes(['alias', 'upload_date']):
+                    error_str = 'The subject to be imported (' + data2import.dirname + \
+                                ') has different attributes than the analogous subject in the bids dataset (' \
+                                + str(sub.get_attributes()) + '=/=' + \
+                                str(self.curr_subject['Subject'].get_attributes()) + ').'
+                    self.issues.add_issue('ImportIssue', brick=sub, description=error_str)
+                    self.write_log(error_str)
+                    continue
 
-                    for modality_type in sub.keys():
-                        if modality_type in BidsBrick.get_list_subclasses_names():
-                            for modality in sub[modality_type]:
-                                """check again if the subject is present because it could be absent at the beginning but
-                                you could have added a data from the subject in a previous iteration of the loop.
-                                For instance, if you add a T1w and by mistake add the another T1w but with the same
-                                attributes you need to know what was previously imported for the subject"""
-                                self.is_subject_present(sub['sub'])
-                                sub_present = self.curr_subject['isPresent']
-                                sub_index = self.curr_subject['index']
+                for modality_type in sub.keys():
+                    if modality_type in BidsBrick.get_list_subclasses_names():
+                        for modality in sub[modality_type]:
+                            """check again if the subject is present because it could be absent at the beginning but
+                            you could have added a data from the subject in a previous iteration of the loop.
+                            For instance, if you add a T1w and by mistake add the another T1w but with the same
+                            attributes you need to know what was previously imported for the subject"""
+                            self.is_subject_present(sub['sub'])
+                            sub_present = self.curr_subject['isPresent']
+                            sub_index = self.curr_subject['index']
 
-                                if sub_present:
+                            if sub_present:
 
-                                    nb_ses, bids_ses = self.get_number_of_session4subject(sub['sub'])
-                                    if modality['ses'] and bids_ses:
-                                        """ if subject is present, have to check if ses in the data2import matches
-                                        the session structures of the dataset (if ses-X already exist than
-                                        data2import has to have a ses)"""
-                                        same_src_file_bln = have_data_same_source_file(self, modality)
-                                        if not same_src_file_bln:
-                                            same_attr_bln = have_data_same_attrs_and_sidecars(self, modality,
-                                                                                              sub_index)
-                                            if same_attr_bln:
-                                                string_issue = 'Subject ' + sub['sub'] + '\'s file:' + modality[
-                                                    'fileLoc'] \
-                                                               + ' was not imported from ' + data2import.dirname + \
-                                                               ' because ' + \
-                                                               modality.create_filename_from_attributes()[0] + \
-                                                               ' is already present in the bids dataset ' + \
-                                                               '(' + self['DatasetDescJSON']['Name'] + ').'
-                                                self.issues.add_issue('ImportIssue', brick=modality,
-                                                                      description=string_issue)
-                                                self.write_log(string_issue)
-                                                continue
-                                        else:
-                                            string_issue = 'Subject ' + sub['sub'] + '\'s file:' + \
-                                                           modality['fileLoc'] + ' was not imported from ' + \
-                                                           data2import.dirname +\
-                                                           ' because a source file with the same name is already ' \
-                                                           'present in the bids dataset ' + \
-                                                           self['DatasetDescJSON']['Name'] + '.'
+                                nb_ses, bids_ses = self.get_number_of_session4subject(sub['sub'])
+                                if modality['ses'] and bids_ses:
+                                    """ if subject is present, have to check if ses in the data2import matches
+                                    the session structures of the dataset (if ses-X already exist than
+                                    data2import has to have a ses)"""
+                                    same_src_file_bln = have_data_same_source_file(self, modality)
+                                    if not same_src_file_bln:
+                                        same_attr_bln = have_data_same_attrs_and_sidecars(self, modality,
+                                                                                          sub_index)
+                                        if same_attr_bln:
+                                            string_issue = 'Subject ' + sub['sub'] + '\'s file:' + modality[
+                                                'fileLoc'] \
+                                                           + ' was not imported from ' + data2import.dirname + \
+                                                           ' because ' + \
+                                                           modality.create_filename_from_attributes()[0] + \
+                                                           ' is already present in the bids dataset ' + \
+                                                           '(' + self['DatasetDescJSON']['Name'] + ').'
                                             self.issues.add_issue('ImportIssue', brick=modality,
                                                                   description=string_issue)
                                             self.write_log(string_issue)
                                             continue
                                     else:
-                                        string_issue = 'Session structure of the data to be imported (' + \
-                                                       data2import.dirname + ')does not ' \
-                                                       'match the one of the current dataset.\nSession label(s): ' \
-                                                       + ', '.join(bids_ses) + '.\nSubject ' + sub['sub'] + \
-                                                       ' not imported.'
+                                        string_issue = 'Subject ' + sub['sub'] + '\'s file:' + \
+                                                       modality['fileLoc'] + ' was not imported from ' + \
+                                                       data2import.dirname +\
+                                                       ' because a source file with the same name is already ' \
+                                                       'present in the bids dataset ' + \
+                                                       self['DatasetDescJSON']['Name'] + '.'
                                         self.issues.add_issue('ImportIssue', brick=modality,
                                                               description=string_issue)
                                         self.write_log(string_issue)
                                         continue
                                 else:
-                                    self['Subject'] = Subject()
-                                    self['Subject'][-1].update(sub.get_attributes())
-                                    self['ParticipantsTSV'].add_subject(sub)
-                                    self.is_subject_present(sub['sub'])
-                                    if keep_sourcedata:
-                                        self['SourceData'][-1]['Subject'] = Subject()
-                                        self['SourceData'][-1]['Subject'][-1].update(sub.get_attributes())
+                                    string_issue = 'Session structure of the data to be imported (' + \
+                                                   data2import.dirname + ')does not ' \
+                                                   'match the one of the current dataset.\nSession label(s): ' \
+                                                   + ', '.join(bids_ses) + '.\nSubject ' + sub['sub'] + \
+                                                   ' not imported.'
+                                    self.issues.add_issue('ImportIssue', brick=modality,
+                                                          description=string_issue)
+                                    self.write_log(string_issue)
+                                    continue
+                            else:
+                                self['Subject'] = Subject()
+                                self['Subject'][-1].update(sub.get_attributes())
+                                self['ParticipantsTSV'].add_subject(sub)
+                                self.is_subject_present(sub['sub'])
+                                if keep_sourcedata:
+                                    self['SourceData'][-1]['Subject'] = Subject()
+                                    self['SourceData'][-1]['Subject'][-1].update(sub.get_attributes())
 
-                                self.issues.remove(modality)
-                                push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
-                                self.save_as_json()
-                                self.issues.save_as_json()
-                                copy_data2import['Subject'][import_sub_idx][modality_type].pop(
-                                    copy_data2import['Subject'][import_sub_idx][modality_type].index(modality))
-                                copy_data2import.save_as_json()
-                        # if copy_data2import['Subject'][import_sub_idx].is_empty():
-                        # pop empty subject
+                            self.issues.remove(modality)
+                            push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
+                            self.save_as_json()
+                            self.issues.save_as_json()
+                            copy_data2import['Subject'][import_sub_idx][modality_type].pop(
+                                copy_data2import['Subject'][import_sub_idx][modality_type].index(modality))
+                            copy_data2import.save_as_json()
+                    # if copy_data2import['Subject'][import_sub_idx].is_empty():
+                    # pop empty subject
 
-                if copy_data2import.is_empty():
-                    if all(file.endswith('.json') or file.endswith('.tsv')
-                           for file in os.listdir(copy_data2import.dirname)):
-                        # if there are only the data2import.json and the sidecar files created during conversions,
-                        # the import dir can be removed
-                        shutil.rmtree(copy_data2import.dirname)
-                        self.write_log(copy_data2import.dirname + ' is now empty and will be removed.')
+            if copy_data2import.is_empty():
+                if all(file.endswith('.json') or file.endswith('.tsv')
+                       for file in os.listdir(copy_data2import.dirname)):
+                    # if there are only the data2import.json and the sidecar files created during conversions,
+                    # the import dir can be removed
+                    shutil.rmtree(copy_data2import.dirname)
+                    self.write_log(copy_data2import.dirname + ' is now empty and will be removed.')
 
-                if self['DatasetDescJSON']:
-                    self['DatasetDescJSON'].write_file()
-                self.check_requirements()
-                # data2import.clear()
-                # self.parse_bids()
+            if self['DatasetDescJSON']:
+                self['DatasetDescJSON'].write_file()
+            self.check_requirements()
+            # data2import.clear()
+            # self.parse_bids()
 
-            # shutil.rmtree(data2import.data2import_dir)
-            except Exception as err:
-                self.write_log(str(err))
-                copy_data2import.save_as_json()
+        # shutil.rmtree(data2import.data2import_dir)
+        except Exception as err:
+            self.write_log(str(err))
+            copy_data2import.save_as_json()
 
+        # could make it fast by just appending a new line instead of writing the whole file again
+        self['ParticipantsTSV'].write_file()
+        if self['SourceData'] and self['SourceData'][-1]['SrcDataTrack']:
             # could make it fast by just appending a new line instead of writing the whole file again
-            self['ParticipantsTSV'].write_file()
-            if self['SourceData'] and self['SourceData'][-1]['SrcDataTrack']:
-                # could make it fast by just appending a new line instead of writing the whole file again
-                self['SourceData'][-1]['SrcDataTrack'].write_file()
+            self['SourceData'][-1]['SrcDataTrack'].write_file()
 
     def remove(self, element2remove, with_issues=True):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
