@@ -139,10 +139,6 @@ class BidsManager(Frame):
                 self.solve_issues('UpldFldrIssue')
             # self.update_text(self.curr_data2import)
 
-
-
-
-
     @staticmethod
     def populate_list(list_object, input_list):
         for item in input_list:
@@ -184,41 +180,69 @@ class BidsManager(Frame):
 
     def ask4bidsdir(self, isnew_dir=False):
         """Either set (isnew_dir = False) or create Bids directory (isnew_dir=True)"""
+
+        def create_new_bidsdataset(bids_dir):
+            error_str = ''
+            if os.listdir(bids_dir):
+                error_str += 'The folder is not empty!'
+                return error_str
+            # create a dataset description file
+            datasetdesc = bids.DatasetDescJSON()
+            output_dict = FormDialog(root, datasetdesc,
+                                     required_keys=bids.DatasetDescJSON.required_keys,
+                                     title='Fill up the ' + bids.DatasetDescJSON.filename).apply()
+            if output_dict:
+                datasetdesc.copy_values(output_dict)
+                datasetdesc.has_all_req_attributes()
+            if not datasetdesc.is_complete and \
+                    datasetdesc['Name'] == bids.DatasetDescJSON.bids_default_unknown:
+                error_str += bids.DatasetDescJSON.filename + ' needs at least these elements: ' + \
+                            str(bids.DatasetDescJSON.required_keys) + 'to be filled.'
+                return error_str
+            # Select type of requirements
+            req_fname = filedialog.askopenfilename(title='Select requirements type',
+                                                   filetypes=[('req.', "*.json")],
+                                                   initialdir=os.path.join(os.path.dirname(__file__),
+                                                                           'requirements_templates'))
+            if not req_fname:
+                error_str += 'Bids Manager requires a requirements.json file to be operational.'
+                return error_str
+            req_dict = bids.Requirements(req_fname)
+            # set the converter paths (read path should be handled in a future release)
+            fname = filedialog.askopenfilename(title='Select converter for imagery data type (dcm2niix)')
+            if not fname or 'dcm2niix' not in os.path.basename(fname):
+                error_str += 'Bids Manager requires dcm2niix to convert imagery data.'
+                return error_str
+            bids.BidsDataset.converters['Imagery']['path'] = fname
+            fname = filedialog.askopenfilename(title='Select converter for electrophy. data type (AnyWave)')
+            if not fname or 'AnyWave' not in os.path.basename(fname):
+                error_str += 'Bids Manager requires AnyWave to convert electrophy. data.'
+                return error_str
+            bids.BidsDataset.converters['Electrophy']['path'] = fname
+            bids.BidsDataset.dirname = bids_dir
+            datasetdesc.write_file()
+            req_dict.save_as_json()
+
+
+
         bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
                                            initialdir=BidsManager.bids_startfile)
-
         if not bids_dir:
             return
         self.pack_element(self.main_frame['text'])
+        self.upload_dir = None
+        self.curr_data2import = None
         if self.curr_bids:
             self.curr_bids = None
         if isnew_dir:
-            error_str = ''
-            if os.listdir(bids_dir):
-                error_str = 'The folder is not empty!'
-            else:
-                self.curr_bids = bids.BidsDataset(bids_dir)
-                output_dict = FormDialog(root, self.curr_bids['DatasetDescJSON'],
-                                         required_keys=bids.DatasetDescJSON.required_keys,
-                                         title='Fill up the ' + bids.DatasetDescJSON.filename).apply()
-                if output_dict:
-                    self.curr_bids['DatasetDescJSON'].copy_values(output_dict)
-                if not self.curr_bids['DatasetDescJSON'].is_complete and \
-                        self.curr_bids['DatasetDescJSON']['Name'] == bids.DatasetDescJSON.bids_default_unknown:
-                    error_str = bids.DatasetDescJSON.filename + ' needs at least these elements: ' +\
-                                str(bids.DatasetDescJSON.required_keys) + 'to be filled.'
-            if not error_str:
-                self.curr_bids['DatasetDescJSON'].write_file()
-            else:
+            error_str = create_new_bidsdataset(bids_dir)
+            if error_str:
                 messagebox.showerror('Error', error_str)
-                self.upload_dir = None
-                self.curr_data2import = None
                 self.change_menu_state(self.uploader_menu, state=DISABLED)
                 self.change_menu_state(self.issue_menu, state=DISABLED)
-                return
+            else:
+                self.curr_bids = bids.BidsDataset(bids_dir)
         else:
-            self.upload_dir = None
-            self.curr_data2import = None
             if os.path.isfile(os.path.join(bids_dir, bids.DatasetDescJSON.filename)):
                 self.banner_label._default = 'Current BIDS directory: ' + bids_dir
                 self.make_idle('Parsing BIDS directory.')
@@ -924,9 +948,10 @@ class BidsTSVDialog(TemplateDialog):
     bln_color = {'True': 'green', 'False': 'red', True: 'green', False: 'red', 'good': 'green', 'bad': 'red'}
 
     def __init__(self, parent, tsv_table, title=None):
-        if not isinstance(tsv_table, bids.BidsTSV):
-            error_str = 'Second input should be a BidsTSV instance'
-            raise TypeError(error_str)
+        if not isinstance(tsv_table, bids.BidsTSV) or len(tsv_table) == 1:
+            error_str = 'Second input should be a non empty BidsTSV instance'
+            messagebox.showerror('Wrong input', error_str)
+            return
         self.idx = 0
         self.str_title = title
         self.main_brick = type(tsv_table)()  # copy the table some when reordering does not affect BidsTSV
