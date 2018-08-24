@@ -36,7 +36,7 @@
 			"amount": 1},
 		{
 			"type" : {
-				"ses": "01", "acq": "Xray1", "modality": "photo"},
+				"ses": "01", "acq": "_", "modality": "photo"},
 			"amount": 1}
 		]
 	}
