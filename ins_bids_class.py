@@ -2509,7 +2509,7 @@ class BidsDataset(MetaBrick):
                     sub_info['participant_id'] = sub_info['sub']
                     curr_brick['ParticipantsTSV'].append(sub_info)
                     curr_brick['ParticipantsTSV'].write_file()
-                self.write_log('Modification of ' + ParticipantsTSV.filename + ' for ' + curr_sub['sub'] + loc_str)
+                self.write_log('Modification of for ' + curr_sub['sub'] + loc_str)
             elif isinstance(elmt_iss, (ModalityType, GlobalSidecars)):
                 if 'remove' in kwargs and kwargs['in_bids']:
                     mod_brick = curr_brick.get_object_from_filename(kwargs['remove'])
