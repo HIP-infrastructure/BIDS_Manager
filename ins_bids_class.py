@@ -569,12 +569,17 @@ class BidsBrick(dict):
             if sub_mod_list:
                 for type_req in type_dict:
                     non_specif_keys = [key for key in type_req if type_req[key] == '_']
-                    empty_keys = [key for key in eval(modality + '.keylist') if key not in type_req]
+                    if 'modality' in type_req and type_req['modality'] == 'photo':
+                        keylist = Photo.keylist
+                    else:
+                        keylist = eval(modality + '.keylist')
+                    empty_keys = [key for key in keylist if key not in type_req]
                     reduced_dict = {key: type_req[key] for key in type_req if not type_req[key] == '_'}
                     for sub_mod in sub_mod_list:
                         attr_dict = sub_mod.get_attributes(empty_keys)
                         if attr_dict == reduced_dict and not non_specif_keys or \
-                                [key for key in non_specif_keys if key in eval(modality + '.keylist') and attr_dict[key]]:
+                                [key for key in non_specif_keys if key in keylist and
+                                                                   key in attr_dict and attr_dict[key]]:
                             amount += 1
 
             if amount == 0:
