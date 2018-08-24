@@ -1,0 +1,54 @@
+{
+ "Requirements": {
+	"Subject": {
+		"keys": ["dateOfBirth","sex","alias","eCRF","upload_date"],
+		"Anat": [
+		{
+			"type" : {
+				"ses": "01", "acq": "preop", "modality": "T1w"},
+			"amount": 1},
+		{ 
+			"type" : [
+				{"ses": "01", "modality": "CT"},
+				{"ses": "01", "acq": "postimp", "modality": "T1w"}],
+			"amount": 1}
+		],
+		"Ieeg": [
+		{
+			"type" : {
+				"ses": "01", "acq": "_", "task": "seizure", "run": "_", "modality": "ieeg"},
+			"amount": 1}
+		],
+		"Dwi":[
+		{
+			"type" : {
+				"ses": "01", "acq": "AP", "modality": "dwi"},
+			"amount": 1}
+		],
+		"IeegGlobalSidecars": [
+		{
+			"type" : {
+				"ses": "01", "space": "CT", "modality": "coordsystem"},
+			"amount": 1},
+		{
+			"type" : {
+				"ses": "01", "space": "CT", "modality": "electrodes"},
+			"amount": 1},
+		{
+			"type" : {
+				"ses": "01", "acq": "Xray1", "modality": "photo"},
+			"amount": 1}
+		]
+	}
+	},
+	"Converters": {
+		"Imagery": {
+			"path": "",
+			"ext": [".nii"]
+			},
+		"Electrophy": {
+			"path": "",
+			"ext": [".vhdr", ".vmrk", ".dat"]
+			}
+		}
+ }

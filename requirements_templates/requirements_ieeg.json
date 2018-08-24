@@ -1,0 +1,46 @@
+{
+ "Requirements": {
+	"Subject": {
+		"Anat": [
+		{
+			"type" : {
+				"modality": "T1w"},
+			"amount": 1}
+		],
+		"Ieeg": [
+		{
+			"type" : {
+				"task": "_", "run": "_", "modality": "ieeg"},
+			"amount": 1}
+		],
+		"IeegGlobalSidecars": [
+		{
+			"type" : {
+				"space": "_", "modality": "coordsystem"},
+			"amount": 1},
+		{
+			"type" : {
+				"space": "_", "modality": "electrodes"},
+			"amount": 1}
+		]
+	}
+	},
+"Converters": {
+		"Imagery": {
+			"path": "",
+			"ext": [".nii"]
+			},
+		"Electrophy": {
+			"path": "",
+			"ext": [".vhdr", ".vmrk", ".dat"]
+			}
+		},
+"Readers": {
+		"Imagery": {
+			"path": ""
+			},
+		"Electrophy": {
+			"path": ""
+			}
+		}
+ }
