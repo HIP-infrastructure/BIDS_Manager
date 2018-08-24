@@ -754,11 +754,17 @@ class BidsBrick(dict):
                 init_inst = type(self)()
             return self == init_inst
 
-    def difference(self, brick2compare):
+    def difference(self, brick2compare, reverse=False):
         """ different compare two BidsBricks from the same type and returns a dictionary of the key and values of the
         brick2compare that are different from self. /!\ this operation is NOT commutative"""
-        if type(self) is type(brick2compare):
-            return {key: brick2compare[key] for key in self if not self[key] == brick2compare[key]}
+        if type(self) is type(brick2compare) or (isinstance(brick2compare, dict) and
+                                                 not isinstance(brick2compare, (BidsBrick, BidsSidecar))):
+            if reverse:
+                return {key: brick2compare[key] for key in brick2compare if key not in self or
+                        not self[key] == brick2compare[key]}
+            else:
+                return {key: brick2compare[key] for key in self if key not in brick2compare or
+                        not self[key] == brick2compare[key]}
         else:
             err_str = 'The type of the two instance to compare are different (' + self.classname() + ', '\
                       + type(brick2compare).__name__ + ')'
