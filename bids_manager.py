@@ -223,8 +223,6 @@ class BidsManager(Frame):
             datasetdesc.write_file()
             req_dict.save_as_json()
 
-
-
         bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
                                            initialdir=BidsManager.bids_startfile)
         if not bids_dir:
@@ -240,6 +238,7 @@ class BidsManager(Frame):
                 messagebox.showerror('Error', error_str)
                 self.change_menu_state(self.uploader_menu, state=DISABLED)
                 self.change_menu_state(self.issue_menu, state=DISABLED)
+                return
             else:
                 self.curr_bids = bids.BidsDataset(bids_dir)
         else:
