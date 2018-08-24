@@ -991,7 +991,7 @@ class BidsJSON(BidsSidecar, dict):
 
 
 class ModalityType(BidsBrick):
-    pass
+    required_keys = BidsBrick.required_keys + ['fileLoc']
 
 
 class Imagery(ModalityType):
@@ -1234,7 +1234,7 @@ class Ieeg(Electrophy):
 
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'IeegJSON',
                                    'IeegChannelsTSV', 'IeegEventsTSV']
-    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['ieeg']
     allowed_file_formats = ['.edf', '.gdf', '.fif', '.vhdr']
     readable_file_formats = allowed_file_formats + ['.eeg', '.trc']
@@ -1307,9 +1307,9 @@ class IeegGlobalSidecars(GlobalSidecars):
 class Anat(Imagery):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'ce', 'rec', 'run', 'mod', 'modality', 'fileLoc', 'AnatJSON']
-    required_keys = BidsBrick.required_keys + ['modality']
+    required_keys = Imagery.required_keys + ['modality']
     allowed_modalities = ['T1w', 'T2w', 'T1rho', 'T1map', 'T2map', 'T2star', 'FLAIR', 'PD', 'Pdmap', 'PDT2', 'inplaneT1'
-                          ,'inplaneT2', 'angio', 'defacemask', 'CT']
+                          , 'inplaneT2', 'angio', 'defacemask', 'CT']
     allowed_file_formats = ['.nii']
     readable_file_formats = allowed_file_formats + ['.dcm']
 
@@ -1328,8 +1328,7 @@ class Func(Imagery):
 
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'echo', 'modality', 'fileLoc', 'FuncJSON',
                                    'FuncEventsTSV']
-    # keybln = BidsBrick.create_keytype(keylist)
-    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    required_keys = Imagery.required_keys + ['task', 'modality']
     allowed_modalities = ['bold', 'sbref']
     allowed_file_formats = ['.nii']
     readable_file_formats = allowed_file_formats + ['.dcm']
@@ -1358,7 +1357,7 @@ class FuncEventsTSV(EventsTSV):
 class Fmap(Imagery):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'dir', 'run', 'modality', 'fileLoc', 'FmapJSON']
-    required_keys = BidsBrick.required_keys + ['modality']
+    required_keys = Imagery.required_keys + ['modality']
     allowed_modalities = ['phasediff', 'phase1', 'phase2', 'magnitude1', 'magnitude2', 'magnitude', 'fieldmap', 'epi']
     allowed_file_formats = ['.nii']
     readable_file_formats = allowed_file_formats + ['.dcm']
@@ -1378,7 +1377,7 @@ class FmapJSON(ImageryJSON):
 class Dwi(Imagery):
 
     keylist = BidsBrick.keylist + ['ses', 'acq', 'run', 'modality', 'fileLoc', 'DwiJSON', 'Bval', "Bvec"]
-    required_keys = BidsBrick.required_keys + ['modality']
+    required_keys = Imagery.required_keys + ['modality']
     allowed_modalities = ['dwi']
     allowed_file_formats = ['.nii']
     readable_file_formats = allowed_file_formats + ['.dcm']
@@ -1408,7 +1407,7 @@ class Meg(Electrophy):
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'MegJSON',
                                    'MegEventsTSV']
     # keybln = BidsBrick.create_keytype(keylist)
-    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    required_keys = Imagery.required_keys + ['task', 'modality']
     allowed_modalities = ['meg']
     allowed_file_formats = ['.ctf', '.fif', '4D']
     readable_file_formats = allowed_file_formats
@@ -1429,7 +1428,7 @@ class MegEventsTSV(EventsTSV):
 class Beh(ModalityType):
 
     keylist = BidsBrick.keylist + ['ses', 'task', 'modality', 'fileLoc', 'BehEventsTSV']
-    required_keys = BidsBrick.required_keys + ['task', 'modality']
+    required_keys = ModalityType.required_keys + ['task', 'modality']
     allowed_modalities = ['beh']
     allowed_file_formats = ['.tsv']
     readable_file_formats = allowed_file_formats
@@ -2115,13 +2114,13 @@ class BidsDataset(MetaBrick):
                 sub_present = self.curr_subject['isPresent']
                 sub_index = self.curr_subject['index']
 
-                # test whether the subject data have all attributes required by bids
-                [flag, missing_str] = sub.has_all_req_attributes()
-                if not flag:
-                    self.issues.add_issue('ImportIssue', brick=sub,
-                                          description=missing_str + ' (' + data2import.dirname + ')')
-                    self.write_log(missing_str)
-                    continue
+                # # test whether the subject data have all attributes required by bids
+                # [flag, missing_str] = sub.has_all_req_attributes()
+                # if not flag:
+                #     self.issues.add_issue('ImportIssue', brick=sub,
+                #                           description=missing_str + ' (' + data2import.dirname + ')')
+                #     self.write_log(missing_str)
+                #     continue
 
                 # test whether the subject to be imported has the same attributes as the one already inside the
                 # bids dataset
@@ -2138,6 +2137,13 @@ class BidsDataset(MetaBrick):
                 for modality_type in sub.keys():
                     if modality_type in BidsBrick.get_list_subclasses_names():
                         for modality in sub[modality_type]:
+                            # flag, missing_str = modality.has_all_req_attributes()
+                            # if not flag:
+                            #     self.issues.add_issue('ImportIssue', brick=modality,
+                            #                           description=missing_str + ' (' + data2import.dirname + ')')
+                            #     self.write_log(missing_str)
+                            #     continue
+
                             """check again if the subject is present because it could be absent at the beginning but
                             you could have added a data from the subject in a previous iteration of the loop.
                             For instance, if you add a T1w and by mistake add the another T1w but with the same
@@ -2200,11 +2206,12 @@ class BidsDataset(MetaBrick):
                                     self['SourceData'][-1]['Subject'][-1].update(sub.get_attributes())
 
                             self.issues.remove(modality)
+                            # need to get the index before importing because push_into_dataset adds data from sidecars
+                            idx2pop = copy_data2import['Subject'][import_sub_idx][modality_type].index(modality)
                             push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
                             self.save_as_json()
                             self.issues.save_as_json()
-                            copy_data2import['Subject'][import_sub_idx][modality_type].pop(
-                                copy_data2import['Subject'][import_sub_idx][modality_type].index(modality))
+                            copy_data2import['Subject'][import_sub_idx][modality_type].pop(idx2pop)
                             copy_data2import.save_as_json()
                     # if copy_data2import['Subject'][import_sub_idx].is_empty():
                     # pop empty subject
