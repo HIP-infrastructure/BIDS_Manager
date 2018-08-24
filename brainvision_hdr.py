@@ -51,7 +51,7 @@ class BrainvisionHeader(object):
 
         if orig_name not in self.electrode_set:
             raise NameError(orig_name + ' electrode is not found in ' + self.filename + '.')
-        for cnt, line in enumerate( self.header):
+        for cnt, line in enumerate(self.header):
             line = re.sub(self.expr2besub[0] + orig_name + self.expr2besub[1], repl, line)
             self.header[cnt] = line
         self.fill_data_section()
