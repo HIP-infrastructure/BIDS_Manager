@@ -1,159 +1,186 @@
-import ins_bids_class as util
+import ins_bids_class as bids
 import datetime as dtm
 import shutil
 import os
 import copy
+import json
 
 
-test_numb = 3
+class PipelineTester:
 
-# Der = util.Derivatives()
-# print(Der)
+    step_str = ['Creation of empty Bids dataset',
+                'Making first data2import.json for sub-01',
+                'Importing previous data without checking (Issues)',
+                'Importing previous data after check',
+                'Making second data2import.json for sub-01 with elec,coordsys,photo',
+                'Import with error + solving error',
+                'Importing previous data after check',
+                'Change electrode type'
+                ]
+    step_idx = 0
+    data_dir = 'all_data_orig'
+    curr_dir = ''
+    curr_bids = None
+    curr_data2import = None
 
-
-if test_numb == 0:
-    '''Here, try to parse the bids dataset and write in the derivatives the results of the parsing'''
-    bids_dir = 'D:/roehri/PHRC/test/test_import/new_bids'
-    # bids_dir = 'E:/PostDoc/PHRC/test/Neural_responses'
-    bids = util.BidsDataset(bids_dir)
-    seeg = util.Ieeg()
-    seeg['sub'] = 'test'
-    seeg['ses'] = '01'
-    seeg['task'] = 'interictal'
-    print('How many runs is there currently for ' + str(seeg.get_attributes(['fileLoc', 'run'])) + '?\n' +
-          str(bids.get_number_of_runs(seeg)))
-    print('Has sub-test Ieeg modalities?\n' + str(bids.has_subject_modality_type('test', 'Ieeg')))
-elif test_numb == 1:
-    '''Here, try to create a folder to import that can be further read and imported in a bids dataset'''
-    pathsource = 'D:/roehri/PHRC/test/test_import/import_test_orig'
-    # subject info are entered
-    pat_UID = 'c2429a5cfd4a'
-    age = '22'
-    sex = 'F'
-    dict_tempdir = {'EPINOV': 'D:/roehri/PHRC/test/test_import/create_import_dir' + '_EPINOV_' + pat_UID,
-                    'SPREAD': 'D:/roehri/PHRC/test/test_import/create_import_dir' + '_SPREAD_' + pat_UID}
-
-    # remove folders for testing purposes
-    for key in dict_tempdir:
-        if os.path.isdir(dict_tempdir[key]):
-            shutil.rmtree(dict_tempdir[key])
-    #######
-
-    raw_data = {}
-    for key in dict_tempdir:
-        os.makedirs(dict_tempdir[key], exist_ok=True)
-        # instantiates an object
-        raw_data[key] = util.Data2Import(dict_tempdir[key])
-        raw_data[key]['DatasetDescJSON'] = util.DatasetDescJSON()
-        raw_data[key]['DatasetDescJSON'].update({'Name': key, 'BIDSVersion': '1.0.1'})
-
-        raw_data[key]['Subject'] = util.Subject()
-        raw_data[key]['Subject'][-1].update({'sub': pat_UID, 'age': age, 'sex': sex})
-        # optional, nice for debugging
-        raw_data[key].save_as_json()
-
-    # the user select a CT
-    for key in dict_tempdir:
-    # always assign the import directory you are working on before creating and filling an instance. Because when
-    # filling fileLoc, the class test whether the file is present as a sanity check
-        util.Data2Import._assign_import_dir(raw_data[key].data2import_dir)
-        if key == 'EPINOV':
-            shutil.copytree(os.path.join(pathsource, 'CT'), os.path.join(raw_data[key].data2import_dir, 'CT'))
+    def check_step(self, bids_flag=True):
+        if bids_flag:
+            fname = 'parsing_bidsdataset_' + str(self.step_idx+1) + '.json'
+            brick = self.curr_bids
         else:
-            shutil.copytree(os.path.join(raw_data['EPINOV'].data2import_dir, 'CT'), os.path.join(raw_data[key].
-                                                                                                 data2import_dir, 'CT'))
-        # do your anonymization and test whether protocol SPREAD needs it
-        raw_data[key]['Subject'][-1]['Anat'] = util.Anat()
-        raw_data[key]['Subject'][-1]['Anat'][-1].update({'sub': raw_data[key]['Subject'][-1]['sub'], 'ses': '01',
-                                                         'modality': 'CT', 'fileLoc': 'CT'})
-        raw_data[key].save_as_json()
+            fname = 'data2import_' + str(self.step_idx + 1) + '.json'
+            brick = self.curr_data2import
+        step_file = self.read_json(os.path.join(self.curr_dir, self.data_dir, fname))
+        diff = brick.difference(step_file, reverse=True)
+        # all bricks that contain dates should be removed
+        if 'UploadDate' in diff:
+            diff.pop('UploadDate')
+        if 'SourceData' in diff:
+            diff.pop('SourceData')
+        if 'ParticipantsTSV' in diff:
+            diff.pop('ParticipantsTSV')
+        if diff:
+            err_str = '[Error step ' + str(self.step_idx+1) + '] ' + fname + \
+                      ' is different from the current dataset.\n' + str(diff)
+            self.curr_bids.write_log(err_str)
+            raise AttributeError(err_str)
+        self.step_idx += 1
 
-    # the user select a preop MRI
-    for key in dict_tempdir:
-        util.Data2Import._assign_import_dir(raw_data[key].data2import_dir)
-        if key == 'EPINOV':
-            shutil.copytree(os.path.join(pathsource, 'MRI'), os.path.join(raw_data[key].data2import_dir, 'MRI'))
-        else:
-            shutil.copytree(os.path.join(raw_data['EPINOV'].data2import_dir, 'MRI'), os.path.join(
-                raw_data[key].data2import_dir, 'MRI'))
-        # do your anonymization and test whether protocol SPREAD needs it
-        raw_data[key]['Subject'][-1]['Anat'] = util.Anat()
-        raw_data[key]['Subject'][-1]['Anat'][-1].update({'sub': raw_data[key]['Subject'][-1]['sub'], 'ses': '01',
-                                                         'acq': 'preop', 'modality': 'MRI', 'fileLoc': 'MRI'})
-        raw_data[key].save_as_json()
+    def print_init_step(self):
+        print('/'*10 + self.step_str[self.step_idx] + '\\'*10)
 
-        # the user select a type1 SEEG seizure
-    for key in dict_tempdir:
-        util.Data2Import._assign_import_dir(raw_data[key].data2import_dir)
-        if key == 'EPINOV':
-            shutil.copy2(os.path.join(pathsource, '180219U-CEX_0000.eeg'), os.path.join(
-                raw_data[key].data2import_dir, '180219U-CEX_0000.eeg'))
-        else:
-            shutil.copy2(os.path.join(raw_data['EPINOV'].data2import_dir, '180219U-CEX_0000.eeg'), os.path.join(
-                raw_data[key].data2import_dir, '180219U-CEX_0000.eeg'))
-        # do your anonymization and test whether protocol SPREAD needs it
-        raw_data[key]['Subject'][-1]['Ieeg'] = util.Ieeg()
-        raw_data[key]['Subject'][-1]['Ieeg'][-1].update({'sub': raw_data[key]['Subject'][-1]['sub'], 'ses': '01',
-                                                         'acq': 'type1', 'task': 'seizure', 'fileLoc':
-                                                             '180219U-CEX_0000.eeg'})
-        raw_data[key].save_as_json()
-
-    # the user select a XRay seizure
-    for key in dict_tempdir:
-        util.Data2Import._assign_import_dir(raw_data[key].data2import_dir)
-        if key == 'EPINOV':
-            shutil.copy2(os.path.join(pathsource, 'TM001.png'), os.path.join(
-                raw_data[key].data2import_dir, 'TM001.png'))
-        else:
-            shutil.copy2(os.path.join(raw_data['EPINOV'].data2import_dir, 'TM001.png'), os.path.join(
-                raw_data[key].data2import_dir, 'TM001.png'))
-        # do your anonymization and test whether protocol SPREAD needs it
-        raw_data[key]['Subject'][-1]['IeegGlobalSidecars'] = util.IeegGlobalSidecars('TM001.png')
-        raw_data[key]['Subject'][-1]['IeegGlobalSidecars'][-1].update({'sub': raw_data[key]['Subject'][-1]['sub'],
-                                                                       'ses': '01', 'acq': 'Xray1', 'fileLoc':
-                                                                           'TM001.png'})
-        raw_data[key].save_as_json()
+    @staticmethod
+    def read_json(filename):
+        with open(filename, 'r') as file:
+            rd_json = json.load(file)
+        return rd_json
 
 
-elif test_numb == 2:
-    '''Here, try to import data in an empty bids dataset and write in the derivatives the results of the import'''
-    bids_dir = 'D:/roehri/PHRC/test/test_import/new_bids'
-    pathTempdir = 'D:/roehri/PHRC/test/test_import/import_test'
-    pathsource = 'D:/roehri/PHRC/test/test_import/import_test_orig'
+pipeline_tester = PipelineTester()
+pipeline_tester.print_init_step()
+anywave_path = r'D:\roehri\Anywave\AnyWave.exe'
+dcm2nii_path = r'D:\roehri\python\PycharmProjects\readFromUploader\dcm2niix.exe'
 
-    if os.path.isdir(bids_dir):
-        shutil.rmtree(bids_dir)
-    # if os.path.isdir(pathTempdir):
-    #     shutil.rmtree(pathTempdir)
-    os.makedirs(bids_dir)
+'''Creation of empty Bids dataset'''
 
-    # shutil.copytree(pathsource, pathTempdir)
+main_dir = r'D:\roehri\BIDs\sandbox'
+dataset_name = 'Pipeline Testing'
+pipeline_tester.curr_dir = main_dir
+bids_dir = os.path.join(main_dir, 'new_bids')
+if os.path.exists(bids_dir):
+    shutil.rmtree(bids_dir)
+os.makedirs(os.path.join(bids_dir, 'code'))
+req_templ_path = os.path.join(os.path.dirname(__file__), 'requirements_templates', 'requirements_RHU.json')
+req_path = os.path.join(bids_dir, 'code', 'requirements.json')
+shutil.copy2(req_templ_path, req_path)
+bids.BidsDataset.dirname = bids_dir
+datasetdesc = bids.DatasetDescJSON()
+datasetdesc['Name'] = dataset_name
+datasetdesc['Author'] = 'NR'
+datasetdesc.write_file()
 
-    bids = util.BidsDataset(bids_dir)
-    raw_data = util.Data2Import(pathTempdir)
-    bids.import_data(raw_data)
+dataset = bids.BidsDataset(bids_dir)
+bids.BidsDataset.converters['Imagery']['path'] = dcm2nii_path
+bids.BidsDataset.converters['Electrophy']['path'] = anywave_path
+pipeline_tester.curr_bids = dataset
+pipeline_tester.check_step()
 
-elif test_numb == 3:
-    '''Here, try to import data of new patients in an existing bids dataset and write in the derivatives the results of 
-    the import'''
-    bids_dir = 'D:/roehri/PHRC/test/test_import/new_bids1'
-    pathTempdir = ['D:/roehri/PHRC/test/test_import/import_test_1', 'D:/roehri/PHRC/test/test_import/import_test_2']
-    # pathsource = 'D:/roehri/PHRC/test/test_import/import_test_orig'
+'''Making first data2import.json for sub-01'''
+pipeline_tester.print_init_step()
+import_dir = os.path.join(main_dir, 'import_folder')
+if os.path.exists(import_dir):
+    shutil.rmtree(import_dir)
+# os.makedirs(import_dir)
+shutil.copytree(os.path.join(main_dir, pipeline_tester.data_dir, 'pat1'), import_dir)
 
-    if os.path.isdir(bids_dir):
-        shutil.rmtree(bids_dir)
-    # if os.path.isdir(pathTempdir):
-    #     shutil.rmtree(pathTempdir)
-    os.makedirs(bids_dir)
+data2impt = bids.Data2Import(import_dir)
+datadesc = bids.DatasetDescJSON()
+datadesc['Name'] = dataset_name
+data2impt['DatasetDescJSON'] = datadesc
+pipeline_tester.curr_data2import = data2impt
+sub01 = bids.Subject()
+elmt_list = []
+t1w = bids.Anat()
+t1w.update({'ses': 1, 'acq': 'preop', 'modality': 'T1w', 'fileLoc': 'T1w'})
+elmt_list.append(t1w)
+ct = bids.Anat()
+ct.update({'ses': '01', 'modality': 'CT', 'fileLoc': 'CT'})
+elmt_list.append(ct)
+dwi = bids.Dwi()
+dwi.update({'ses': '01', 'acq': 'AP', 'fileLoc': 'dwi'})
+elmt_list.append(dwi)
+seiz1 = bids.Ieeg()
+seiz2 = bids.Ieeg()
+seiz3 = bids.Ieeg()
+sws1 = bids.Ieeg()
+seiz1.update({'ses': '01', 'task': 'seizure', 'run': 1, 'fileLoc': 'seizure_1.eeg'})
+seiz2.update({'ses': '01', 'task': 'seizure', 'run': '02', 'fileLoc': 'seizure_2.eeg'})
+seiz3.update({'ses': '01', 'task': 'seizure', 'run': 3, 'fileLoc': 'seizure_3.eeg'})
+sws1.update({'ses': '01', 'task': 'SWS', 'run': 1, 'fileLoc': 'SWS_1.eeg'})
+elmt_list += [seiz1, seiz2, seiz3, sws1]
+for elmt in elmt_list:
+    sub01.update({elmt.classname(): elmt})
+sub01.update({'sub': 1, 'eCRF': 'MAR0080', 'sex': 'M', 'dateOfBirth': '01/01/01'})
+data2impt['Subject'] = sub01
+data2impt.save_as_json()
+dataset.make_upload_issues(data2impt)
+pipeline_tester.check_step(bids_flag=False)
 
-    # shutil.copytree(pathsource, pathTempdir)
+'''Importing previous data without checking (Issues)'''
+pipeline_tester.print_init_step()
+dataset.import_data(data2impt)
+pipeline_tester.check_step()
 
-    bids = util.BidsDataset(bids_dir)
-    for import_dir in pathTempdir:
-        raw_data = util.Data2Import(import_dir)
-        bids.import_data(raw_data)
+'''Importing previous data after check'''
+for issues in pipeline_tester.curr_bids.issues['UpldFldrIssue']:
+    issues.add_action('verified!', 'state="verified"')
+dataset.apply_actions()
+dataset.import_data(data2impt)
+pipeline_tester.check_step()
 
-'''Here, try to import data of pre-existing patients (handle the run issues) in an existing bids dataset and write in the
- derivatives the results of the import'''
+'''Making second data2import.json for sub-01 with elec,coordsys,photo + impotr with error'''
+pipeline_tester.print_init_step()
+os.remove(os.path.join(import_dir, data2impt.filename))
+data2impt = bids.Data2Import(import_dir)
+datadesc = bids.DatasetDescJSON()
+datadesc['Name'] = dataset_name
+data2impt['DatasetDescJSON'] = datadesc
+pipeline_tester.curr_data2import = data2impt
+sub01 = bids.Subject()
+elmt_list = []
+elec = bids.IeegGlobalSidecars(os.path.join(import_dir, '_electrodes.tsv'))
+coord_sys = bids.IeegGlobalSidecars(os.path.join(import_dir, '_coordsystem.json'))
+photo = bids.IeegGlobalSidecars(os.path.join(import_dir, 'drawing1_photo.jpg'))
+elec.update({'ses': '01', 'space': 'CT'})
+coord_sys.update({'ses': '01', 'space': 'CT'})
+photo.update({'ses': '01', 'acq': 'Drawing1'})
+elmt_list += [elec, coord_sys, photo]
+for elmt in elmt_list:
+    sub01.update({elmt.classname(): elmt})
+# put error in eCRF and sex
+sub01.update({'sub': 1, 'eCRF': 'MAR0081', 'sex': 'F', 'dateOfBirth': '01/01/01'})
+data2impt['Subject'] = sub01
+data2impt.save_as_json()
+# force the verification because tested above
+dataset.make_upload_issues(data2impt, force_verif=True)
+pipeline_tester.check_step(bids_flag=False)
+
+'''Import with desc and sub errors'''
+pipeline_tester.print_init_step()
+dataset.import_data(data2impt)
+imp_iss = dataset.issues['ImportIssue'][0]
+imp_iss.add_action(desc='Modify attrib.', command='sex="M",eCRF="MAR0080",in_bids="False"')
+dataset.apply_actions()
+data2impt = bids.Data2Import(import_dir)
+pipeline_tester.curr_data2import = data2impt
+pipeline_tester.check_step(bids_flag=False)
 
 
+'''Import correctly now'''
+pipeline_tester.print_init_step()
+dataset.import_data(data2impt)
+pipeline_tester.check_step(bids_flag=True)
+
+'''Change electrode type'''
+pipeline_tester.print_init_step()
+# to be finalized once back! (was already check with bidsmanager)
