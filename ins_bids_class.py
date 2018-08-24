@@ -1185,7 +1185,7 @@ class Photo(BidsBrick):
 ''' A special class for setting the requirements of a given BIDS dataset '''
 
 
-class Requirements(dict):
+class Requirements(BidsBrick):
     keywords = ['_ready', '_integrity']
 
     def __init__(self, full_filename):
@@ -1200,6 +1200,18 @@ class Requirements(dict):
                     BidsDataset.readers = json_dict['Readers']
                 if 'Converters' in json_dict.keys():
                     BidsDataset.converters = json_dict['Converters']
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, value)
+
+    def update(self, input_dict, f=None):
+        dict.update(input_dict, f=None)
+
+    def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
+        savedir = os.path.join(BidsDataset.dirname, 'code')
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+        super().save_as_json(savedir, file_start=None, write_date=False, compress=False)
 
 
 ''' The different modality bricks, subclasses of BidsBrick. '''
