@@ -1207,6 +1207,8 @@ class Requirements(BidsBrick):
 
         if full_filename:
             self['Requirements'] = dict()
+            self['Converters'] = dict()
+            self['Converters'].update({'Imagery': {'path': ''}, 'Electrophy': {'path': ''}})
             with open(full_filename, 'r') as file:
                 json_dict = json.load(file)
                 if 'Requirements' in json_dict.keys():
