@@ -1216,7 +1216,7 @@ class Requirements(BidsBrick):
                     self['Readers'] = json_dict['Readers']
                 if 'Converters' in json_dict.keys():
                     BidsDataset.converters = json_dict['Converters']
-                    self['Readers'] = json_dict['Converters']
+                    self['Converters'] = json_dict['Converters']
 
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
