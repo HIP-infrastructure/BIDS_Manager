@@ -1207,16 +1207,16 @@ class Requirements(BidsBrick):
 
         if full_filename:
             self['Requirements'] = dict()
-            self['Converters'] = dict()
-            self['Converters'].update({'Imagery': {'path': ''}, 'Electrophy': {'path': ''}})
             with open(full_filename, 'r') as file:
                 json_dict = json.load(file)
                 if 'Requirements' in json_dict.keys():
                     self['Requirements'] = json_dict['Requirements']
                 if 'Readers' in json_dict.keys():
                     BidsDataset.readers = json_dict['Readers']
+                    self['Readers'] = json_dict['Readers']
                 if 'Converters' in json_dict.keys():
                     BidsDataset.converters = json_dict['Converters']
+                    self['Readers'] = json_dict['Converters']
 
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
