@@ -214,11 +214,13 @@ class BidsManager(Frame):
                 error_str += 'Bids Manager requires dcm2niix to convert imagery data.'
                 return error_str
             bids.BidsDataset.converters['Imagery']['path'] = fname
+            req_dict['Converters']['Imagery']['path'] = fname
             fname = filedialog.askopenfilename(title='Select converter for electrophy. data type (AnyWave)')
             if not fname or 'AnyWave' not in os.path.basename(fname):
                 error_str += 'Bids Manager requires AnyWave to convert electrophy. data.'
                 return error_str
             bids.BidsDataset.converters['Electrophy']['path'] = fname
+            req_dict['Converters']['Electrophy']['path'] = fname
             bids.BidsDataset.dirname = bids_dir
             datasetdesc.write_file()
             req_dict.save_as_json()
