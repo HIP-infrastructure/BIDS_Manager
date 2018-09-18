@@ -510,11 +510,11 @@ class BidsManager(Frame):
                 if isinstance(line_map[curr_idx]['Element'], bids.DatasetDescJSON):
                     # if issue arise from DatasetDescJSON change the DatasetDescJSON object in data2import.json
                     pop_menu.add_command(label='Modify ' + bids.DatasetDescJSON.filename + ' in current BIDS directory',
-                                         command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
+                                         command=lambda: self.modify_attributes(issue_key, curr_idx, line_map[curr_idx],
                                                                                 in_bids=True))
                     pop_menu.add_command(label='Modify ' + bids.DatasetDescJSON.filename +
                                                ' in current Upload directory',
-                                         command=lambda: self.modify_attributes(curr_idx, line_map[curr_idx],
+                                         command=lambda: self.modify_attributes(issue_key, curr_idx, line_map[curr_idx],
                                                                                 in_bids=False))
                 elif isinstance(line_map[curr_idx]['Element'], bids.BidsBrick):
                     if isinstance(line_map[curr_idx]['Element'], bids.Subject):
