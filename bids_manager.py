@@ -258,13 +258,17 @@ class BidsManager(Frame):
         # enable all bids sub-menu
         self.change_menu_state(self.bids_menu)
         self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
-        self.bids_menu.entryconfigure(4, command=lambda: BidsBrickDialog(self, self.curr_bids))
+        self.bids_menu.entryconfigure(4, command=self.explore_bids_dataset)
         # enable selection of upload directory
         self.change_menu_state(self.uploader_menu, end_idx=0)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
         self.update_text(self.curr_bids.curr_log)
         self.make_available()
+
+    def explore_bids_dataset(self):
+        BidsBrickDialog(self, self.curr_bids)
+        self.curr_bids.save_as_json()
 
     def ask4upload_dir(self):
         self.pack_element(self.main_frame['text'])
@@ -649,6 +653,9 @@ class BidsManager(Frame):
         self.change_menu_state(self.uploader_menu, start_idx=1, state=DISABLED)
 
     def onExit(self):
+        if self.curr_bids:
+            self.curr_bids.write_log('Bids Manager was closed')
+            self.curr_bids.save_as_json()
         self.quit()
 
     def make_idle(self, str2print=None):
@@ -955,7 +962,8 @@ class BidsTSVDialog(TemplateDialog):
             return
         self.idx = 0
         self.str_title = title
-        self.main_brick = type(tsv_table)()  # copy the table some when reordering does not affect BidsTSV
+        self.orig_order = [line[0] for line in tsv_table[1:]]
+        self.main_brick = type(tsv_table)()  # copy the table  so reordering does not affect BidsTSV
         self.main_brick.copy_values(tsv_table)
         self.n_lines = len(tsv_table) - 1
         self.n_columns = len(tsv_table.header)
@@ -984,6 +992,7 @@ class BidsTSVDialog(TemplateDialog):
             self.next_btn = Button(parent, text='Next', command=lambda prnt=parent, stp=1: self.change_page(prnt, stp))
             self.next_btn.grid(row=self.max_lines+1, column=self.n_columns-1, sticky=W+E)
             self.update_page_number()
+        self.ok_cancel_button(parent, row=self.max_lines+2)
         # for i in range(self.max_lines):
         #     self.body_widget.grid_rowconfigure(i, weight=1, uniform='test')
 
@@ -1001,6 +1010,19 @@ class BidsTSVDialog(TemplateDialog):
                 if isinstance(self.main_brick, (bids.ParticipantsTSV, bids.ChannelsTSV)) \
                         and lbl in self.bln_color.keys():
                     self.key_labels[line][-1].config(fg='white', bg=self.bln_color[lbl])
+                if isinstance(self.main_brick, bids.ChannelsTSV) and self.main_brick.header[clmn] == 'status':
+                    self.key_labels[line][-1].bind('<Double-Button-1>',
+                                                   lambda event, l=line, c=clmn: self.switch_chan_status(l, c, event))
+
+    def switch_chan_status(self, lin, col, ev=None):
+        lbl_orig = self.key_labels[lin][col]['text']
+        if lbl_orig == 'good':
+            lbl = 'bad'
+        else:
+            lbl = 'good'
+        self.key_labels[lin][col].config(text=lbl, fg='white', bg=self.bln_color[lbl])
+        self.main_brick[1+self.idx*self.max_lines+lin][col] = lbl
+        self.results = self.main_brick
 
     def update_table(self):
         for line in range(0, min(self.max_lines, len(self.table2show))):
@@ -1021,6 +1043,18 @@ class BidsTSVDialog(TemplateDialog):
             end_idx = self.n_lines+1
         self.table2show = [line for line in self.main_brick[start_idx:end_idx]]
         self.update_table()
+
+    def ok(self, event=None):
+        # first, the table has to be reordered
+        new_chan = [line[0] for line in self.main_brick[1:]]
+        if not new_chan == self.orig_order:
+            idx_list = [new_chan.index(ch) for ch in self.orig_order]
+            tmp_brick = [self.main_brick.header]
+            tmp_brick += [self.main_brick[idx + 1] for idx in idx_list]
+            self.main_brick = type(self.main_brick)()
+            self.main_brick.copy_values(tmp_brick)
+        self.results = self.main_brick
+        self.destroy()
 
     def update_page_number(self):
         if self.n_pages == 1:
@@ -1264,7 +1298,21 @@ class BidsBrickDialog(FormDialog):
             if isinstance(self.main_brick, bids.ModalityType):
                 title = os.path.splitext(os.path.basename(self.main_brick['fileLoc']).replace(
                     self.main_brick['modality'], self.main_brick[key].modality_field))[0]
-            BidsTSVDialog(self, sdcr_file, title=title)
+            sdcr_file_new = BidsTSVDialog(self, sdcr_file, title=title).apply()
+
+            if sdcr_file_new and not sdcr_file_new == sdcr_file:
+                sdcr_file.clear()
+                sdcr_file.copy_values(sdcr_file_new)
+                filename, dirname, ext = self.main_brick.create_filename_from_attributes()
+                if sdcr_file_new.modality_field:
+                    fname = filename.replace(self.main_brick['modality'],
+                                             sdcr_file.modality_field)
+                else:
+                    fname = filename
+                fname2bewritten = os.path.join(bids.BidsDataset.dirname, dirname, fname +
+                                               sdcr_file_new.extension)
+                sdcr_file.write_file(fname2bewritten)
+                self.main_brick.write_log(fname + ' was modified.')
         else:
             print('coucou')
 
