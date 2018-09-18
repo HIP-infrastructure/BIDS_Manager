@@ -1465,7 +1465,7 @@ class Subject(BidsBrick):
 
     def __setitem__(self, key, value):
         if value and key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
-            if value['sub'] and not value['sub'] == self['sub']:
+            if value['sub'] and self['sub'] and not value['sub'] == self['sub']:
                 err_str = value['fileLoc'] + ' cannot be added to ' + self['sub'] + ' since sub: ' + value['sub']
                 self.write_log(err_str)
                 raise KeyError(err_str)
