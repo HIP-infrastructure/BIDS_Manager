@@ -470,19 +470,18 @@ class BidsBrick(dict):
             self.write_log(str_issue)
             raise NotADirectoryError(str_issue)
         if isinstance(self, Imagery):
-            converter_path = 'D:/roehri/python/PycharmProjects/readFromUploader/dcm2niix.exe'
-            conv_ext = ['.nii']
-            cmd_line_base = converter_path + " -b y -ba y -m y -z n -f "
+            converter_path = BidsDataset.converters['Imagery']['path']
+            cmd_line_base = '"' + converter_path + '"' + " -b y -ba y -m y -z n -f "
             cmd_line = cmd_line_base + filename + ' -o ' + Data2Import.dirname + ' ' + \
                        os.path.join(Data2Import.dirname, self['fileLoc'])
         elif isinstance(self, Electrophy):
-            converter_path = 'D:/roehri/AnyWave/AnyWave.exe'
+            converter_path = BidsDataset.converters['Electrophy']['path']
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
-            cmd_line = converter_path + ' --seegBIDS "' + os.path.join(Data2Import.dirname, self['fileLoc']) + \
-                       '" ' + name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_output sidecars'
-            conv_ext = ['.vhdr', '.vmrk', '.dat']
+            cmd_line = '"' + converter_path + '"' + ' --seegBIDS "' + \
+                       os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + name_cmd + \
+                       ' --bids_dir "' + Data2Import.dirname + '" --bids_output sidecars'
         else:
             str_issue = 'Sidecars from ' + os.path.basename(self['fileLoc']) + ' cannot be extracted!!'
             self.write_log(str_issue)
@@ -717,7 +716,7 @@ class BidsBrick(dict):
             for ext in conv_ext:
                 if os.path.exists(os.path.join(Data2Import.dirname, filename + ext)):
                     os.remove(os.path.join(Data2Import.dirname, filename + ext))
-            cmd_line_base = converter_path + " -b y -ba y -m y -z n -f "
+            cmd_line_base = '"' + converter_path + '"' + " -b y -ba y -m y -z n -f "
             cmd_line = cmd_line_base + filename + ' -o "' + Data2Import.dirname + '" "' + os.path.join(
                 Data2Import.dirname, self['fileLoc']) + '"'
         elif isinstance(self, Electrophy):
@@ -726,8 +725,9 @@ class BidsBrick(dict):
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
-            cmd_line = converter_path + ' --seegBIDS "' + os.path.join(Data2Import.dirname, self['fileLoc']) + \
-                       '" ' + name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr'
+            cmd_line = '"' + converter_path + '"' + ' --seegBIDS "' +\
+                       os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
+                       name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr'
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
             os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
