@@ -1111,6 +1111,10 @@ class BidsTSV(BidsSidecar, list):
     def has_all_req_attributes(self):  # check if the required attributes are not empty
         self.is_complete = False  # To be implemented, stay False for the moment
 
+    def clear(self):
+        super().clear()
+        self.append({elmt: elmt for elmt in self.header})
+
     @staticmethod
     def createalias(subname=None, numsyl=3):
         rnd.seed(subname)
