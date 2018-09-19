@@ -70,6 +70,7 @@ class BidsManager(Frame):
 
         # little band to print small infos
         self.banner_label = StringVar()
+        self.banner_label.set('Please set/create a Bids directory')
         self.banner_color = StringVar()
         self.banner = Label(self.master, textvariable=self.banner_label, bg="blue", fg="white", font=("Arial", 15))
         self.banner.pack(fill=X, side=TOP)
@@ -225,6 +226,15 @@ class BidsManager(Frame):
             datasetdesc.write_file()
             req_dict.save_as_json()
 
+        def check_access():
+            if os.path.isfile(self.curr_bids.access.filename):
+                acss = bids.Access()
+                acss.read_file(self.curr_bids.access.filename)
+            else:
+                acss = False
+                self.curr_bids.access.write_file()
+            return acss
+
         bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
                                            initialdir=BidsManager.bids_startfile)
         if not bids_dir:
@@ -233,8 +243,10 @@ class BidsManager(Frame):
         self.upload_dir = None
         self.curr_data2import = None
         if self.curr_bids:
+            self.curr_bids.access.delete_file()
             self.curr_bids = None
         if isnew_dir:
+            # if new bids directory than create dataset_desc.json and but the requirements in code
             error_str = create_new_bidsdataset(bids_dir)
             if error_str:
                 messagebox.showerror('Error', error_str)
@@ -244,10 +256,23 @@ class BidsManager(Frame):
             else:
                 self.curr_bids = bids.BidsDataset(bids_dir)
         else:
+            ''' if bids directory already exits, check if there is a dataset_description.json otherwise stop 
+            (it should be present to avoid nesting bids dir unintentionally)'''
             if os.path.isfile(os.path.join(bids_dir, bids.DatasetDescJSON.filename)):
+
                 self.banner_label._default = 'Current BIDS directory: ' + bids_dir
                 self.make_idle('Parsing BIDS directory.')
                 self.curr_bids = bids.BidsDataset(bids_dir)
+                access = check_access()
+                if access:
+                    messagebox.showerror('Error', access.display())
+                    self.banner_label._default = 'Please set/create a Bids directory'
+                    self.curr_bids = None
+                    self.change_menu_state(self.uploader_menu, state=DISABLED)
+                    self.change_menu_state(self.issue_menu, state=DISABLED)
+                    self.make_available()
+                    return
+
             else:
                 self.change_menu_state(self.uploader_menu, state=DISABLED)
                 self.change_menu_state(self.issue_menu, state=DISABLED)
@@ -652,11 +677,13 @@ class BidsManager(Frame):
         self.upload_dir = None
         self.change_menu_state(self.uploader_menu, start_idx=1, state=DISABLED)
 
-    def onExit(self):
+    def close_window(self):
         if self.curr_bids:
+            self.curr_bids.access.delete_file()
             self.curr_bids.write_log('Bids Manager was closed')
             self.curr_bids.save_as_json()
         self.quit()
+        root.destroy()
 
     def make_idle(self, str2print=None):
         if str2print is None:
@@ -1391,6 +1418,7 @@ if __name__ == '__main__':
     root = Tk()
     root.option_add("*Font", "10")
     my_gui = BidsManager()
+    root.protocol("WM_DELETE_WINDOW", my_gui.close_window)
     if platform.system() == 'Windows':
         root.state("zoomed")
     elif platform.system() == 'Linux':
