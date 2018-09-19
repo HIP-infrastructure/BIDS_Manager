@@ -1737,6 +1737,9 @@ class BidsDataset(MetaBrick):
         self._assign_bids_dir(bids_dir)
         self.curr_subject = {}
         self.issues = Issue()
+        self.access = Access()
+        self.access['user'] = self.curr_user
+        self.access['access_time'] = self.access_time.strftime("%Y-%m-%dT%H:%M:%S")
         self.requirements = BidsDataset.requirements
         # check if there is a parsing file in the derivatives and load it as the current dataset state
         flag = self.check_latest_parsing_file()
@@ -2630,6 +2633,31 @@ class BidsDataset(MetaBrick):
     def _assign_bids_dir(cls, bids_dir):
         cls.dirname = bids_dir
         BidsBrick.cwdir = bids_dir
+
+
+''' Concurrent access object '''
+
+
+class Access(BidsJSON):
+    keylist = ['user', 'access_time']
+
+    def __init__(self):
+        super().__init__()
+        self.filename = os.path.join(BidsDataset.dirname, BidsDataset.log_path, 'access.json')
+
+    def display(self):
+        return 'This Bids dataset (' + BidsDataset.dirname + ') is in use by ' + self['user'] + ' since ' + \
+               self['access_time'] + '.'
+
+    def read_file(self, filename=None):
+        super().read_file(self.filename)
+
+    def write_file(self, jsonfilename=None):
+        super().write_file(self.filename)
+
+    def delete_file(self):
+        if os.path.isfile(self.filename):
+            os.remove(self.filename)
 
 
 ''' Additional class to handle issues and relative actions '''
