@@ -31,6 +31,7 @@ class BidsBrick(dict):
     keylist = ['sub']
     required_keys = ['sub']
     access_time = datetime.now()
+    time_format = "%Y-%m-%dT%H-%M-%S"
     cwdir = os.getcwd()
     allowed_modalities = []
     state_list = ['valid', 'invalid', 'forced', 'ready']
@@ -387,7 +388,7 @@ class BidsBrick(dict):
                     str_issue = 'Input file beginning is not a string; json saved with default name.'
                     self.write_log(str_issue)
             if write_date:
-                date_string = '_' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M-%S")
+                date_string = '_' + BidsBrick.access_time.strftime(self.time_format)
             else:
                 date_string = ''
 
@@ -814,7 +815,7 @@ class BidsBrick(dict):
             main_dir = BidsBrick.cwdir
 
         log_path = os.path.join(main_dir, 'derivatives', 'log')
-        log_filename = 'bids_' + BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M-%S") + '.log'
+        log_filename = 'bids_' + BidsBrick.access_time.strftime(BidsBrick.time_format) + '.log'
         if not os.path.isdir(log_path):
             os.makedirs(log_path)
         if not os.path.isfile(os.path.join(log_path, log_filename)):
@@ -1694,7 +1695,7 @@ class Data2Import(MetaBrick):
                     self.copy_values(inter_dict)
                     # self.write_log('Importation procedure ready!')
             else:
-                self['UploadDate'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+                self['UploadDate'] = datetime.now().strftime(self.time_format)
         else:
             str_error = data2import_dir + ' is not a directory.'
             self.write_log(str_error)
