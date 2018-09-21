@@ -680,6 +680,9 @@ class BidsManager(Frame):
     def close_window(self):
         if self.curr_bids:
             self.curr_bids.access.delete_file()
+            # if not os.path.isfile(os.path.join(self.curr_bids.dirname, self.curr_bids.log_path,
+            #                                    'bids_' + self.curr_bids.access["access_time"] + '.log')):
+            #     self.curr_bids.write_log(self.curr_bids.curr_log)
             self.curr_bids.write_log('Bids Manager was closed')
             self.curr_bids.save_as_json()
         self.quit()
