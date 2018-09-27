@@ -9,7 +9,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 
 class BidsManager(Frame):
-    version = '0.0.1'
+    version = '0.0.2'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
@@ -39,8 +39,10 @@ class BidsManager(Frame):
         # fill up the bids menu
         bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
-        bids_menu.add_command(label='Show current log', command=lambda: self.pack_element(self.main_frame['text']),
+        bids_menu.add_command(label='Refresh BIDS dataset', command=self.refresh, state=DISABLED)
+        bids_menu.add_command(label='Show current log', command=lambda: self.show_logs(),
                               state=DISABLED)
+        bids_menu.add_command(label='Show previous logs', command=lambda: self.show_logs(all=True), state=DISABLED)
         bids_menu.add_command(label='Show dataset_description.json', state=DISABLED)
         bids_menu.add_command(label='Explore Bids dataset', state=DISABLED)
         # fill up the upload/import menu
@@ -139,6 +141,30 @@ class BidsManager(Frame):
                 self.curr_bids.make_upload_issues(self.curr_data2import)
                 self.solve_issues('UpldFldrIssue')
             # self.update_text(self.curr_data2import)
+
+    def show_logs(self, all=False):
+        if self.curr_bids:
+            if all:
+                logs_str = self.curr_bids.get_all_logs()
+                self.update_text(logs_str)
+            else:
+                self.update_text(self.curr_bids.curr_log)
+            self.pack_element(self.main_frame['text'])
+
+    def refresh(self):
+        self.make_idle('Parsing BIDS directory.')
+        try:
+            if self.curr_bids:
+                self.curr_bids.parse_bids()
+                self.update_text(self.curr_bids.curr_log)
+        except Exception as err:
+            self.banner_label._default = 'Please set/create a Bids directory'
+            self.curr_bids = None
+            self.change_menu_state(self.bids_menu, start_idx=2, state=DISABLED)
+            self.change_menu_state(self.uploader_menu, state=DISABLED)
+            self.change_menu_state(self.issue_menu, state=DISABLED)
+            self.update_text(str(err))
+        self.make_available()
 
     @staticmethod
     def populate_list(list_object, input_list):
@@ -282,8 +308,8 @@ class BidsManager(Frame):
 
         # enable all bids sub-menu
         self.change_menu_state(self.bids_menu)
-        self.bids_menu.entryconfigure(3, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
-        self.bids_menu.entryconfigure(4, command=self.explore_bids_dataset)
+        self.bids_menu.entryconfigure(5, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
+        self.bids_menu.entryconfigure(6, command=self.explore_bids_dataset)
         # enable selection of upload directory
         self.change_menu_state(self.uploader_menu, end_idx=0)
         # enable all issue sub-menu
