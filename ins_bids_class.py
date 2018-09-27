@@ -1747,6 +1747,20 @@ class BidsDataset(MetaBrick):
         if flag:
             self.parse_bids()
 
+    def get_all_logs(self):
+        logs = ''
+        if os.path.exists(os.path.join(self.dirname, BidsDataset.parsing_path)):
+            list_of_files = os.listdir(os.path.join(self.dirname, BidsDataset.log_path))
+            list_of_log_files = [os.path.join(self.dirname, BidsDataset.log_path, file)
+                                 for file in list_of_files if file.startswith('bids_') and file.endswith('.log')]
+            if list_of_log_files:
+                list_of_log_files = sorted(list_of_log_files, key=os.path.getctime)
+                for log_file in list_of_log_files:
+                    with open(log_file, 'r') as file:
+                        for line in file:
+                            logs += line
+        return logs
+
     def check_latest_parsing_file(self):
         def read_file(filename):
             with gzip.open(filename, 'rb') as f_in, open(filename.replace('.gz', ''), 'wb') as f_out:
@@ -2562,6 +2576,7 @@ class BidsDataset(MetaBrick):
         BidsBrick.access_time = datetime.now()
         self.clear_log()
         self._assign_bids_dir(self.dirname)
+        self.write_log('Current User: ' + self.curr_user + '\n' + BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S"))
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
         file_removal = False
