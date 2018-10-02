@@ -1395,7 +1395,7 @@ class BidsBrickDialog(FormDialog):
                     fname = filedialog.askopenfilename(title='Please select a file',
                                                        filetypes=[
                                                            ('sidecar', "*.tsv;*.json"),
-                                                           ('photo', "*" + ",*".join(bids.Photo.allowed_file_formats))],
+                                                           ('photo', "*" + ";*".join(bids.Photo.allowed_file_formats))],
                                                        initialdir=bids.BidsBrick.cwdir)
                 elif key in bids.Imagery.get_list_subclasses_names():
                     fname = filedialog.askdirectory(title='Please select a file', initialdir=bids.BidsBrick.cwdir)
