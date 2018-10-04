@@ -11,6 +11,8 @@ from builtins import range
 from builtins import str
 from future import standard_library
 import os
+from sys import argv
+from sys import exit
 from sys import modules
 import json
 import brainvision_hdr as bv_hdr
@@ -2070,18 +2072,17 @@ class BidsDataset(MetaBrick):
             for mod in bids_mod_list:
                 mod_in_bids_attr = mod.get_attributes('fileLoc')
                 if mod_dict2import_attr == mod_in_bids_attr:  # check if both mod dict have same attributes
-                    if 'run' in mod_dict2import_attr.keys() and mod_dict2import_attr['run']:
-                        # if run if a key check the JSON and possibly increment the run integer of mod_
-                        # dict2import to import it
-                        mod_dict2import_dep = mod_dict2import.extract_sidecares_from_sourcedata()
-                        highest_run = bids_dst.get_number_of_runs(mod_dict2import)[1]
-                        mod_in_bids_dep = mod.get_modality_sidecars()
-                        if not mod_dict2import_dep == mod_in_bids_dep:
-                            # check the sidecar files to verify whether they are the same data, in that the case
-                            # add current nb_runs to 'run' if available otherwise do not import
-                            mod_dict2import['run'] = str(1 + highest_run).zfill(2)
-                            return False
-
+                    # if 'run' in mod_dict2import_attr.keys() and mod_dict2import_attr['run']:
+                    #     # if run if a key check the JSON and possibly increment the run integer of mod_
+                    #     # dict2import to import it
+                    #     mod_dict2import_dep = mod_dict2import.extract_sidecares_from_sourcedata()
+                    #     highest_run = bids_dst.get_number_of_runs(mod_dict2import)[1]
+                    #     mod_in_bids_dep = mod.get_modality_sidecars()
+                    #     if not mod_dict2import_dep == mod_in_bids_dep:
+                    #         # check the sidecar files to verify whether they are the same data, in that the case
+                    #         # add current nb_runs to 'run' if available otherwise do not import
+                    #         mod_dict2import['run'] = str(1 + highest_run).zfill(2)
+                    #         return False
                     return True
             return False
 
@@ -3015,7 +3016,22 @@ def subclasses_tree(brick_class, nb_space=0):
 
 
 if __name__ == '__main__':
-    cls_tree_str = subclasses_tree(BidsBrick)
-    print(cls_tree_str)
-    cls_tree_str = subclasses_tree(BidsSidecar)
-    print(cls_tree_str)
+
+    if len(argv) == 1 or len(argv) > 3:
+        cls_tree_str = subclasses_tree(BidsBrick)
+        print(cls_tree_str)
+        cls_tree_str = subclasses_tree(BidsSidecar)
+        print(cls_tree_str)
+        # exit('bidsification.py should be launched with at least on argument.\n bidsification.py bids_directory '
+        #          '[import_directory]')
+    elif len(argv) == 2:
+        # parse the directory and initialise the bids_data instance
+        bids_dataset = BidsDataset(argv[1])
+
+    # if len(argv) == 3:
+    #     # read the data2import folder and initialise the the data2import by reading the data2import.json
+    #     data2import = Data2Import(argv[2])
+    #     # import the data in the bids_directory
+    #     bids_dataset.import_data(data2import)
+
+
