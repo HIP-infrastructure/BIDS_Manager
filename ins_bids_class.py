@@ -2054,7 +2054,15 @@ class BidsDataset(MetaBrick):
                 src_dict = bids_dict['SourceData'][-1]
                 input_basefname = os.path.basename(mod_dict['fileLoc'])
                 if src_dict['SrcDataTrack']:
-                    flg = any(line[0] == input_basefname for line in src_dict['SrcDataTrack'][1:])
+                    for line in src_dict['SrcDataTrack'][1:]:
+                        word_grp = line[1].split('_')
+                        sub_id = word_grp[0].split('-')[1]
+                        flg = line[0] == input_basefname and sub_id == mod_dict['sub']
+                        if flg and 'ses' in word_grp[1]:
+                            ses_id = word_grp[1].split('-')[1]
+                            flg = flg and ses_id == mod_dict['ses']
+                        if flg:
+                            break
                 else:
                     src_dict.is_subject_present(mod_dict['sub'])
                     src_sub = src_dict.curr_subject['Subject']
