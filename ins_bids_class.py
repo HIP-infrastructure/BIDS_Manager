@@ -2349,36 +2349,39 @@ class BidsDataset(MetaBrick):
 
                         idx = [src_sub[element2remove.classname()].index(modal)
                                for modal in src_sub[element2remove.classname()]
-                               if modal['fileLoc'] == full_orig_name][0]
-                        if isinstance(element2remove, Imagery):
-                            shutil.rmtree(os.path.join(self.dirname, full_orig_name))
-                        elif isinstance(element2remove, Electrophy):
-                            os.remove(os.path.join(self.dirname, full_orig_name))
-                        src_sub[element2remove.classname()].pop(idx)
-                        self.save_as_json()
-                        self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
-                                       ') has been removed from Bids dataset ' +
-                                       self['DatasetDescJSON']['Name'] + ' in source folder.')
+                               if modal['fileLoc'] == full_orig_name]
+                        if idx:  # if source data is present
+                            if isinstance(element2remove, Imagery):
+                                shutil.rmtree(os.path.join(self.dirname, full_orig_name))
+                            elif isinstance(element2remove, Electrophy):
+                                os.remove(os.path.join(self.dirname, full_orig_name))
+                            src_sub[element2remove.classname()].pop(idx[0])
+                            self.save_as_json()
+                            self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
+                                           ') has been removed from Bids dataset ' +
+                                           self['DatasetDescJSON']['Name'] + ' in source folder.')
                         orig_fname_idx = src_tsv.header.index('orig_filename')
                         idx2remove = [src_tsv.index(line) for line in src_tsv
-                                      if line[orig_fname_idx] == orig_fname][0]
-                        src_tsv.pop(idx2remove)
-                        src_tsv.write_file()
-                        self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
-                                       ') has been removed from Bids dataset ' +
-                                       self['DatasetDescJSON']['Name'] + ' in ' + src_tsv.filename + '.')
-                        self.save_as_json()
+                                      if line[orig_fname_idx] == orig_fname]
+                        if idx2remove:  # if source data is present in the source_trace
+                            src_tsv.pop(idx2remove[0])
+                            src_tsv.write_file()
+                            self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
+                                           ') has been removed from Bids dataset ' +
+                                           self['DatasetDescJSON']['Name'] + ' in ' + src_tsv.filename + '.')
+                            self.save_as_json()
                 # remove file in raw folder and its first level sidecar files (higher level may characterize
                 # remaining files)
                 sdcar_dict = element2remove.get_modality_sidecars()
                 for sidecar_key in sdcar_dict:
-                    if element2remove[sidecar_key] and element2remove[sidecar_key].modality_field:
-                        sdcar_fname = fname.replace(element2remove['modality'],
-                                                    element2remove[sidecar_key].modality_field)
-                    else:
-                        sdcar_fname = fname
-                    os.remove(os.path.join(BidsDataset.dirname, dirname, sdcar_fname +
-                                           element2remove[sidecar_key].extension))
+                    if element2remove[sidecar_key]:
+                        if element2remove[sidecar_key].modality_field:
+                            sdcar_fname = fname.replace(element2remove['modality'],
+                                                        element2remove[sidecar_key].modality_field)
+                        else:
+                            sdcar_fname = fname
+                        os.remove(os.path.join(BidsDataset.dirname, dirname, sdcar_fname +
+                                               element2remove[sidecar_key].extension))
                 if with_issues:
                     self.issues.remove(element2remove)
                 if isinstance(element2remove, Electrophy):
