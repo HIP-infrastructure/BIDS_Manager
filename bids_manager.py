@@ -153,10 +153,12 @@ class BidsManager(Frame):
 
     def refresh(self):
         self.make_idle('Parsing BIDS directory.')
+        self.curr_bids._assign_bids_dir(self.curr_bids.dirname)
         try:
             if self.curr_bids:
                 self.curr_bids.parse_bids()
                 self.update_text(self.curr_bids.curr_log)
+                self.pack_element(self.main_frame['text'])
         except Exception as err:
             self.banner_label._default = 'Please set/create a Bids directory'
             self.curr_bids = None
@@ -596,10 +598,6 @@ class BidsManager(Frame):
                         if iss_key == 'ImportIssue':
                             pop_menu.add_command(label='Remove file in BIDS',
                                                  command=lambda: self.remove_file(curr_idx, line_map[curr_idx]))
-                            # in case you wrongly chose a folder
-                            pop_menu.add_command(label='Remove issue',
-                                                 command=lambda: self.remove_issue(issue_key, curr_idx,
-                                                                                   line_map[curr_idx]))
                         else:
                             idx = line_map[curr_idx]['index']
                             curr_dict = self.curr_bids.issues['UpldFldrIssue'][idx]
@@ -613,6 +611,10 @@ class BidsManager(Frame):
 
                     pop_menu.add_command(label='Do not import',
                                          command=lambda: self.do_not_import(issue_key, curr_idx, line_map[curr_idx]))
+                    # in case you wrongly chose a folder
+                    pop_menu.add_command(label='Remove issue',
+                                         command=lambda: self.remove_issue(issue_key, curr_idx,
+                                                                           line_map[curr_idx]))
 
             pop_menu.add_command(label='Read or add comment',
                                  command=lambda: self.get_entry(issue_key, curr_idx, line_map[curr_idx]))
