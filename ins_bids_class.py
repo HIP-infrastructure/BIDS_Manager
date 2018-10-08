@@ -1567,11 +1567,18 @@ class SrcDataTrack(BidsTSV):
 
         bids_fname_idx = self.header.index('bids_filename')
         orig_fname_idx = self.header.index('orig_filename')
-        orig_fname = [line[orig_fname_idx] for line in self[1:] if filename in line[bids_fname_idx]]
-        if orig_fname:
-            orig_fname = orig_fname[0]
+        orig_fname = None
+        idx = None
+        for line in self[1:]:
+            if filename in line[bids_fname_idx]:
+                orig_fname = line[orig_fname_idx]
+                idx = self.index(line)
+                break
+        # orig_fname = [line[orig_fname_idx] for line in self[1:] if filename in line[bids_fname_idx]]
+        # if orig_fname:
+        #     orig_fname = orig_fname[0]
 
-        return orig_fname, filename
+        return orig_fname, filename, idx
 
 
 class ParticipantsTSV(BidsTSV):
@@ -2342,34 +2349,42 @@ class BidsDataset(MetaBrick):
                     # remove file in sourcedata folder and in source_data_trace.tsv
                     self['SourceData'][-1].is_subject_present(element2remove['sub'])
                     if self['SourceData'][-1].curr_subject['isPresent'] and self['SourceData'][-1]['SrcDataTrack']:
+                        # you have to have the sourcedatatrack to be able to remove the source file otherwise no way to
+                        # know the link between the raw and the source file
                         src_tsv = self['SourceData'][-1]['SrcDataTrack']
-                        orig_fname, _ = src_tsv.get_source_from_raw_filename(element2remove['fileLoc'])
                         src_sub = self['SourceData'][-1].curr_subject['Subject']
-                        full_orig_name = os.path.join(SourceData.dirname, dirname, orig_fname)
+                        orig_fname, _, idx2remove = src_tsv.get_source_from_raw_filename(element2remove['fileLoc'])
+                        if orig_fname:
 
-                        idx = [src_sub[element2remove.classname()].index(modal)
-                               for modal in src_sub[element2remove.classname()]
-                               if modal['fileLoc'] == full_orig_name]
-                        if idx:  # if source data is present
-                            if isinstance(element2remove, Imagery):
-                                shutil.rmtree(os.path.join(self.dirname, full_orig_name))
-                            elif isinstance(element2remove, Electrophy):
-                                os.remove(os.path.join(self.dirname, full_orig_name))
-                            src_sub[element2remove.classname()].pop(idx[0])
-                            self.save_as_json()
-                            self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
-                                           ') has been removed from Bids dataset ' +
-                                           self['DatasetDescJSON']['Name'] + ' in source folder.')
-                        orig_fname_idx = src_tsv.header.index('orig_filename')
-                        idx2remove = [src_tsv.index(line) for line in src_tsv
-                                      if line[orig_fname_idx] == orig_fname]
-                        if idx2remove:  # if source data is present in the source_trace
-                            src_tsv.pop(idx2remove[0])
-                            src_tsv.write_file()
-                            self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
-                                           ') has been removed from Bids dataset ' +
-                                           self['DatasetDescJSON']['Name'] + ' in ' + src_tsv.filename + '.')
-                            self.save_as_json()
+                            full_orig_name = os.path.join(SourceData.dirname, dirname, orig_fname)
+
+                            # remove info of file in source trace table
+                            if idx2remove:  # if source data is present in the source_trace
+                                src_tsv.pop(idx2remove)
+                                src_tsv.write_file()
+                                self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
+                                               ') has been removed from Bids dataset ' +
+                                               self['DatasetDescJSON']['Name'] + ' in ' + src_tsv.filename + '.')
+                                self.save_as_json()
+
+                            # remove file in sourcedata folder
+                            idx = [src_sub[element2remove.classname()].index(modal)
+                                   for modal in src_sub[element2remove.classname()]
+                                   if modal['fileLoc'] == full_orig_name]
+                            if idx:  # if source data is present
+                                if isinstance(element2remove, Imagery):
+                                    shutil.rmtree(os.path.join(self.dirname, full_orig_name))
+                                elif isinstance(element2remove, Electrophy):
+                                    os.remove(os.path.join(self.dirname, full_orig_name))
+                                src_sub[element2remove.classname()].pop(idx[0])
+                                self.save_as_json()
+                                self.write_log(element2remove['fileLoc'] + '(' + orig_fname +
+                                               ') has been removed from Bids dataset ' +
+                                               self['DatasetDescJSON']['Name'] + ' in source folder.')
+                        else:
+                            self.write_log(element2remove['fileLoc'] + ' has no source folder, it was probably manually'
+                                                                       ' remove please refresh the bids dataset.')
+                        
                 # remove file in raw folder and its first level sidecar files (higher level may characterize
                 # remaining files)
                 sdcar_dict = element2remove.get_modality_sidecars()
@@ -2488,7 +2503,7 @@ class BidsDataset(MetaBrick):
 
             elmt_iss = issue.get_element()
             if 'remove_issue' in kwargs and kwargs['remove_issue']:
-                # nothing else to do since the issue will be popped anyway ^_^
+                # nothing else to do since the issue will be popped anyway ^_^ (except for UploaderIssues)
                 self.write_log('Issue concerning ' + elmt_iss['fileLoc'] + ' has been removed.')
                 return
             if 'state' in kwargs and kwargs['state'] and isinstance(issue, UpldFldrIssue):
@@ -2620,6 +2635,8 @@ class BidsDataset(MetaBrick):
                 if not issue['Action']:
                     continue
                 eval('modify_files(' + issue['Action'][0]['command'] + ')')
+                if 'remove_issue=True' in issue['Action'][0]['command']:
+                    issues_copy['UpldFldrIssue'].pop(issues_copy['UpldFldrIssue'].index(issue))
                 # here issues are not popped out because in import_data() they are checked to make sure files were
                 # verified
                 issues_copy.save_as_json()
