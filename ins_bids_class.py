@@ -822,6 +822,8 @@ class BidsBrick(dict):
             os.makedirs(log_path)
         if not os.path.isfile(os.path.join(log_path, log_filename)):
             cmd = 'w'
+            str2write = 'Current User: ' + BidsBrick.curr_user + '\n' +\
+                        BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S") + '\n' + str2write
         else:
             cmd = 'a'
         with open(os.path.join(log_path, log_filename), cmd) as file:
@@ -1793,13 +1795,17 @@ class BidsDataset(MetaBrick):
                 read_json = read_file(latest_parsing)
                 self.copy_values(read_json)
                 self.issues.check_with_latest_issue()
-                log_file = latest_parsing.replace('parsing_' + self.classname().lower(), 'bids')
-                log_file = log_file.replace('parsing', 'log')
-                log_file = log_file.replace('.json.gz', '.log')
-                with open(log_file, 'r') as file:
-                    for line in file:
-                        self.__class__.curr_log += line
-                print(self.__class__.curr_log)
+                # the latest log file may have been created after the latest parsing file (case of issues removing
+                #  which does not affect parsing.json)
+                list_of_files = os.listdir(os.path.join(self.dirname, self.log_path))
+                list_of_log_files = [os.path.join(self.dirname, self.log_path, file)
+                                     for file in list_of_files if file.endswith('.log')]
+                if list_of_log_files:
+                    log_file = max(list_of_log_files, key=os.path.getctime)
+                    with open(log_file, 'r') as file:
+                        for line in file:
+                            self.__class__.curr_log += line
+                    print(self.__class__.curr_log)
                 return False  # no need for parsing the dataset
         return True  # need to parse the dataset
 
@@ -1873,7 +1879,7 @@ class BidsDataset(MetaBrick):
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
         self.__class__.clear_log()
         self.issues.clear()  # clear issue to only get the unsolved ones but
-        self.write_log('Current User: ' + self.curr_user + '\n' + BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S"))
+        # self.write_log('Current User: ' + self.curr_user + '\n' + BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S"))
         # First read requirements.json which should be in the code folder of bids dir.
         self.get_requirements()
 
@@ -2603,7 +2609,7 @@ class BidsDataset(MetaBrick):
         BidsBrick.access_time = datetime.now()
         self.clear_log()
         self._assign_bids_dir(self.dirname)
-        self.write_log('Current User: ' + self.curr_user + '\n' + BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S"))
+        # self.write_log('Current User: ' + self.curr_user + '\n' + BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S"))
         issues_copy = Issue()
         issues_copy.copy_values(self.issues)  # again have to copy to pop while looping
         file_removal = False
@@ -2868,15 +2874,12 @@ class Issue(BidsBrick):
                 cpy_read_json = read_file(latest_issue)
                 for issue_key in cpy_read_json.keys():
                     for issue in read_json[issue_key]:
-                        if 'path' in issue and not os.path.exists(issue['path']):
-                            self.write_log(issue['path'] + ' does not exist anymore. Related ' +
-                                           issue_key + ' issues are removed')
-                        elif 'fileLoc' in issue and not os.path.exists(issue['fileLoc']):
-                            self.write_log(issue['fileLoc'] + ' does not exist anymore. Related ' +
-                                           issue_key + ' issues are removed')
-                        else:
-                            continue
-                        read_json[issue_key].pop(read_json[issue_key].index(issue))
+                        iss_test = getattr(modules[__name__], issue_key)()
+                        try:
+                            iss_test.copy_values(issue)
+                        except FileNotFoundError: # is the only error that could occur
+                            self.write_log('Related ' + issue_key + ' issues are removed')
+                            read_json[issue_key].pop(read_json[issue_key].index(issue))
 
                 if self == Issue():
                     self.copy_values(read_json)
