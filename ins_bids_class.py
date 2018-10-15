@@ -95,7 +95,7 @@ class BidsBrick(dict):
                         if not os.path.exists(filename):
                             str_issue = 'file: ' + str(filename) + ' does not exist.'
                             self.write_log(str_issue)
-                            raise TypeError(str_issue)
+                            raise FileNotFoundError(str_issue)
                     elif not value == '':
                         str_issue = 'fileLoc value ' + str(value) + ' should be a path.'
                         self.write_log(str_issue)
@@ -2864,13 +2864,19 @@ class Issue(BidsBrick):
                 read_json = read_file(latest_issue)
 
                 # remove all import dir that were removed, it will raise an error in the fileLoc test otherwise
+                # to avoid error read json as normal dict and then copy_value in the correct bids object
                 cpy_read_json = read_file(latest_issue)
                 for issue_key in cpy_read_json.keys():
                     for issue in read_json[issue_key]:
                         if 'path' in issue and not os.path.exists(issue['path']):
                             self.write_log(issue['path'] + ' does not exist anymore. Related ' +
                                            issue_key + ' issues are removed')
-                            read_json[issue_key].pop(read_json[issue_key].index(issue))
+                        elif 'fileLoc' in issue and not os.path.exists(issue['fileLoc']):
+                            self.write_log(issue['fileLoc'] + ' does not exist anymore. Related ' +
+                                           issue_key + ' issues are removed')
+                        else:
+                            continue
+                        read_json[issue_key].pop(read_json[issue_key].index(issue))
 
                 if self == Issue():
                     self.copy_values(read_json)

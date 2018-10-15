@@ -7,7 +7,7 @@
 			"type" : {
 				"ses": "01", "acq": "preop", "modality": "T1w"},
 			"amount": 1},
-		{ 
+		{
 			"type" : [
 				{"ses": "01", "modality": "CT"},
 				{"ses": "01", "acq": "postimp", "modality": "T1w"}],
@@ -27,12 +27,14 @@
 		],
 		"IeegGlobalSidecars": [
 		{
-			"type" : {
-				"ses": "01", "space": "CT", "modality": "coordsystem"},
+			"type" : [
+				{"ses": "01", "space": "CT", "modality": "coordsystem"},
+				{"ses": "01", "space": "T1w", "modality": "coordsystem"}],
 			"amount": 1},
 		{
-			"type" : {
-				"ses": "01", "space": "CT", "modality": "electrodes"},
+			"type" : [
+				{"ses": "01", "space": "CT", "modality": "electrodes"},
+				{"ses": "01", "space": "T1w", "modality": "electrodes"}],
 			"amount": 1},
 		{
 			"type" : {
