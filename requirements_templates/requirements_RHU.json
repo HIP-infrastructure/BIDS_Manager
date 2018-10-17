@@ -1,7 +1,7 @@
 {
  "Requirements": {
 	"Subject": {
-		"keys": ["dateOfBirth","sex","alias","eCRF","upload_date"],
+		"keys": ["age","sex","alias","eCRF","upload_date"],
 		"Anat": [
 		{
 			"type" : {
