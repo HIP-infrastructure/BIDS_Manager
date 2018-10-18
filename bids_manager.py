@@ -332,8 +332,8 @@ class BidsManager(Frame):
         self.make_idle()
         try:
             if os.path.isfile(os.path.join(self.upload_dir, bids.Data2Import.filename)):
-
-                self.curr_data2import = bids.Data2Import(self.upload_dir)
+                req_path = os.path.join(self.curr_bids.dirname, 'code', 'requirements.json')
+                self.curr_data2import = bids.Data2Import(self.upload_dir, req_path)
                 if self.curr_data2import.is_empty():
                     self.update_text('There is no file to import in ' + self.upload_dir)
                     self.upload_dir = None
@@ -1387,7 +1387,10 @@ class BidsBrickDialog(FormDialog):
         opt = None
         disbld = ['sub', 'fileLoc']
         try:
-            if isinstance(self.main_brick, bids.Subject):
+            if isinstance(self.main_brick, (bids.BidsDataset, bids.Data2Import)):
+                messagebox.showerror('Not implemented', "Not implemented for now.")
+                return
+            elif isinstance(self.main_brick, bids.Subject):
 
                 flag, miss_str = self.main_brick.has_all_req_attributes(nested=False)
                 if not flag:
@@ -1420,7 +1423,21 @@ class BidsBrickDialog(FormDialog):
                 else:
                     new_brick = getattr(bids, key)()
                     new_brick['fileLoc'] = os.path.basename(fname)
-                    opt = {'modality': new_brick.allowed_modalities}
+                    opt = dict()
+                    if bids.BidsDataset.requirements:
+                        req = bids.BidsDataset.requirements['Requirements']
+                        if 'Subject' in req and key in req['Subject']:
+                            for k in new_brick.keylist:
+                                if k not in bids.BidsBrick.get_list_subclasses_names() and \
+                                        k not in ['sub', 'modality']:
+                                    opt[k] = set()
+                                    for elmt in req['Subject'][key]:
+                                        if isinstance(elmt['type'], list):
+                                            [opt[k].add(l[k]) for l in elmt['type'] if k in l and not l[k] == '_']
+                                        elif k in elmt['type'] and not elmt['type'][k] == '_':
+                                            opt[k].add(elmt['type'][k])
+                                    opt[k] = list(opt[k])
+                    opt['modality'] = new_brick.allowed_modalities
 
                 new_brick['sub'] = self.main_brick['sub']
 
@@ -1441,8 +1458,13 @@ class BidsBrickDialog(FormDialog):
 
     def update_fields(self):
         for key in self.key_entries.keys():
-            if isinstance(self.key_entries[key], Entry) and not self.key_entries[key].get() == self.main_brick[key]:
-                self.main_brick[key] = self.key_entries[key].get()
+            if isinstance(self.main_brick, (bids.BidsDataset, bids.Data2Import)):
+                if isinstance(self.key_entries[key], Entry) and not \
+                        self.key_entries[key].get() == self.main_brick['DatasetDescJSON'][key]:
+                    self.main_brick['DatasetDescJSON'][key] = self.key_entries[key].get()
+            else:
+                if isinstance(self.key_entries[key], Entry) and not self.key_entries[key].get() == self.main_brick[key]:
+                    self.main_brick[key] = self.key_entries[key].get()
 
 
 if __name__ == '__main__':

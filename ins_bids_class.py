@@ -504,61 +504,6 @@ class BidsBrick(dict):
 
         return dict_copy.get_modality_sidecars()
 
-    def get_requirements(self, reqfiloc=None):
-
-        if isinstance(self, BidsDataset) and BidsDataset.dirname and \
-                os.path.exists(os.path.join(BidsDataset.dirname, 'code', 'requirements.json')):
-            full_filename = os.path.join(BidsDataset.dirname, 'code', 'requirements.json')
-        elif reqfiloc and os.path.exists(reqfiloc):
-            full_filename = reqfiloc
-        else:
-            full_filename = None
-
-        if isinstance(self, BidsDataset):
-            self.requirements = Requirements(full_filename)
-
-            if 'Requirements' not in self.requirements.keys() or not self.requirements['Requirements']:
-                self.write_log('/!\\ WARNING /!\\ No requirements set! Default requirements from BIDS 1.0.1 applied')
-
-            if self.requirements['Requirements'] and 'Subject' in self.requirements['Requirements'].keys():
-
-                for key in self.requirements['Requirements']['Subject']:
-
-                    if key == 'keys':
-                        ParticipantsTSV.header += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
-                                                   if elmt not in ParticipantsTSV.header]
-                        ParticipantsTSV.required_fields += [elmt for elmt in
-                                                            self.requirements['Requirements']['Subject']['keys'] if
-                                                            elmt not in ParticipantsTSV.required_fields]
-                        Subject.keylist += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
-                                            if elmt not in Subject.keylist]
-                        Subject.required_keys += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
-                                                  if elmt not in Subject.required_keys
-                                                  and elmt not in ['alias', 'upload_date']]
-                    elif key in BidsBrick.get_list_subclasses_names() and key + self.requirements.keywords[0] \
-                            not in ParticipantsTSV.header:
-                        ParticipantsTSV.header.append(key + self.requirements.keywords[0])
-                        ParticipantsTSV.required_fields.append(key + self.requirements.keywords[0])
-
-                        if key in Electrophy.get_list_subclasses_names() and key + self.requirements.keywords[1] \
-                                not in ParticipantsTSV.header:
-                            ParticipantsTSV.header.append(key + self.requirements.keywords[1])
-                            ParticipantsTSV.required_fields.append(key + self.requirements.keywords[1])
-
-                if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
-                    ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
-                    ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
-        else:
-            requirements = Requirements(full_filename)
-            if 'Requirements' in requirements.keys() and 'Subject' in requirements['Requirements'].keys():
-                for key in requirements['Requirements']['Subject']:
-                    if key == 'keys':
-                        Subject.keylist += [elmt for elmt in requirements['Requirements']['Subject'][key]
-                                            if elmt not in Subject.keylist]
-                        Subject.required_keys += [elmt for elmt in requirements['Requirements']['Subject'][key]
-                                                  if elmt not in Subject.required_keys
-                                                  and elmt not in ['alias', 'upload_date']]
-
     def check_requirements(self):
 
         def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
@@ -1678,6 +1623,61 @@ class MetaBrick(BidsBrick):
             error_str = 'Filename ' + str(filename) + ' should be a string.'
         self.write_log(error_str)
         return
+
+    def get_requirements(self, reqfiloc=None):
+
+        if isinstance(self, BidsDataset) and BidsDataset.dirname and \
+                os.path.exists(os.path.join(BidsDataset.dirname, 'code', 'requirements.json')):
+            full_filename = os.path.join(BidsDataset.dirname, 'code', 'requirements.json')
+        elif reqfiloc and os.path.exists(reqfiloc):
+            full_filename = reqfiloc
+        else:
+            full_filename = None
+
+        if isinstance(self, BidsDataset):
+            self.requirements = Requirements(full_filename)
+            BidsDataset.requirements = self.requirements
+            if 'Requirements' not in self.requirements.keys() or not self.requirements['Requirements']:
+                self.write_log('/!\\ WARNING /!\\ No requirements set! Default requirements from BIDS 1.0.1 applied')
+
+            if self.requirements['Requirements'] and 'Subject' in self.requirements['Requirements'].keys():
+
+                for key in self.requirements['Requirements']['Subject']:
+
+                    if key == 'keys':
+                        ParticipantsTSV.header += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
+                                                   if elmt not in ParticipantsTSV.header]
+                        ParticipantsTSV.required_fields += [elmt for elmt in
+                                                            self.requirements['Requirements']['Subject']['keys'] if
+                                                            elmt not in ParticipantsTSV.required_fields]
+                        Subject.keylist += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
+                                            if elmt not in Subject.keylist]
+                        Subject.required_keys += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
+                                                  if elmt not in Subject.required_keys
+                                                  and elmt not in ['alias', 'upload_date']]
+                    elif key in BidsBrick.get_list_subclasses_names() and key + self.requirements.keywords[0] \
+                            not in ParticipantsTSV.header:
+                        ParticipantsTSV.header.append(key + self.requirements.keywords[0])
+                        ParticipantsTSV.required_fields.append(key + self.requirements.keywords[0])
+
+                        if key in Electrophy.get_list_subclasses_names() and key + self.requirements.keywords[1] \
+                                not in ParticipantsTSV.header:
+                            ParticipantsTSV.header.append(key + self.requirements.keywords[1])
+                            ParticipantsTSV.required_fields.append(key + self.requirements.keywords[1])
+
+                if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
+                    ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
+                    ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
+        elif isinstance(self, Data2Import):
+            self.requirements = Requirements(full_filename)
+            if 'Requirements' in self.requirements.keys() and 'Subject' in self.requirements['Requirements'].keys():
+                for key in self.requirements['Requirements']['Subject']:
+                    if key == 'keys':
+                        Subject.keylist += [elmt for elmt in self.requirements['Requirements']['Subject'][key]
+                                            if elmt not in Subject.keylist]
+                        Subject.required_keys += [elmt for elmt in self.requirements['Requirements']['Subject'][key]
+                                                  if elmt not in Subject.required_keys
+                                                  and elmt not in ['alias', 'upload_date']]
 
 
 ''' BIDS brick which contains all the information about the data to be imported '''
@@ -3032,7 +3032,11 @@ class Issue(BidsBrick):
         self.copy_values(new_issue)
 
     def verif_upload_issues(self, import_dir):
-        return all(up_iss['state'] == 'verified' for up_iss in self['UpldFldrIssue'] if up_iss['path'] == import_dir)
+        state_list = [up_iss['state'] == 'verified' for up_iss in self['UpldFldrIssue'] if up_iss['path'] == import_dir]
+        if state_list:
+            return all(state_list)
+        else:  # all([]) => True; means that if verif issue was removed than you can import it, not the wanted behaviour
+            return False
 
     @staticmethod
     def empty_dict():
