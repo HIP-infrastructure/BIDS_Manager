@@ -47,7 +47,7 @@ class BrainvisionHeader(object):
 
     def modify_header(self, orig_name, new_name):
         def repl(m):
-            return m['channel'] + new_name + m['num']
+            return m['channel'] + new_name + m['num'] + ','
 
         if orig_name not in self.electrode_set:
             raise NameError(orig_name + ' electrode is not found in ' + self.filename + '.')
@@ -65,11 +65,14 @@ class BrainvisionHeader(object):
 
 
 if __name__ == '__main__':
-    bv_path = r'F:\Users\Nico\Documents\Marseille\PHRC\small_2048_4test\sub-PaiJul\ses-01\ieeg\sub-PaiJul_ses-01_task-seizure_run-01_ieeg.vhdr'
+    # bv_path = r'F:\Users\Nico\Documents\Marseille\PHRC\small_2048_4test\sub-PaiJul\ses-01\ieeg\sub-PaiJul_ses-01_task-seizure_run-01_ieeg.vhdr'
+    bv_path = r'D:\roehri\BIDs\small_2048_test\sub-PaiJul\ses-01\ieeg\sub-PaiJul_ses-01_task-seizure_run-01_ieeg.vhdr'
     bv_hdr = BrainvisionHeader(bv_path)
     print(bv_hdr.electrode_set)
     old_name = bv_hdr.electrode_list[0]
-    bv_hdr.modify_header(old_name, 'WWW')
+    bv_hdr.modify_header(old_name, "WWW")
+    bv_hdr.write_header()
     print(bv_hdr.electrode_set)
     bv_hdr.modify_header("WWW", old_name)
+    bv_hdr.write_header()
     # bv_hdr.write_header()
