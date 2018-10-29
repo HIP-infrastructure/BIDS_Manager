@@ -121,20 +121,21 @@ class BidsBrick(dict):
                     if isinstance(value, int):
                         dict.__setitem__(self, key, str(value).zfill(2))
                     elif value.__class__.__name__ in ['str', 'unicode'] and value.isdigit():
-                        dict.__setitem__(self, key, value)
+                        dict.__setitem__(self, key, value.zfill(2))
                     else:
-                        str_issue = 'run value ' + str(value) + ' should be a digit (integer of string).'
+                        str_issue = 'run value ' + str(value) + ' should be a digit (integer or string).'
                         self.write_log(str_issue)
                         raise TypeError(str_issue)
                 else:
                     dict.__setitem__(self, key, value)
             elif isinstance(value, int):
                 dict.__setitem__(self, key, str(value).zfill(2))
-            elif value.__class__.__name__ in ['str', 'unicode'] or \
+            elif (value.__class__.__name__ in ['str', 'unicode'] and key.isalnum()) or \
                     key in BidsFreeFile.get_list_subclasses_names():
                 dict.__setitem__(self, key, value)
             else:
-                str_issue = '/!\ key: ' + str(key) + ' should either be a string or an integer /!\ '
+                str_issue = '/!\ key: ' + str(key) + ' should either be a string (without -,_, and other forbidden ' \
+                                                     'characters) or an integer /!\ '
                 self.write_log(str_issue)
                 raise TypeError(str_issue)
         else:
