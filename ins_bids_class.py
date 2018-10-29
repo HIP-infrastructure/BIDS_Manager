@@ -130,12 +130,11 @@ class BidsBrick(dict):
                     dict.__setitem__(self, key, value)
             elif isinstance(value, int):
                 dict.__setitem__(self, key, str(value).zfill(2))
-            elif (value.__class__.__name__ in ['str', 'unicode'] and value.isalnum()) or \
+            elif value.__class__.__name__ in ['str', 'unicode'] and (not value or value.isalnum()) or \
                     key in BidsFreeFile.get_list_subclasses_names():
                 dict.__setitem__(self, key, value)
             else:
-                str_issue = '/!\ key: ' + str(key) + ' should either be a string (without -,_, and other forbidden ' \
-                                                     'characters) or an integer /!\ '
+                str_issue = '/!\ key: ' + str(key) + ' should either be an alphanumeric string or an integer /!\ '
                 self.write_log(str_issue)
                 raise TypeError(str_issue)
         else:
