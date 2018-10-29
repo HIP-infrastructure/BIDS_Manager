@@ -130,7 +130,9 @@ class BidsBrick(dict):
                     dict.__setitem__(self, key, value)
             elif isinstance(value, int):
                 dict.__setitem__(self, key, str(value).zfill(2))
-            elif value.__class__.__name__ in ['str', 'unicode'] and (not value or value.isalnum()) or \
+            elif value.__class__.__name__ in ['str', 'unicode'] and \
+                    (not value or (value.isalnum() and isinstance(self, ModalityType))
+                     or not isinstance(self, ModalityType)) or \
                     key in BidsFreeFile.get_list_subclasses_names():
                 dict.__setitem__(self, key, value)
             else:
@@ -1737,7 +1739,7 @@ class BidsDataset(MetaBrick):
     requirements = dict()
     curr_log = ''
     readers = dict()
-    converters = dict()
+    converters = {'Imagery': {'ext': ['.nii'], 'path': ''}, 'Electrophy': {'ext': ['.vhdr'], 'path': ''}}
     parsing_path = os.path.join('derivatives', 'parsing')
     log_path = os.path.join('derivatives', 'log')
 
