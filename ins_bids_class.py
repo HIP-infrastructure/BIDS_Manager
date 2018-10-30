@@ -506,7 +506,7 @@ class BidsBrick(dict):
 
         return dict_copy.get_modality_sidecars()
 
-    def check_requirements(self):
+    def check_requirements(self, specif_subs=None):
 
         def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
 
@@ -546,7 +546,15 @@ class BidsBrick(dict):
             self.write_log(10 * '=' + '\nCheck requirements\n' + 10 * '=')
             key_words = self.requirements.keywords
             participant_idx = self['ParticipantsTSV'].header.index('participant_id')
-            sub_list = [line[participant_idx] for line in self['ParticipantsTSV'][1:]]
+            present_sub_list = [line[participant_idx] for line in self['ParticipantsTSV'][1:]]
+            sub_list = present_sub_list
+            if specif_subs:
+                # if one want to check the requirements for a specific subject only, then specif_sub should be in
+                # sub_list and then sublist become the specific subject otherwise check each subject
+                if isinstance(specif_subs, str) and specif_subs in present_sub_list:
+                    sub_list = [specif_subs]
+                elif isinstance(specif_subs, list) and all(sub in present_sub_list for sub in specif_subs):
+                    sub_list = specif_subs
             check_list = [[word.replace(key_words[0], ''), idx]
                           for idx, word in enumerate(self['ParticipantsTSV'].header) if word.endswith(key_words[0]) and
                           not word == 'Subject' + key_words[0]]
@@ -640,14 +648,14 @@ class BidsBrick(dict):
 
             for sub in sub_list:
                 idx = [elmt for elmt in integrity_list + check_list
-                       if self['ParticipantsTSV'][1 + sub_list.index(sub)][elmt[1]] == 'False']
+                       if self['ParticipantsTSV'][1 + present_sub_list.index(sub)][elmt[1]] == 'False']
                 if not idx:
                     self.write_log('!!!!!!!!!!! Subject ' + sub + ' is ready !!!!!!!!!!!')
                     self.is_subject_present(sub)
                     self['Subject'][self.curr_subject['index']].curr_state = 'ready'
-                    self['ParticipantsTSV'][1 + sub_list.index(sub)][subject_ready_idx] = str(True)
+                    self['ParticipantsTSV'][1 + present_sub_list.index(sub)][subject_ready_idx] = str(True)
                 else:
-                    self['ParticipantsTSV'][1 + sub_list.index(sub)][subject_ready_idx] = str(False)
+                    self['ParticipantsTSV'][1 + present_sub_list.index(sub)][subject_ready_idx] = str(False)
             self['ParticipantsTSV'].write_file()
 
     def convert(self):
@@ -2172,6 +2180,7 @@ class BidsDataset(MetaBrick):
                         self['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
 
             self._assign_bids_dir(self.dirname)  # make sure to import in the current bids_dir
+            sublist = set()  # list to store subject who received new data
             for sub in data2import['Subject']:
                 import_sub_idx = data2import['Subject'].index(sub)
                 # test if subject is already present
@@ -2192,8 +2201,8 @@ class BidsDataset(MetaBrick):
 
                 # test whether the subject to be imported has the same attributes as the one already inside the
                 # bids dataset
-                if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) \
-                                       == sub.get_attributes(['alias', 'upload_date']):
+                if sub_present and not self.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) == \
+                                       sub.get_attributes(['alias', 'upload_date']):
                     error_str = 'The subject to be imported (' + data2import.dirname + \
                                 ') has different attributes than the analogous subject in the bids dataset (' \
                                 + str(sub.get_attributes()) + '=/=' + \
@@ -2211,9 +2220,9 @@ class BidsDataset(MetaBrick):
                             #                           description=missing_str + ' (' + data2import.dirname + ')')
                             #     self.write_log(missing_str)
                             #     continue
-
+                            self.write_log('Start importing ' + modality['fileLoc'])
                             """check again if the subject is present because it could be absent at the beginning but
-                            you could have added a data from the subject in a previous iteration of the loop.
+                            you could have added data from the subject in a previous iteration of the loop.
                             For instance, if you add a T1w and by mistake add the another T1w but with the same
                             attributes you need to know what was previously imported for the subject"""
                             self.is_subject_present(sub['sub'])
@@ -2281,6 +2290,7 @@ class BidsDataset(MetaBrick):
                             self.issues.save_as_json()
                             copy_data2import['Subject'][import_sub_idx][modality_type].pop(idx2pop)
                             copy_data2import.save_as_json()
+                            sublist.add(sub['sub'])
                     # if copy_data2import['Subject'][import_sub_idx].is_empty():
                     # pop empty subject
 
@@ -2294,7 +2304,9 @@ class BidsDataset(MetaBrick):
 
             if self['DatasetDescJSON']:
                 self['DatasetDescJSON'].write_file()
-            self.check_requirements()
+            if sublist:
+                sublist = list(sublist)
+                self.check_requirements(specif_subs=sublist)
             # data2import.clear()
             # self.parse_bids()
 

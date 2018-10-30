@@ -9,7 +9,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 
 class BidsManager(Frame):
-    version = '0.1.1'
+    version = '0.1.2'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
@@ -96,7 +96,7 @@ class BidsManager(Frame):
                 element.pack(fill=BOTH, expand=1, side=side, padx=5, pady=5)
 
     def update_text(self, str2show, delete_flag=True, location=None):
-        if not str2show.endswith('\n'):
+        if str2show and not str2show.endswith('\n'):
             str2show = str2show + '\n'
         self.main_frame['text'].update_text(str2show, delete_flag=delete_flag, location=location)
         self.update()
@@ -275,6 +275,7 @@ class BidsManager(Frame):
         self.pack_element(self.main_frame['text'])
         self.upload_dir = None
         self.curr_data2import = None
+        self.update_text('')
         if self.curr_bids:
             self.curr_bids.access.delete_file()
             self.curr_bids = None
@@ -699,6 +700,7 @@ class BidsManager(Frame):
 
     def import_data(self):
         self.pack_element(self.main_frame['text'])
+        self.make_idle('Importing data from ' + self.curr_data2import.dirname)
         try:
             if self.curr_data2import:
                 self.curr_bids.import_data(self.curr_data2import)
@@ -710,6 +712,7 @@ class BidsManager(Frame):
         self.curr_data2import = None
         self.upload_dir = None
         self.change_menu_state(self.uploader_menu, start_idx=1, state=DISABLED)
+        self.make_available()
 
     def close_window(self):
         if self.curr_bids:
@@ -1394,8 +1397,11 @@ class BidsBrickDialog(FormDialog):
     def remove_file(self, mod_brick, key, index):
         if isinstance(BidsBrickDialog.bidsdataset, bids.BidsDataset) and \
                 messagebox.askyesno('Remove File', 'Are you sure you want to remove ' + mod_brick['fileLoc'] + '?'):
+            self.config(cursor="wait")
             BidsBrickDialog.bidsdataset.remove(mod_brick, with_issues=True)
+            BidsBrickDialog.bidsdataset.check_requirements(specif_subs=mod_brick['sub'])
             self.populate_list(self.key_listw[key], self.main_brick[key])
+            self.config(cursor="")
 
     # def remove_element(self, key, index):
     #     self.populate_list(self.key_listw[key], self.main_brick[key])
