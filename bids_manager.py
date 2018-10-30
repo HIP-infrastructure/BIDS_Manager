@@ -9,7 +9,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 
 class BidsManager(Frame):
-    version = '0.0.5'
+    version = '0.1.1'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
@@ -76,6 +76,8 @@ class BidsManager(Frame):
         self.banner_color = StringVar()
         self.banner = Label(self.master, textvariable=self.banner_label, bg="blue", fg="white", font=("Arial", 15))
         self.banner.pack(fill=X, side=TOP)
+        # self.pack_element(self.main_frame['text'])
+        # self.update_text('\n'.join(make_splash()))
 
     def pack_element(self, element, side=None, remove_previous=True):
 
@@ -94,7 +96,10 @@ class BidsManager(Frame):
                 element.pack(fill=BOTH, expand=1, side=side, padx=5, pady=5)
 
     def update_text(self, str2show, delete_flag=True, location=None):
+        if not str2show.endswith('\n'):
+            str2show = str2show + '\n'
         self.main_frame['text'].update_text(str2show, delete_flag=delete_flag, location=location)
+        self.update()
 
     def apply_actions(self):
         flag = messagebox.askyesno('Apply all actions', 'Are you sure you want to apply actions of all issues?')
@@ -282,7 +287,7 @@ class BidsManager(Frame):
                 self.change_menu_state(self.issue_menu, state=DISABLED)
                 return
             else:
-                self.curr_bids = bids.BidsDataset(bids_dir)
+                self.curr_bids = bids.BidsDataset(bids_dir, update_text=self.update_text)
         else:
             ''' if bids directory already exits, check if there is a dataset_description.json otherwise stop 
             (it should be present to avoid nesting bids dir unintentionally)'''
@@ -290,7 +295,7 @@ class BidsManager(Frame):
 
                 self.banner_label._default = 'Current BIDS directory: ' + bids_dir
                 self.make_idle('Parsing BIDS directory.')
-                self.curr_bids = bids.BidsDataset(bids_dir)
+                self.curr_bids = bids.BidsDataset(bids_dir, update_text=self.update_text)
                 access = check_access()
                 if access:
                     messagebox.showerror('Error', access.display())
@@ -316,10 +321,11 @@ class BidsManager(Frame):
         self.change_menu_state(self.uploader_menu, end_idx=0)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
-        self.update_text(self.curr_bids.curr_log)
+        # self.update_text(self.curr_bids.curr_log)
         self.make_available()
 
     def explore_bids_dataset(self):
+        self.pack_element(self.main_frame['text'])
         BidsBrickDialog(self, self.curr_bids)
         self.curr_bids.save_as_json()
 
@@ -696,7 +702,7 @@ class BidsManager(Frame):
         try:
             if self.curr_data2import:
                 self.curr_bids.import_data(self.curr_data2import)
-                self.update_text(self.curr_bids.curr_log)
+                # self.update_text(self.curr_bids.curr_log)
             else:
                 self.update_text('No upload directory is set.')
         except Exception as err:
@@ -1229,11 +1235,14 @@ class FormDialog(TemplateDialog):
 
 
 class BidsBrickDialog(FormDialog):
+    bidsdataset = None
 
     def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None):
         if not isinstance(input_dict, (bids.BidsBrick, bids.BidsJSON)):
             raise TypeError('Second input should be a BidsBrick instance.')
         if isinstance(input_dict, (bids.BidsDataset, bids.Data2Import)):
+            if isinstance(input_dict, bids.BidsDataset):
+                BidsBrickDialog.bidsdataset = input_dict
             self.attr_dict = input_dict['DatasetDescJSON']
             self.input_dict = dict()
             self.input_dict['Subject'] = input_dict['Subject']
@@ -1349,6 +1358,10 @@ class BidsBrickDialog(FormDialog):
             pop_menu.add_command(label='Show attributes',
                                  command=lambda brick=mod_brick, dsbl=disbl: BidsBrickDialog(self, brick,
                                                                                              disabled=dsbl))
+            if isinstance(BidsBrickDialog.bidsdataset, bids.BidsDataset):  # allow remove file in bidsdataset
+                pop_menu.add_command(label='Remove file',
+                                     command=lambda brick=mod_brick, idx=curr_idx, k=key:
+                                     self.remove_file(brick, k, idx))
             pop_menu.post(event.x_root, event.y_root)
         elif key in bids.BidsTSV.get_list_subclasses_names():
             sdcr_file = self.main_brick[key]
@@ -1378,9 +1391,14 @@ class BidsBrickDialog(FormDialog):
     def open_file(fname):
         os.startfile(os.path.join(bids.BidsBrick.cwdir, fname))
 
-    def remove_element(self, key, index):
-        self.main_brick[key].pop(index)
-        self.populate_list(self.key_listw[key], self.main_brick[key])
+    def remove_file(self, mod_brick, key, index):
+        if isinstance(BidsBrickDialog.bidsdataset, bids.BidsDataset) and \
+                messagebox.askyesno('Remove File', 'Are you sure you want to remove ' + mod_brick['fileLoc'] + '?'):
+            BidsBrickDialog.bidsdataset.remove(mod_brick, with_issues=True)
+            self.populate_list(self.key_listw[key], self.main_brick[key])
+
+    # def remove_element(self, key, index):
+    #     self.populate_list(self.key_listw[key], self.main_brick[key])
 
     def add_new_brick(self, key):
         self.update_fields()

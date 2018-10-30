@@ -624,13 +624,13 @@ class BidsBrick(dict):
                             miss_matching_elec = [{'name': name, 'type': curr_type[cnt]}
                                                   for cnt, name in enumerate(curr_elec) if name not in ref_elec]
                             if miss_matching_elec:
-                                str_issue = 'File ' + mod.create_filename_from_attributes()[0] + \
+                                str_issue = 'File ' + os.path.basename(mod['fileLoc']) + \
                                             ' has inconsistent electrode name(s) ' + str(miss_matching_elec) + '.'
                                 self.write_log(str_issue)
-                                filepath = mod.create_filename_from_attributes()
+                                # filepath = mod.create_filename_from_attributes()
 
                                 self.issues.add_issue('ElectrodeIssue', sub=sub,
-                                                      fileLoc=os.path.join(filepath[1], filepath[0]+filepath[2]),
+                                                      fileLoc=mod['fileLoc'],
                                                       RefElectrodes=ref_elec, MismatchedElectrodes=miss_matching_elec,
                                                       mod=bidsintegrity_key[0])
                                 self['ParticipantsTSV'][1 + sub_list.index(sub)][bidsintegrity_key[1]] = str(False)
@@ -740,6 +740,14 @@ class BidsBrick(dict):
             cmd_str += ',' + ', '.join([str(k + '="' + str(added_info[k]) + '"') for k in added_info])
         return cmd_str
 
+    def fileparts(self):
+        if isinstance(self, ModalityType) and self['fileLoc']:
+            filename, ext = os.path.splitext(os.path.basename(self['fileLoc']))
+            dirname = os.path.dirname(self['fileLoc'])
+            return dirname, filename, ext
+        else:
+            return None, None, None
+
     @classmethod
     def clear_log(cls):
         if cls == BidsDataset or cls == Data2Import:
@@ -769,8 +777,8 @@ class BidsBrick(dict):
             os.makedirs(log_path)
         if not os.path.isfile(os.path.join(log_path, log_filename)):
             cmd = 'w'
-            str2write = 'Current User: ' + BidsBrick.curr_user + '\n' +\
-                        BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S") + '\n' + str2write
+            str2write = 10*'=' + '\n' + 'Current User: ' + BidsBrick.curr_user + '\n' + \
+                        BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S") + '\n' + 10*'=' + '\n' + str2write
         else:
             cmd = 'a'
         with open(os.path.join(log_path, log_filename), cmd) as file:
@@ -778,6 +786,8 @@ class BidsBrick(dict):
             BidsDataset.curr_log += str2write + '\n'
             Data2Import.curr_log += str2write + '\n'
         print(str2write)
+        if BidsDataset.update_text:
+            BidsDataset.update_text(str2write, delete_flag=False)
 
 
 class BidsSidecar(object):
@@ -1696,12 +1706,12 @@ class Data2Import(MetaBrick):
         self.__class__.clear_log()
         super().__init__()
         self.dirname = data2import_dir
+        self.get_requirements(requirements_fileloc)
         if data2import_dir is None:
             return
         if os.path.isdir(data2import_dir):
             self._assign_import_dir(data2import_dir)
             # self.requirements = None
-            self.get_requirements(requirements_fileloc)
             if os.path.isfile(os.path.join(self.dirname, Data2Import.filename)):
                 with open(os.path.join(self.dirname, Data2Import.filename)) as file:
                     inter_dict = json.load(file)
@@ -1742,10 +1752,13 @@ class BidsDataset(MetaBrick):
     converters = {'Imagery': {'ext': ['.nii'], 'path': ''}, 'Electrophy': {'ext': ['.vhdr'], 'path': ''}}
     parsing_path = os.path.join('derivatives', 'parsing')
     log_path = os.path.join('derivatives', 'log')
+    update_text = None
 
-    def __init__(self, bids_dir):
+    def __init__(self, bids_dir, update_text=None):
         """initiate a  dict var for patient info"""
         self.__class__.clear_log()
+        if update_text:
+            self.__class__.update_text = update_text
         super().__init__()
         self.dirname = bids_dir
         self._assign_bids_dir(bids_dir)
@@ -1759,6 +1772,8 @@ class BidsDataset(MetaBrick):
         flag = self.check_latest_parsing_file()
         if flag:
             self.parse_bids()
+        if self.update_text:
+            self.update_text(self.curr_log, delete_flag=False)
 
     def get_all_logs(self):
         logs = ''
@@ -2352,7 +2367,7 @@ class BidsDataset(MetaBrick):
             if self.curr_subject['isPresent'] and \
                     element2remove in self.curr_subject['Subject'][element2remove.classname()]:
                 elmt_idx = self.curr_subject['Subject'][element2remove.classname()].index(element2remove)
-                fname, dirname, ext = element2remove.create_filename_from_attributes()
+                dirname, fname, ext = element2remove.fileparts()
                 if self['SourceData']:
                     # remove file in sourcedata folder and in source_data_trace.tsv
                     self['SourceData'][-1].is_subject_present(element2remove['sub'])
@@ -2452,8 +2467,8 @@ class BidsDataset(MetaBrick):
                     input_key = 'name'
                 if type_bln ^ name_bln:
                     #  XOR only one of them is true, cannot change both type and name!
+                    dirname, mod_fname, ext=modality.fileparts()
                     sidecar = modality.get_modality_sidecars(BidsTSV)
-                    mod_fname, dirname, ext = modality.create_filename_from_attributes()
                     # /!\ first change the name in .vhdr and .vmrk because those are ot read during check requirements!
                     if name_bln:
                         hdr = bv_hdr.BrainvisionHeader(os.path.join(self.dirname, dirname, mod_fname + ext))
@@ -3019,7 +3034,7 @@ class Issue(BidsBrick):
                             break
                 else:
                     for issue in self[key]:
-                        if os.path.basename(issue['fileLoc']) == brick2remove['fileLoc']:
+                        if os.path.basename(issue['fileLoc']) == os.path.basename(brick2remove['fileLoc']):
                             new_issue[key].pop(new_issue[key].index(issue))
                             break
             # elif not key == 'ElectrodeIssue' and (isinstance(brick2remove, Imagery) or

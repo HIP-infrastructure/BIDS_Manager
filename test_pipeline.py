@@ -70,7 +70,7 @@ bids_dir = os.path.join(main_dir, 'new_bids')
 if os.path.exists(bids_dir):
     shutil.rmtree(bids_dir)
 os.makedirs(os.path.join(bids_dir, 'code'))
-req_templ_path = os.path.join(os.path.dirname(__file__), 'requirements_templates', 'requirements_RHU.json')
+req_templ_path = os.path.join(main_dir, 'all_data_orig', 'requirements.json')
 req_path = os.path.join(bids_dir, 'code', 'requirements.json')
 shutil.copy2(req_templ_path, req_path)
 bids.BidsDataset.dirname = bids_dir

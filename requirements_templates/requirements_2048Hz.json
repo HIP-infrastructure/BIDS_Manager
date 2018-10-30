@@ -1,7 +1,7 @@
 {
  "Requirements": {
 	"Subject": {
-		"keys": ["age","sex","alias","upload_date"],
+		"keys": ["age","sex","epilepsy_duration","MRI","lateralisation","epilepsy_type","follow_up","outcome","Histopatology","upload_date"],
 		"Anat": [
 		{
 			"type" : {
@@ -25,12 +25,18 @@
 		],
 		"IeegGlobalSidecars": [
 		{
-			"type" : {
-				"ses": "01", "space": "CT", "modality": "coordsystem"},
+			"type" : [{
+				"ses": "01", "space": "CT", "modality": "coordsystem"},{
+				"ses": "01", "space": "T1w", "modality": "coordsystem"}],
 			"amount": 1},
 		{
+			"type" : [{
+				"ses": "01", "space": "CT", "modality": "electrodes"},{
+				"ses": "01", "space": "T1w", "modality": "electrodes"}],
+			"amount": 1}
+		{
 			"type" : {
-				"ses": "01", "space": "CT", "modality": "electrodes"},
+				"ses": "01", "acq": "_", "modality": "photo"},
 			"amount": 1}
 		]
 	}
