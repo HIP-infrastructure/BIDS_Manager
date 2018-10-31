@@ -1392,7 +1392,7 @@ class BidsBrickDialog(FormDialog):
 
     @staticmethod
     def open_file(fname):
-        os.startfile(os.path.join(bids.BidsBrick.cwdir, fname))
+        os.startfile(os.path.normpath(os.path.join(bids.BidsBrick.cwdir, fname)))
 
     def remove_file(self, mod_brick, key, index):
         if isinstance(BidsBrickDialog.bidsdataset, bids.BidsDataset) and \
