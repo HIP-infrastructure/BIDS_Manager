@@ -402,6 +402,7 @@ class BidsBrick(dict):
             with open(output_fname, 'w') as f:
                 # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
                 json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+                # r"(?P<open_table>\[\n\t{1,}\[)(?P<content>.*?)(?P<close_table>\]\n\t{1,}\])"
                 f.write(json_str)
 
             if compress:
@@ -1084,6 +1085,11 @@ class BidsTSV(BidsSidecar, list):
     def clear(self):
         super().clear()
         self.append({elmt: elmt for elmt in self.header})
+
+    def __str__(self):
+        str2print = super().__str__()
+        str2print = str2print.replace('], [', '],\n[')
+        return str2print
 
     @staticmethod
     def createalias(subname=None, numsyl=3):
@@ -2295,10 +2301,11 @@ class BidsDataset(MetaBrick):
                     # pop empty subject
 
             if copy_data2import.is_empty():
-                if all(file.endswith('.json') or file.endswith('.tsv')
+                if all(file.endswith('.json') or file.endswith('.tsv') or file.endswith('.flt') or file.endswith('.mtg')
+                       or file.endswith('.mrk') or file.endswith('.levels')
                        for file in os.listdir(copy_data2import.dirname)):
                     # if there are only the data2import.json and the sidecar files created during conversions,
-                    # the import dir can be removed
+                    # (Anywave files) the import dir can be removed
                     shutil.rmtree(copy_data2import.dirname)
                     self.write_log(copy_data2import.dirname + ' is now empty and will be removed.')
 
