@@ -464,6 +464,12 @@ class BidsManager(Frame):
         if output_dict and not output_dict == input_dict:
             idx = info['index']
             curr_dict = self.curr_bids.issues[iss_key][idx]
+            if isinstance(self, bids.DatasetDescJSON) and 'Authors' in output_dict:
+                # tkinter modifies the author list ['NR' , 'FB', 'CGB'] into a string '{NR} {FB} {CGB}'
+                tmp_str = output_dict['Authors'].replace('} {', ', ')
+                tmp_str = tmp_str.replace('{', '').replace('}', '')
+                output_dict['Authors'] = tmp_str
+
             if in_bids:
                 dir_str = ' in BIDS dir'
             else:

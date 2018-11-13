@@ -939,7 +939,8 @@ class BidsJSON(BidsSidecar, dict):
         """ different compare two BidsBricks from the same type and returns a dictionary of the key and values of the
         brick2compare that are different from self. /!\ this operation is NOT commutative"""
         if type(self) is type(brick2compare):
-            return {key: brick2compare[key] for key in self if not self[key] == brick2compare[key]}
+            return {key: brick2compare[key] for key in self if key in brick2compare and
+                    not self[key] == brick2compare[key]}
         else:
             err_str = 'The type of the two instance to compare are different (' + self.classname() + ', '\
                       + type(brick2compare).__name__ + ')'
@@ -951,7 +952,13 @@ class BidsJSON(BidsSidecar, dict):
             print('added_info should be a dict. Set to None.')
             added_info = None
         diff = self.difference(brick2compare)
-        cmd_str = ', '.join([str(k + '="' + diff[k] + '"') for k in diff])
+        cmd_list = []
+        for k in diff:
+            if isinstance(diff[k], str):
+                cmd_list.append(str(k + '="' + diff[k] + '"'))
+            else:
+                cmd_list.append(str(k + '=' + str(diff[k])))
+        cmd_str = ', '.join(cmd_list)
         if added_info:
             cmd_str += ',' + ', '.join([str(k + '="' + str(added_info[k]) + '"') for k in added_info])
         return cmd_str
@@ -2568,7 +2575,7 @@ class BidsDataset(MetaBrick):
             elmt_iss = issue.get_element()
             if 'remove_issue' in kwargs and kwargs['remove_issue']:
                 # nothing else to do since the issue will be popped anyway ^_^ (except for UploaderIssues)
-                self.write_log('Issue concerning ' + elmt_iss['fileLoc'] + ' has been removed.')
+                self.write_log('Issue concerning "' + issue['description'] + '" has been removed.')
                 return
             if 'state' in kwargs and kwargs['state'] and isinstance(issue, UpldFldrIssue):
                 # simple command to modify the state
