@@ -192,6 +192,11 @@ class BidsManager(Frame):
                                      required_keys=input_dict.required_keys,
                                      title='Fill up the ' + input_dict.__class__.filename).apply()
             if output_dict:
+                if 'Authors' in output_dict:
+                    # tkinter modifies the author list ['NR' , 'FB', 'CGB'] into a string '{NR} {FB} {CGB}'
+                    tmp_str = output_dict['Authors'].replace('} {', ', ')
+                    tmp_str = tmp_str.replace('{', '').replace('}', '')
+                    output_dict['Authors'] = tmp_str
                 if not output_dict == temp_dict and \
                         messagebox.askyesno('Change ' + input_dict.__class__.filename + '?',
                                             'You are about to modify ' + input_dict.__class__.filename +

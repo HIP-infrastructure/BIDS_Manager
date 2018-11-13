@@ -1508,6 +1508,11 @@ class DatasetDescJSON(BidsJSON):
         super().__init__()
         self['BIDSVersion'] = self.bids_version
 
+    def __setitem__(self, key, value):
+        if key == 'Authors':
+            value = self.check_authors_value(value)
+        super().__setitem__(key, value)
+
     def write_file(self, jsonfilename=None):
         jsonfilename = os.path.join(BidsDataset.dirname, DatasetDescJSON.filename)
         super().write_file(jsonfilename)
@@ -1515,6 +1520,23 @@ class DatasetDescJSON(BidsJSON):
     def read_file(self, jsonfilename=None):
         jsonfilename = os.path.join(BidsDataset.dirname, DatasetDescJSON.filename)
         super().read_file(jsonfilename)
+
+    def copy_values(self, sidecar_elmt, simplify_flag=True):
+        super().copy_values(sidecar_elmt, simplify_flag=simplify_flag)
+        if 'Authors' in self.keys():
+            self['Authors'] = self.check_authors_value(self['Authors'])
+
+    @staticmethod
+    def check_authors_value(value):
+        if value.__class__.__name__ in ['str', 'unicode']:
+            value = value.split(', ')
+        elif isinstance(value, list):
+            pass
+        else:
+            err_str = 'Authors key in dataset_description.json only allows string of comma separated authors,' \
+                      ' ex: "John Doe, Jane Doe"'
+            raise TypeError(err_str)
+        return value
 
 
 ''' TSV bricks '''
