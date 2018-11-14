@@ -2575,7 +2575,11 @@ class BidsDataset(MetaBrick):
             elmt_iss = issue.get_element()
             if 'remove_issue' in kwargs and kwargs['remove_issue']:
                 # nothing else to do since the issue will be popped anyway ^_^ (except for UploaderIssues)
-                self.write_log('Issue concerning "' + issue['description'] + '" has been removed.')
+                if isinstance(issue, ImportIssue):
+                    str_rmv = issue['description']
+                else:
+                    str_rmv = os.path.basename(elmt_iss['fileLoc'])
+                self.write_log('Issue concerning "' + str_rmv + '" has been removed.')
                 return
             if 'state' in kwargs and kwargs['state'] and isinstance(issue, UpldFldrIssue):
                 # simple command to modify the state
@@ -2891,7 +2895,7 @@ class IssueType(BidsBrick):
 
 class UpldFldrIssue(IssueType):
     keylist = BidsBrick.keylist + ['path', 'state', 'fileLoc', 'Comment', 'Action']
-    required_keys = BidsBrick.keylist + ['path', 'validated', 'fileLoc']
+    required_keys = BidsBrick.keylist + ['path', 'state', 'fileLoc']
     pass
 
 
