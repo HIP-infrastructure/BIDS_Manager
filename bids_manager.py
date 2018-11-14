@@ -132,7 +132,8 @@ class BidsManager(Frame):
     def add_elmt2data2import(self):
         self.curr_data2import._assign_import_dir(self.curr_data2import.dirname)
         self.curr_data2import.save_as_json(write_date=True)
-        results = BidsBrickDialog(root, self.curr_data2import, disabled=None,
+        results = BidsBrickDialog(root, self.curr_data2import,
+                                  disabled=self.curr_data2import['DatasetDescJSON'].keylist,
                                   title=self.curr_data2import.classname()).apply()
         if results is not None and messagebox.askyesno('Change ' + self.curr_data2import.classname() + '?',
                                                        'You are about to permanently modify ' +
@@ -464,7 +465,7 @@ class BidsManager(Frame):
         if output_dict and not output_dict == input_dict:
             idx = info['index']
             curr_dict = self.curr_bids.issues[iss_key][idx]
-            if isinstance(self, bids.DatasetDescJSON) and 'Authors' in output_dict:
+            if isinstance(info['Element'], bids.DatasetDescJSON) and 'Authors' in output_dict:
                 # tkinter modifies the author list ['NR' , 'FB', 'CGB'] into a string '{NR} {FB} {CGB}'
                 tmp_str = output_dict['Authors'].replace('} {', ', ')
                 tmp_str = tmp_str.replace('{', '').replace('}', '')
