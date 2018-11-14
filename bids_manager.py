@@ -9,7 +9,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 
 class BidsManager(Frame):
-    version = '0.1.2'
+    version = '0.1.3'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
