@@ -9,7 +9,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 
 class BidsManager(Frame):
-    version = '0.1.4'
+    version = '0.1.5'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
@@ -1314,14 +1314,31 @@ class BidsBrickDialog(FormDialog):
         self.main_form(parent)
         cnt_tot = len(self.input_dict)
         for cnt, key in enumerate(self.key_button_lbl.keys()):
+
+            setting_list = {"row": cnt + cnt_tot, "column": 1, "columnspan": 2, "sticky": W + E,
+                            "padx": self.default_pad[0],
+                            "pady": self.default_pad[1]}
+            setting_label = {"row": cnt + cnt_tot, "sticky": W, "padx": self.default_pad[0],
+                             "pady": self.default_pad[1]}
+            # if key == 'Subject':
+            #     # increase subject list layout length
+            #     setting_list['rowspan'] = 6
+            #     setting_label['rowspan'] = 6
+            #     cnt_tot += setting_list['rowspan'] - 1
             self.key_button_lbl[key] = Label(parent, text=key, fg="black")
-            self.key_button_lbl[key].grid(row=cnt+cnt_tot, sticky=W, padx=self.default_pad[0], pady=self.default_pad[1])
-            self.key_listw[key] = Listbox(parent, height=3)
+            self.key_button_lbl[key].grid(**setting_label)
+            if key == 'Subject':
+                ht = 8
+            elif key in bids.BidsSidecar.get_list_subclasses_names():
+                ht = 1
+            else:
+                ht = 3
+            self.key_listw[key] = Listbox(parent, height=ht)
             self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
             self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
             self.populate_list(self.key_listw[key], self.main_brick[key])
-            self.key_listw[key].grid(row=cnt + cnt_tot, column=1, columnspan=2, sticky=W+E, padx=self.default_pad[0],
-                                     pady=self.default_pad[1])
+            self.key_listw[key].grid(**setting_list)
+
             if key not in bids.BidsSidecar.get_list_subclasses_names() and \
                     (key not in self.key_disabled or not self.key_disabled[key] == DISABLED):
                 self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
@@ -1334,7 +1351,7 @@ class BidsBrickDialog(FormDialog):
         self.ok_cancel_button(parent, row=cnt_tot+len(self.key_button_lbl))
         if len(self.key_button_lbl):
             for i in range(self.body_widget.grid_size()[0]):
-                    self.body_widget.grid_columnconfigure(i, weight=1, uniform='test')
+                self.body_widget.grid_columnconfigure(i, weight=1, uniform='test')
         self.results = self.input_dict
 
     @staticmethod
