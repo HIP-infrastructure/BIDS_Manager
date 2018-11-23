@@ -9,7 +9,7 @@ from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledte
 
 
 class BidsManager(Frame):
-    version = '0.1.3'
+    version = '0.1.4'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
@@ -36,6 +36,8 @@ class BidsManager(Frame):
         self.bids_menu = bids_menu
         issue_menu = Menu(menu_bar, tearoff=0)
         self.issue_menu = issue_menu
+        pipeline_menu = Menu(menu_bar, tearoff=0)
+        self.pipeline_menu = pipeline_menu
         # fill up the bids menu
         bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
@@ -56,10 +58,16 @@ class BidsManager(Frame):
                                command=lambda: self.solve_issues('ImportIssue'), state=DISABLED)
         issue_menu.add_command(label='Solve channel issues',
                                command=lambda: self.solve_issues('ElectrodeIssue'), state=DISABLED)
+        # fill up the pipeline menu
+        self.pipeline_settings = bids.PipelineSettings()
+        self.pipeline_settings.read_file()
+        for cnt, pipl in enumerate(self.pipeline_settings['Settings']):
+            pipeline_menu.add_command(label=pipl['label'], command=lambda idx=cnt: self.launch_pipeline(idx), state=DISABLED)
         # settings_menu.add_command(label='Exit', command=self.quit)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
         menu_bar.add_cascade(label="Issues", underline=0, menu=issue_menu)
+        menu_bar.add_cascade(label="Pipelines", underline=0, menu=pipeline_menu)
 
         # area to print logs
         self.main_frame['text'] = DisplayText(master=self.master)
@@ -78,6 +86,10 @@ class BidsManager(Frame):
         self.banner.pack(fill=X, side=TOP)
         # self.pack_element(self.main_frame['text'])
         # self.update_text('\n'.join(make_splash()))
+
+    def launch_pipeline(self, idx):
+        self.pipeline_settings.propose_param(self.curr_bids, idx)
+        self.curr_bids.write_log('Launching: ' + self.pipeline_settings['Settings'][idx]['label'] + '(to be set!!!!!)')
 
     def pack_element(self, element, side=None, remove_previous=True):
 
@@ -158,13 +170,13 @@ class BidsManager(Frame):
             self.pack_element(self.main_frame['text'])
 
     def refresh(self):
+        self.pack_element(self.main_frame['text'])
         self.make_idle('Parsing BIDS directory.')
         self.curr_bids._assign_bids_dir(self.curr_bids.dirname)
         try:
             if self.curr_bids:
                 self.curr_bids.parse_bids()
                 self.update_text(self.curr_bids.curr_log)
-                self.pack_element(self.main_frame['text'])
         except Exception as err:
             self.banner_label._default = 'Please set/create a Bids directory'
             self.curr_bids = None
@@ -211,7 +223,9 @@ class BidsManager(Frame):
             state = NORMAL
         if end_idx is None:
             end_idx = menu.index(END)
-        if end_idx > menu.index(END):
+            if end_idx is None:
+                return
+        if end_idx and end_idx > menu.index(END):
             raise IndexError('End index is out of range (' + str(end_idx) + '>' + str(menu.index(END)) + ').')
         if start_idx > end_idx:
             raise IndexError('Start index greater than the end index (' + str(start_idx) + '>' + str(end_idx) + ').')
@@ -328,6 +342,8 @@ class BidsManager(Frame):
         self.change_menu_state(self.uploader_menu, end_idx=0)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
+        # enalbe all pipelines
+        self.change_menu_state(self.pipeline_menu)
         # self.update_text(self.curr_bids.curr_log)
         self.make_available()
 

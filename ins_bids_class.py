@@ -11,6 +11,7 @@ from builtins import range
 from builtins import str
 from future import standard_library
 import os
+import re
 from sys import argv
 from sys import exit
 from sys import modules
@@ -381,6 +382,7 @@ class BidsBrick(dict):
                 self[sidecar_tag].simplify_sidecar(required_only=False)
 
     def save_as_json(self, savedir, file_start=None, write_date=True, compress=True):
+        # \t*\[\n\t*(?P<name>[^\[])*?\n\t*\]
         if os.path.isdir(savedir):
             if not file_start:
                 file_start = ''
@@ -403,6 +405,13 @@ class BidsBrick(dict):
                 # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
                 json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
                 # r"(?P<open_table>\[\n\t{1,}\[)(?P<content>.*?)(?P<close_table>\]\n\t{1,}\])"
+                # This solution is way too slow. need to reimplemente a json writer...
+                # if isinstance(self, BidsDataset):
+                #     #  make the table more readible (otherwise each elmt is isolated on a line...)
+                #     exp = r'\s*(?P<name>\[\n\s*[^\[\{\]]*?\n\s*\])'
+                #     matched_exp = re.findall(exp, json_str)
+                #     for elmt in matched_exp:
+                #         json_str = json_str.replace(elmt, elmt.replace('\n', ''))
                 f.write(json_str)
 
             if compress:
@@ -877,7 +886,9 @@ class BidsSidecar(object):
                 self.header = sidecar_elmt[0]
                 for line in sidecar_elmt[1:]:
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
-        elif isinstance(self, BidsFreeFile) and isinstance(sidecar_elmt, list):
+        elif isinstance(self, BidsFreeFile):
+            if not isinstance(sidecar_elmt, list):
+                sidecar_elmt = [sidecar_elmt]
             for line in sidecar_elmt:
                 self.append(line)
         if simplify_flag:
@@ -2466,16 +2477,20 @@ class BidsDataset(MetaBrick):
                                                         element2remove[sidecar_key].modality_field)
                         else:
                             sdcar_fname = fname
-                        os.remove(os.path.join(BidsDataset.dirname, dirname, sdcar_fname +
-                                               element2remove[sidecar_key].extension))
+                        if os.path.exists(os.path.join(BidsDataset.dirname, dirname,
+                                                       sdcar_fname + element2remove[sidecar_key].extension)):
+                            os.remove(os.path.join(BidsDataset.dirname, dirname, sdcar_fname +
+                                                   element2remove[sidecar_key].extension))
                 if with_issues:
                     self.issues.remove(element2remove)
                 if isinstance(element2remove, Electrophy):
                     ext = self.converters['Electrophy']['ext']
                 elif isinstance(element2remove, Imagery):
                     ext = self.converters['Imagery']['ext']
+                ext.reverse()
                 for ex in ext:
-                    os.remove(os.path.join(self.dirname, dirname, fname+ex))
+                    if os.path.join(self.dirname, dirname, fname+ex):
+                        os.remove(os.path.join(self.dirname, dirname, fname+ex))
                 self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx)
                 self.write_log(element2remove['fileLoc'] +
                                ' and its sidecar files were removed from Bids dataset ' +
@@ -2644,6 +2659,11 @@ class BidsDataset(MetaBrick):
             elif isinstance(elmt_iss, (ModalityType, GlobalSidecars)):
                 if 'remove' in kwargs and kwargs['in_bids']:
                     mod_brick = curr_brick.get_object_from_filename(kwargs['remove'])
+                    # check if element had other issues (ieeg file could have electrode issues)
+                    #  to be checked before removing file because of the fileLoc safety (cf BidsBrick __setitem__)
+                    issues_copy.remove(mod_brick)
+                    # put with_issues=False because if affects self.issues and not the copy where the other issues are
+                    # popped out
                     curr_brick.remove(mod_brick, with_issues=False)
                 elif not kwargs['in_bids']:
                     curr_brick.is_subject_present(elmt_iss['sub'])
@@ -2685,6 +2705,7 @@ class BidsDataset(MetaBrick):
         try:
             self.write_log(10 * '=' + '\nApplying actions\n' + 10 * '=')
             # could optimize/make nicer
+            # the order is important because you could remove a file and than its relative ElectrodeIssue
             for issue in self.issues['ElectrodeIssue']:
                 if not issue['Action']:
                     continue
@@ -2702,7 +2723,7 @@ class BidsDataset(MetaBrick):
                 if not issue['Action']:
                     continue
                 eval('modify_files(' + issue['Action'][0]['command'] + ')')
-                if 'removal' in issue['Action'][0]['command']:
+                if 'remove' in issue['Action'][0]['command']:
                     file_removal = True
                 issues_copy['ImportIssue'].pop(issues_copy['ImportIssue'].index(issue))
                 issues_copy.save_as_json()
@@ -3111,6 +3132,48 @@ class Issue(BidsBrick):
     def empty_dict():
         keylist = ['sub', 'mod', 'RefElectrodes', 'MismatchedElectrodes', 'fileLoc', 'brick', 'description']
         return {key: None for key in keylist}
+
+
+''' Additional class to handle pipelines and relative actions '''
+
+
+class Info(BidsFreeFile):
+    pass
+
+
+class Command(BidsBrick):
+    keylist = ["tag", "Info"]
+    required_keys = keylist
+
+
+class Settings(BidsBrick):
+    keylist = ["label", "fileLoc", "Command", 'automatic']
+    required_keys = keylist[0:1]
+
+
+class PipelineSettings(BidsBrick):
+    keylist = ['Settings']
+    required_keys = keylist
+    recognised_keys = ['bids_dir', 'sub']
+
+    def read_file(self):
+        if os.path.exists('pipeline_settings.json'):
+            with open('pipeline_settings.json', 'r') as file:
+                rd_json = json.load(file)
+            self.copy_values(rd_json)
+
+    def propose_param(self, bidsdataset, idx):
+        if not isinstance(bidsdataset, BidsDataset):
+            return
+        selected_pip = self['Settings'][idx]
+        proposal = dict()
+        for elmt in selected_pip['Command']:
+            if 'sub' in elmt['Info']:
+                proposal['sub'] = bidsdataset.get_subject_list()
+        return proposal
+
+    def launch_pipeline(self, idx):
+        pass
 
 
 def subclasses_tree(brick_class, nb_space=0):
