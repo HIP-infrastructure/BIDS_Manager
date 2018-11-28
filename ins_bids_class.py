@@ -374,9 +374,15 @@ class BidsBrick(dict):
                 filename, ext = os.path.splitext(filename)
             for sidecar_tag in sidecar_flag:
                 if 'modality' in self and not eval(sidecar_tag + '.modality_field'):
-                    self[sidecar_tag] = eval(sidecar_tag + '(modality_field=self["modality"])')
+                    sdcr_tmp = eval(sidecar_tag + '(modality_field=self["modality"])')
                 else:
-                    self[sidecar_tag] = eval(sidecar_tag + '()')
+                    sdcr_tmp = eval(sidecar_tag + '()')
+                if self[sidecar_tag]:
+                    #  if info are given in modJSON or TSV in data2import prior to importation
+                    self[sidecar_tag].copy_values(sdcr_tmp, simplify_flag=False)
+                else:
+                    self[sidecar_tag] = sdcr_tmp
+
                 find_sidecar_file(self[sidecar_tag], filename, os.path.join(main_dirname, rootdir, filename),
                                   direct_search=not in_bids_dir)
                 self[sidecar_tag].simplify_sidecar(required_only=False)

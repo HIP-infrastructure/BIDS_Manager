@@ -1333,6 +1333,8 @@ class BidsBrickDialog(FormDialog):
                 ht = 1
             else:
                 ht = 3
+            if isinstance(self.main_brick, (bids.ModalityType, bids.GlobalSidecars)):
+                setting_list['columnspan'] = 1
             self.key_listw[key] = Listbox(parent, height=ht)
             self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
             self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
@@ -1537,7 +1539,7 @@ class BidsBrickDialog(FormDialog):
 
 
 def make_splash():
-    if bids.BidsBrick.curr_user == 'ponz':
+    if bids.BidsBrick.curr_user == 'Ponz':
         splash = [r" _______  .-./`)  ______        .-'''-.",
                   r"\  ____  \\ .-.')|    _ `''.   / _     \ ",
                   r"| |    \ |/ `-' \| _ | ) _  \ (`' )/`--' ",
