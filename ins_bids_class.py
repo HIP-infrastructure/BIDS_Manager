@@ -1265,10 +1265,6 @@ class IeegJSON(BidsJSON):
                'iEEGReferenceScheme', 'Stimulation', 'Medication']
     required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
 
-    def __init__(self, modality_field):
-        """initiate a  dict var for Subject info"""
-        super().__init__(keylist=IeegJSON.keylist, required_keys=IeegJSON.required_keys, modality_field=modality_field)
-
 
 class IeegChannelsTSV(ChannelsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
@@ -1859,31 +1855,25 @@ class BidsDataset(MetaBrick):
             return rd_json
 
         if os.path.exists(os.path.join(self.dirname, BidsDataset.parsing_path)):
-            list_of_files = os.listdir(os.path.join(self.dirname, BidsDataset.parsing_path))
-            list_of_parsing_files = [os.path.join(self.dirname, BidsDataset.parsing_path, file)
-                                     for file in list_of_files if file.startswith('parsing')]
-            if list_of_parsing_files:
+            latest_parsing = latest_file(os.path.join(self.dirname, BidsDataset.parsing_path), 'parsing')
+            if latest_parsing:
                 BidsBrick.access_time = datetime.now()
                 self.__class__.clear_log()
                 # self.write_log('Current User: ' + self.curr_user)
                 # First read requirements.json which should be in the code folder of bids dir.
                 self.get_requirements()
-                latest_parsing = max(list_of_parsing_files, key=os.path.getctime)
                 read_json = read_file(latest_parsing)
                 self.copy_values(read_json)
                 self.issues.check_with_latest_issue()
                 # the latest log file may have been created after the latest parsing file (case of issues removing
                 #  which does not affect parsing.json)
-                list_of_files = os.listdir(os.path.join(self.dirname, self.log_path))
-                list_of_log_files = [os.path.join(self.dirname, self.log_path, file)
-                                     for file in list_of_files if file.endswith('.log')]
-                if list_of_log_files:
-                    log_file = max(list_of_log_files, key=os.path.getctime)
+                log_file = latest_file(os.path.join(self.dirname, self.log_path), 'log')
+                if log_file:
                     with open(log_file, 'r') as file:
                         for line in file:
                             self.__class__.curr_log += line
                     print(self.__class__.curr_log)
-                return False  # no need for parsing the dataset
+                return False  # no need to parse the dataset
         return True  # need to parse the dataset
 
     def parse_bids(self):
@@ -2957,12 +2947,9 @@ class Issue(BidsBrick):
 
         log_dir = os.path.join(BidsDataset.dirname, BidsDataset.log_path)
         if BidsDataset.dirname and os.path.isdir(log_dir):
-            list_of_files = os.listdir(log_dir)
-            list_of_issue_files = [os.path.join(log_dir, file) for file in list_of_files
-                                   if file.startswith(self.classname().lower()) and os.path.splitext(file)[0]]
-            if list_of_issue_files:
+            latest_issue = latest_file(log_dir, self.classname().lower())
+            if latest_issue:
                 # find the latest issue.json file
-                latest_issue = max(list_of_issue_files, key=os.path.getctime)
                 read_json = read_file(latest_issue)
 
                 # remove all import dir that were removed, it will raise an error in the fileLoc test otherwise
@@ -3192,6 +3179,34 @@ def subclasses_tree(brick_class, nb_space=0):
     for subcls in brick_class.__subclasses__():
         sub_classes_tree += subclasses_tree(subcls, nb_space=nb_space)
     return sub_classes_tree
+
+
+def latest_file(folderpath, file_type):
+    try:
+        list_of_files = os.listdir(folderpath)
+
+        if file_type == 'parsing':
+            ext = '.json.gz'
+            condition = lambda fname: fname.startswith('parsing')
+        elif file_type == 'log':
+            ext = '.log'
+            condition = lambda fname: fname.endswith(ext)
+        elif file_type == 'issue':
+            ext = '.json'
+            condition = lambda fname: fname.startswith('issue') and fname.endswith(ext)
+        else:
+            raise NotImplementedError()
+        list_of_specific_files = [file for file in list_of_files if condition(file)]
+        date_obj = [
+            datetime.strptime(file.replace(ext, '').split('_')[-1], BidsBrick.time_format)
+            for file in list_of_specific_files]
+
+        latest_dt = max(dt for dt in date_obj)
+        return os.path.join(folderpath, list_of_specific_files[date_obj.index(latest_dt)])
+
+    except Exception as err:
+        print(str(err))
+        return None
 
 
 if __name__ == '__main__':
