@@ -217,7 +217,8 @@ class BidsBrick(dict):
             if self.required_keys:
                 if key in self.required_keys and (self[key] == '' or self[key] == []):
                     missing_elements += 'In ' + type(self).__name__ + ', key ' + str(key) + ' is missing.\n'
-            if self[key] and isinstance(self[key], list) and nested:  # check if self has modality brick, if not empty than
+            if self[key] and isinstance(self[key], list) and nested:
+                # check if self has modality brick, if not empty than
                 # recursively check whether it has also all req attributes
                 for item in self[key]:
                     if issubclass(type(item), BidsBrick):
@@ -901,11 +902,14 @@ class BidsSidecar(object):
             self.simplify_sidecar(required_only=False)
 
     def has_all_req_attributes(self):  # check if the required attributes are not empty
+        self.is_complete = True
+        missing_elements = ''
         if 'required_keys' in dir(self) and self.required_keys:
             for key in self.required_keys:
                 if key not in self or self[key] == BidsSidecar.bids_default_unknown:
-                    self.is_complete = False
-        self.is_complete = True
+                    missing_elements += 'In ' + type(self).__name__ + ', key ' + str(key) + ' is missing.\n'
+        self.is_complete = not bool(missing_elements)
+        return [self.is_complete, missing_elements]
 
     def classname(self):
         return self.__class__.__name__
@@ -1105,6 +1109,7 @@ class BidsTSV(BidsSidecar, list):
 
     def has_all_req_attributes(self):  # check if the required attributes are not empty
         self.is_complete = False  # To be implemented, stay False for the moment
+        return [self.is_complete, '']
 
     def clear(self):
         super().clear()
@@ -2092,7 +2097,7 @@ class BidsDataset(MetaBrick):
                 scr_data_dirname = os.path.join(BidsDataset.dirname, 'sourcedata', dirname)
                 os.makedirs(scr_data_dirname, exist_ok=True)
                 path_src = os.path.join(Data2Import.dirname, mod_dict2import['fileLoc'])
-                path_dst = os.path.join(scr_data_dirname, mod_dict2import['fileLoc'])
+                path_dst = os.path.join(scr_data_dirname, os.path.basename(mod_dict2import['fileLoc']))
                 # if os.path.isdir(path_src):
                 #     # use copytree for directories (e.g. DICOM)
                 #     shutil.copytree(path_src, path_dst)
@@ -2107,7 +2112,7 @@ class BidsDataset(MetaBrick):
                 src_data_sub[mod_type][-1].update(tmp_attr)
 
                 if keep_ftrack:
-                    orig_fname = os.path.basename(mod_dict2import['fileLoc'])
+                    orig_fname = src_data_sub[mod_type][-1]['fileLoc']
                     upload_date = bids_dst.access_time.strftime("%Y-%m-%dT%H:%M:%S")
                     scr_track = bids_dst['SourceData'][-1]['SrcDataTrack']
                     scr_track.append({'orig_filename': orig_fname, 'bids_filename': filename,
