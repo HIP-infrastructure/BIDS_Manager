@@ -3,13 +3,14 @@
 import ins_bids_class as bids
 import os
 import platform
+from importlib import reload
 from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu
 
 
 class BidsManager(Frame):
-    version = '0.1.5'
+    version = '0.1.6'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
 
@@ -191,8 +192,7 @@ class BidsManager(Frame):
         for item in input_list:
             list_object.insert(END, item)
 
-    @staticmethod
-    def show_bids_desc(input_dict):
+    def show_bids_desc(self, input_dict):
 
         if isinstance(input_dict, bids.BidsBrick):
             output_dict = FormDialog(root, input_dict,
@@ -216,6 +216,7 @@ class BidsManager(Frame):
                                             '.\nAre you sure?'):
                     input_dict.copy_values(output_dict)
                     input_dict.write_file()
+                    self.curr_bids.save_as_json()
 
     @staticmethod
     def change_menu_state(menu, start_idx=0, end_idx=None, state=None):
@@ -292,6 +293,7 @@ class BidsManager(Frame):
                                            initialdir=BidsManager.bids_startfile)
         if not bids_dir:
             return
+        reload(bids)
         self.pack_element(self.main_frame['text'])
         self.upload_dir = None
         self.curr_data2import = None
@@ -884,7 +886,8 @@ class TemplateDialog(Toplevel):
             win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
 
         Toplevel.__init__(self, parent)
-        self.wm_resizable(False, False)
+        # self.wm_resizable(False, False)
+        self.wm_resizable(True, False)
         self.btn_ok = None
         self.btn_cancel = None
         self.withdraw()  # remain invisible for now
@@ -1267,6 +1270,7 @@ class FormDialog(TemplateDialog):
 
 class BidsBrickDialog(FormDialog):
     bidsdataset = None
+    meta_brick = None
 
     def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None):
         if not isinstance(input_dict, (bids.BidsBrick, bids.BidsJSON)):
@@ -1274,6 +1278,7 @@ class BidsBrickDialog(FormDialog):
         if isinstance(input_dict, (bids.BidsDataset, bids.Data2Import)):
             if isinstance(input_dict, bids.BidsDataset):
                 BidsBrickDialog.bidsdataset = input_dict
+            BidsBrickDialog.meta_brick = input_dict.classname()  # meta_brick is either bids.BidsDataset or bids.Data2Import
             self.attr_dict = input_dict['DatasetDescJSON']
             self.input_dict = dict()
             self.input_dict['Subject'] = input_dict['Subject']
@@ -1313,7 +1318,11 @@ class BidsBrickDialog(FormDialog):
     def body(self, parent):
         self.main_form(parent)
         cnt_tot = len(self.input_dict)
+        # remember input_dict corresponds only to the attributes
         for cnt, key in enumerate(self.key_button_lbl.keys()):
+            if key not in bids.BidsSidecar.get_list_subclasses_names() and not self.main_brick[key]:
+                # only show none empty BidsBricks but let the JSON and TSV in case you want to add more
+                continue
 
             setting_list = {"row": cnt + cnt_tot, "column": 1, "columnspan": 2, "sticky": W + E,
                             "padx": self.default_pad[0],
@@ -1341,15 +1350,17 @@ class BidsBrickDialog(FormDialog):
             self.populate_list(self.key_listw[key], self.main_brick[key])
             self.key_listw[key].grid(**setting_list)
 
-            if key not in bids.BidsSidecar.get_list_subclasses_names() and \
-                    (key not in self.key_disabled or not self.key_disabled[key] == DISABLED):
-                self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
+            # if key not in bids.BidsSidecar.get_list_subclasses_names() and \
+            #         (key not in self.key_disabled or not self.key_disabled[key] == DISABLED):
+            if key not in self.key_disabled or not self.key_disabled[key] == DISABLED:
+                if key in bids.BidsSidecar.get_list_subclasses_names():
+                    btn_str = 'Modify '
+                else:
+                    btn_str = 'Add '
+                self.key_button[key] = Button(parent, text=btn_str + key, justify=CENTER,
                                               command=lambda k=key: self.add_new_brick(k))
                 self.key_button[key].grid(row=cnt+cnt_tot, column=3, sticky=W+E, padx=self.default_pad[0],
                                           pady=self.default_pad[1])
-            # self.key_button[key] = Button(parent, text='Add ' + key, justify=CENTER,
-            #                               command=lambda: print('coucou'))
-            # self.key_button[key].grid(row=cnt + cnt_tot, column=3, sticky=W+E, padx=5, pady=5)
         self.ok_cancel_button(parent, row=cnt_tot+len(self.key_button_lbl))
         if len(self.key_button_lbl):
             for i in range(self.body_widget.grid_size()[0]):
@@ -1390,6 +1401,8 @@ class BidsBrickDialog(FormDialog):
                             title=sub.classname() + ': ' + sub['sub'])
         elif key in bids.BidsJSON.get_list_subclasses_names():
             sdcr_file = self.main_brick[key]
+            # pop_menu = Menu(self.body_widget, tearoff=0)
+            # pop_menu.post(event.x_root, event.y_root)
             BidsBrickDialog(self, sdcr_file, disabled=list(sdcr_file.keys()),
                             title=sdcr_file.classname())
         elif key in bids.ModalityType.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
@@ -1402,13 +1415,13 @@ class BidsBrickDialog(FormDialog):
             if mod_brick.classname() in self.key_disabled:
                 disbl = mod_brick.keylist
             else:
-                disbl = None
+                disbl = [key for key in mod_brick.keylist if key in bids.BidsTSV.get_list_subclasses_names()]
                 # pop_menu.add_command(label='Remove',
                 #                      command=lambda idx=curr_idx, k=key: self.remove_element(k, idx))
             pop_menu.add_command(label='Show attributes',
                                  command=lambda brick=mod_brick, dsbl=disbl: BidsBrickDialog(self, brick,
                                                                                              disabled=dsbl))
-            if isinstance(BidsBrickDialog.bidsdataset, bids.BidsDataset):  # allow remove file in bidsdataset
+            if BidsBrickDialog.meta_brick == 'BidsDataset':  # allow remove file in bidsdataset
                 pop_menu.add_command(label='Remove file',
                                      command=lambda brick=mod_brick, idx=curr_idx, k=key:
                                      self.remove_file(brick, k, idx))
@@ -1442,7 +1455,7 @@ class BidsBrickDialog(FormDialog):
         os.startfile(os.path.normpath(os.path.join(bids.BidsBrick.cwdir, fname)))
 
     def remove_file(self, mod_brick, key, index):
-        if isinstance(BidsBrickDialog.bidsdataset, bids.BidsDataset) and \
+        if BidsBrickDialog.meta_brick == 'BidsDataset' and \
                 messagebox.askyesno('Remove File', 'Are you sure you want to remove ' + mod_brick['fileLoc'] + '?'):
             self.config(cursor="wait")
             BidsBrickDialog.bidsdataset.remove(mod_brick, with_issues=True)
@@ -1511,15 +1524,20 @@ class BidsBrickDialog(FormDialog):
                     opt['modality'] = new_brick.allowed_modalities
 
                 new_brick['sub'] = self.main_brick['sub']
-
+            elif isinstance(self.main_brick, bids.ModalityType) and key in bids.BidsJSON.get_list_subclasses_names():
+                new_brick = getattr(bids, key)()
+                new_brick['FileComment'] = bids.BidsJSON.bids_default_unknown
+                new_brick.copy_values(self.main_brick[key], simplify_flag=False)
             else:
                 new_brick = getattr(bids, key)()
             result_brick = BidsBrickDialog(self, new_brick, disabled=disbld, options=opt,
                                            required_keys=new_brick.required_keys, title=new_brick.classname()).apply()
             if result_brick is not None:
                 new_brick.copy_values(result_brick)
+                # still issue with JSON since has_all_req_attributes does not return anything... but updates
+                # self.is_complete
                 flag, miss_str = new_brick.has_all_req_attributes()
-                if not flag:
+                if not isinstance(new_brick, (bids.BidsJSON, bids.BidsTSV)) and not flag:
                     messagebox.showerror('Missing attributes', miss_str)
                     return
                 self.main_brick[key] = new_brick

@@ -11,9 +11,7 @@ from builtins import range
 from builtins import str
 from future import standard_library
 import os
-import re
 from sys import argv
-from sys import exit
 from sys import modules
 import json
 import brainvision_hdr as bv_hdr
