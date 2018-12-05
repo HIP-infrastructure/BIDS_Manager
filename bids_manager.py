@@ -571,9 +571,9 @@ class BidsManager(Frame):
     def open_file(self, issue_key, list_idx, info):
         curr_iss = self.curr_bids.issues[issue_key][info['index']]
         if issue_key == 'ElectrodeIssue':
-            os.startfile(os.path.join(self.curr_bids.dirname, curr_iss['fileLoc']))
+            os.startfile(os.path.normpath(os.path.join(self.curr_bids.dirname, curr_iss['fileLoc'])))
         else:
-            os.startfile(os.path.join(curr_iss['path'], info['Element']['fileLoc']))
+            os.startfile(os.path.normpath(os.path.join(curr_iss['path'], info['Element']['fileLoc'])))
 
     def mark_as_verified(self, list_idx, info, state_str):
         idx = info['index']
