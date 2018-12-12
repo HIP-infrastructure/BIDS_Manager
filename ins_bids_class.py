@@ -4,6 +4,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 from __future__ import division
 from __future__ import absolute_import
+from builtins import dict
 from builtins import super
 from builtins import open
 from builtins import int
@@ -33,7 +34,7 @@ class BidsBrick(dict):
     required_keys = ['sub']
     access_time = datetime.now()
     time_format = "%Y-%m-%dT%H-%M-%S"
-    cwdir = os.getcwd()
+    cwdir = os.getcwdu()
     allowed_modalities = []
     state_list = ['valid', 'invalid', 'forced', 'ready']
     curr_state = None
