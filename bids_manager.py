@@ -1,5 +1,17 @@
 #!/usr/bin/python3
 
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import absolute_import
+from builtins import super
+from builtins import round
+from builtins import range
+from builtins import dict
+from builtins import str
+from builtins import object
+from future import standard_library
+standard_library.install_aliases()
 import ins_bids_class as bids
 import os
 import platform
@@ -784,7 +796,7 @@ class BidsManager(Frame):
         return string_table
 
 
-class DoubleListbox:
+class DoubleListbox(object):
     """ DoubleListbox is a class to display two ListBox which share the same scrollbar and are thus synchronous """
 
     def __init__(self, parent):
