@@ -11,14 +11,17 @@ from builtins import dict
 from builtins import str
 from builtins import object
 from future import standard_library
-standard_library.install_aliases()
 import ins_bids_class as bids
 import os
 import platform
-from importlib import reload
 from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu
+try:
+    from importlib import reload
+except:
+    pass
+standard_library.install_aliases()
 
 
 class BidsManager(Frame):

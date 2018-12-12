@@ -34,7 +34,10 @@ class BidsBrick(dict):
     required_keys = ['sub']
     access_time = datetime.now()
     time_format = "%Y-%m-%dT%H-%M-%S"
-    cwdir = os.getcwdu()
+    try:  # python 3
+        cwdir = os.getcwd()
+    except:  # python 2
+        cwdir = os.getcwdu()
     allowed_modalities = []
     state_list = ['valid', 'invalid', 'forced', 'ready']
     curr_state = None
