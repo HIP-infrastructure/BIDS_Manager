@@ -24,7 +24,10 @@ except:
 standard_library.install_aliases()
 
 
-class BidsManager(Frame):
+class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class Py2 compatible
+    # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
+    # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
+    # (using Python multiple inheritance) !!!!!!!!!
     version = '0.1.6'
     bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
     import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
@@ -864,7 +867,7 @@ class IssueList(DoubleListbox):
             self.elements[key].config(**kwargs)
 
 
-class DefaultText(scrolledtext.ScrolledText):
+class DefaultText(scrolledtext.ScrolledText, object):
 
     def clear_text(self, start=None, end=None):
         if not start:
@@ -886,7 +889,7 @@ class DisplayText(DefaultText):
         self.config(state=DISABLED)
 
 
-class TemplateDialog(Toplevel):
+class TemplateDialog(Toplevel, object):
     button_size = [2, 10]
     default_pad = [2, 2]
 
