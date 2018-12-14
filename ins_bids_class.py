@@ -1757,7 +1757,7 @@ class MetaBrick(BidsBrick):
         return [sub['sub'] for sub in self['Subject']]
 
     def get_object_from_filename(self, filename, sub_id=None):
-        if isinstance(filename, str):
+        if filename.__class__.__name__ in ['str', 'unicode']:  # py2/py3 compatible...
             sub_list = self.get_subject_list()
             if isinstance(self, BidsDataset):
                 fname = os.path.splitext(os.path.basename(filename))[0]
