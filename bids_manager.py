@@ -1300,6 +1300,7 @@ class BidsBrickDialog(FormDialog):
             self.attr_dict = input_dict['DatasetDescJSON']
             self.input_dict = dict()
             self.input_dict['Subject'] = input_dict['Subject']
+            self.input_dict['Derivatives'] = input_dict['Derivatives']
             title = input_dict.classname() + ': ' + input_dict['DatasetDescJSON']['Name']
             if disabled is None:
                 disabled = []
@@ -1401,6 +1402,9 @@ class BidsBrickDialog(FormDialog):
         elif isinstance(list_of_bbricks[0], bids.Subject):
             for sub in list_of_bbricks:
                 list_of_elmts.append(sub['sub'])
+        elif isinstance(list_of_bbricks[0], bids.Derivatives):
+            for ppln in list_of_bbricks[0]['Pipeline']:
+                list_of_elmts.append(ppln['name'])
         else:
             raise TypeError('not allowed object type')
         BidsManager.populate_list(list_obj, list_of_elmts)
