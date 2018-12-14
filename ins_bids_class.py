@@ -228,8 +228,7 @@ class BidsBrick(dict):
         return [not bool(missing_elements), missing_elements]
 
     def get_attributes_from_filename(self, fname=None):
-        # get the attribute from the filename, used when parsing pre-existing
-        #  bids dataset
+        """ get the attribute from the filename, used when parsing pre-existing bids dataset """
 
         def parse_filename(mod_dict, file):
             fname_pieces = file.split('_')
@@ -999,13 +998,27 @@ class BidsJSON(BidsSidecar, dict):
 class ModalityType(BidsBrick):
     required_keys = BidsBrick.required_keys + ['fileLoc']
 
+    def get_bids_dir_from_filename(self):
+        if not self['fileLoc']:
+            raise TypeError('There is no filename set for this object.')
+        if not self['sub']:
+            self.get_attributes_from_filename()
+        if not self['sub']:
+            raise TypeError(self['fileLoc'] + ' is incorrect since there is no subject attribute.')
+        dirname = os.path.dirname(self['fileLoc'])
+        dname_splt = dirname.split('sub-' + self['sub'])
+        if not len(dname_splt) == 2:
+            raise NotADirectoryError(dirname + ' is not a correct Bids directory.')
+        else:
+            return dname_splt[0]
+
 
 class Imagery(ModalityType):
     pass
 
 
 class Electrophy(ModalityType):
-    channel_type = ['ECG', 'EOG', 'EEG', 'SEEG', 'ECOG', 'MEG', 'OTHER']
+    channel_type = ['EEG', 'SEEG', 'ECOG', 'MEG', 'EMG', 'ECG', 'EOG', 'Trigger', 'Misc']
 
 
 class ImageryJSON(BidsJSON):
@@ -1263,7 +1276,7 @@ class Ieeg(Electrophy):
         self['modality'] = 'ieeg'
 
 
-class IeegJSON(BidsJSON):
+class IeegJSON(ElectrophyJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
@@ -1312,6 +1325,77 @@ class IeegGlobalSidecars(GlobalSidecars):
     complementary_keylist = ['IeegElecTSV', 'IeegCoordSysJSON', 'IeegPhoto']
     required_keys = BidsBrick.required_keys
     allowed_file_formats = ['.tsv', '.json'] + IeegPhoto.allowed_file_formats
+    allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
+
+
+""" EEG brick with its file-specific (EegJSON, EegChannelsTSV) and global sidecar 
+(EegCoordSysJSON, EegElecTSV or EegPhoto) files. """
+
+
+class Eeg(Electrophy):
+
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'EegJSON',
+                                   'EegChannelsTSV', 'EegEventsTSV']
+    required_keys = Electrophy.required_keys + ['task', 'modality']
+    allowed_modalities = ['eeg']
+    allowed_file_formats = ['.edf', '.vhdr']
+    readable_file_formats = allowed_file_formats + ['.eeg', '.trc']
+    channel_type = ['EEG']
+
+    def __init__(self):
+        super().__init__()
+        self['modality'] = 'eeg'
+
+
+class EegJSON(ElectrophyJSON):
+    keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
+               'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
+               'ECOGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
+               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration', 'RecordingType',
+               'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'EEGPlacementScheme',
+               'EEGReferenceScheme', 'Stimulation', 'Medication']
+    required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
+
+
+class EegChannelsTSV(ChannelsTSV):
+    """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
+    frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
+
+    header = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
+              'description', 'status', 'status_description', 'software_filters']
+    required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
+    modality_field = 'channels'
+
+
+class EegEventsTSV(EventsTSV):
+    """Store the info of the #_events.tsv."""
+    pass
+
+
+class EegElecTSV(BidsTSV):
+    header = ['name', 'x', 'y', 'z', 'size', 'type', 'material', 'tissue', 'manufacturer', 'grid_size', 'group',
+              'hemisphere']
+    required_fields = ['name', 'x', 'y', 'z', 'size']
+    modality_field = 'electrodes'
+
+
+class EegCoordSysJSON(BidsJSON):
+    keylist = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateProcessingDescription', 'IntendedFor',
+               'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
+               'AssociatedImageCoordinateSystemDescription', 'EEGCoordinateProcessingReference']
+    required_keys = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateProcessingDescription',
+                     'IntendedFor', 'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
+    modality_field = 'coordsystem'
+
+
+class EegPhoto(Photo):
+    pass
+
+
+class EegGlobalSidecars(GlobalSidecars):
+    complementary_keylist = ['EegElecTSV', 'EegCoordSysJSON', 'EegPhoto']
+    required_keys = BidsBrick.required_keys
+    allowed_file_formats = ['.tsv', '.json'] + EegPhoto.allowed_file_formats
     allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
 
 
@@ -1425,10 +1509,19 @@ class Meg(Electrophy):
     allowed_modalities = ['meg']
     allowed_file_formats = ['.ctf', '.fif', '4D']
     readable_file_formats = allowed_file_formats
+    channel_type = ['MEG']
 
     def __init__(self):
         super().__init__()
         self['modality'] = 'meg'
+
+
+class MegJSON(ElectrophyJSON):
+    pass
+
+
+class MegChannelsTSV(ChannelsTSV):
+    pass
 
 
 class MegEventsTSV(EventsTSV):
@@ -1462,7 +1555,7 @@ class BehEventsTSV(EventsTSV):
 
 class Subject(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Ieeg',
+    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Eeg', 'Ieeg',
                                    'Beh', 'IeegGlobalSidecars']
     required_keys = BidsBrick.required_keys
 
@@ -1507,9 +1600,6 @@ class Pipeline(BidsBrick):
 class Derivatives(BidsBrick):
 
     keylist = ['Pipeline']
-
-    def __init__(self):
-        super().__init__()
 
 
 class Code(BidsBrick):
