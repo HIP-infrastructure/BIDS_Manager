@@ -1254,6 +1254,23 @@ class Requirements(BidsBrick):
             os.makedirs(savedir)
         super().save_as_json(savedir, file_start=None, write_date=False, compress=False)
 
+    def make_option_dict(self, key):
+        req = self['Requirements']
+        new_brick = getattr(modules[__name__], key)()
+        options = dict()
+        if 'Subject' in req and key in req['Subject']:
+            for k in new_brick.keylist:
+                if k not in BidsBrick.get_list_subclasses_names() and k not in ['sub', 'modality']:
+                    options[k] = set()
+                    for elmt in req['Subject'][key]:
+                        if isinstance(elmt['type'], list):
+                            [options[k].add(l[k]) for l in elmt['type'] if k in l and not l[k] == '_']
+                        elif k in elmt['type'] and not elmt['type'][k] == '_':
+                            options[k].add(elmt['type'][k])
+                    options[k] = list(options[k])
+        options['modality'] = new_brick.allowed_modalities
+        return options
+
 
 ''' The different modality bricks, subclasses of BidsBrick. '''
 
@@ -1849,7 +1866,7 @@ class MetaBrick(BidsBrick):
 
 
 class Data2Import(MetaBrick):
-    keylist = ['Subject', 'DatasetDescJSON', 'UploadDate']
+    keylist = ['Subject', 'DatasetDescJSON', 'Derivatives', 'UploadDate']
     filename = 'data2import.json'
     requirements = None
     curr_log = ''

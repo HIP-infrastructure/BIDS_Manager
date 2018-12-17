@@ -1294,8 +1294,6 @@ class BidsBrickDialog(FormDialog):
         if not isinstance(input_dict, (bids.BidsBrick, bids.BidsJSON)):
             raise TypeError('Second input should be a BidsBrick instance.')
         if isinstance(input_dict, (bids.BidsDataset, bids.Data2Import)):
-            if isinstance(input_dict, bids.BidsDataset):
-                BidsBrickDialog.bidsdataset = input_dict
             BidsBrickDialog.meta_brick = input_dict.classname()  # meta_brick is either bids.BidsDataset or bids.Data2Import
             self.attr_dict = input_dict['DatasetDescJSON']
             self.input_dict = dict()
@@ -1305,6 +1303,7 @@ class BidsBrickDialog(FormDialog):
             if disabled is None:
                 disabled = []
             if isinstance(input_dict, bids.BidsDataset):
+                BidsBrickDialog.bidsdataset = input_dict
                 self.input_dict['ParticipantsTSV'] = input_dict['ParticipantsTSV']
                 disabled = input_dict.keylist
                 disabled += self.attr_dict.keylist
@@ -1529,26 +1528,21 @@ class BidsBrickDialog(FormDialog):
                 else:
                     new_brick = getattr(bids, key)()
                     new_brick['fileLoc'] = os.path.basename(fname)
-                    opt = dict()
                     if bids.BidsDataset.requirements:
-                        req = bids.BidsDataset.requirements['Requirements']
-                        if 'Subject' in req and key in req['Subject']:
-                            for k in new_brick.keylist:
-                                if k not in bids.BidsBrick.get_list_subclasses_names() and \
-                                        k not in ['sub', 'modality']:
-                                    opt[k] = set()
-                                    for elmt in req['Subject'][key]:
-                                        if isinstance(elmt['type'], list):
-                                            [opt[k].add(l[k]) for l in elmt['type'] if k in l and not l[k] == '_']
-                                        elif k in elmt['type'] and not elmt['type'][k] == '_':
-                                            opt[k].add(elmt['type'][k])
-                                    opt[k] = list(opt[k])
-                    opt['modality'] = new_brick.allowed_modalities
+                        # use requirements.json to propose via drop down menu
+                        opt = bids.BidsDataset.requirements.make_option_dict(key)
+                    else:
+                        opt = dict()
+                        opt['modalities'] = new_brick.allowed_modalities
 
                 new_brick['sub'] = self.main_brick['sub']
-            elif isinstance(self.main_brick, bids.ModalityType) and key in bids.BidsJSON.get_list_subclasses_names():
+            elif isinstance(self.main_brick, bids.ModalityType) and key in bids.BidsSidecar.get_list_subclasses_names():
                 new_brick = getattr(bids, key)()
-                new_brick['FileComment'] = bids.BidsJSON.bids_default_unknown
+                if key in bids.BidsJSON.get_list_subclasses_names():
+                    new_brick['FileComment'] = bids.BidsJSON.bids_default_unknown
+                elif key in bids.BidsTSV.get_list_subclasses_names():
+                    raise NotImplementedError('Modification of TSV files have not yet being handled ')
+                    # new_brick.append({key: bids.BidsSidecar.bids_default_unknown for key in new_brick.header})
                 new_brick.copy_values(self.main_brick[key], simplify_flag=False)
             else:
                 new_brick = getattr(bids, key)()
