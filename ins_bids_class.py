@@ -1113,7 +1113,7 @@ class BidsTSV(BidsSidecar, list):
         lines = [self.bids_default_unknown]*len(self.header)
         for key in dict2append:
             if key in self.header:
-                if not dict2append[key]:
+                if dict2append[key] == '' or dict2append[key] is None:
                     dict2append[key] = BidsTSV.bids_default_unknown
                 lines[self.header.index(key)] = str(dict2append[key])
         super().append(lines)
