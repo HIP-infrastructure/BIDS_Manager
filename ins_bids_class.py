@@ -290,16 +290,17 @@ class BidsBrick(dict):
                     drname = os.path.dirname(drname)
                     has_broken = False
                     with os.scandir(drname) as it:
-                        for entry in it:
-                            entry_fname, entry_ext = os.path.splitext(entry.name)
-                            if entry_ext.lower() == '.gz':
+                        for idx in range(1, len(piece_fname)):
+                            # a bit greedy because some case are not possible but should work
+                            # firstly try to find an exact match (all attributes) then try to match fewer attributes
+                            j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
+                                     sidecar_dict.extension
+                            for entry in it:
                                 entry_fname, entry_ext = os.path.splitext(entry.name)
-                            if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
-                                    sidecar_dict.modality_field:
-                                for idx in range(1, len(piece_fname)):
-                                    # a bit greedy because some case are not possible but should work
-                                    j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
-                                             sidecar_dict.extension
+                                if entry_ext.lower() == '.gz':
+                                    entry_fname, entry_ext = os.path.splitext(entry.name)
+                                if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
+                                        sidecar_dict.modality_field:
                                     if entry.name == j_name:
                                         # jsondict['fileLoc'] = entry.path
                                         sidecar_dict.read_file(entry.path)
@@ -3081,7 +3082,7 @@ class Issue(BidsBrick):
                         iss_test = getattr(modules[__name__], issue_key)()
                         try:
                             iss_test.copy_values(issue)
-                        except FileNotFoundError: # is the only error that could occur
+                        except FileNotFoundError:  # is the only error that could occur
                             self.write_log('Related ' + issue_key + ' issues are removed')
                             read_json[issue_key].pop(read_json[issue_key].index(issue))
 
