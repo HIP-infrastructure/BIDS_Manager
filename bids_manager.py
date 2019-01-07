@@ -1541,7 +1541,7 @@ class BidsBrickDialog(FormDialog):
                 if key in bids.BidsJSON.get_list_subclasses_names():
                     new_brick['FileComment'] = bids.BidsJSON.bids_default_unknown
                 elif key in bids.BidsTSV.get_list_subclasses_names():
-                    raise NotImplementedError('Modification of TSV files have not yet being handled ')
+                    raise NotImplementedError('Modification of TSV files has not yet being handled ')
                     # new_brick.append({key: bids.BidsSidecar.bids_default_unknown for key in new_brick.header})
                 new_brick.copy_values(self.main_brick[key], simplify_flag=False)
             else:

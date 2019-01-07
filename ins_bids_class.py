@@ -707,8 +707,12 @@ class BidsBrick(dict):
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
             os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
-            shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
-                BidsDataset.dirname, dirname, fname))
+            try:
+                shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
+                    BidsDataset.dirname, dirname, fname))
+            except:
+                shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
+                    BidsDataset.dirname, dirname, fname))
             return [fname]
         else:
             str_issue = os.path.basename(self['fileLoc']) + ' cannot be converted!'
@@ -2213,7 +2217,10 @@ class BidsDataset(MetaBrick):
                 # else:
                 #     # use copy2 for files
                 #     shutil.copy2(path_src, path_dst)
-                shutil.move(path_src, path_dst)
+                try:
+                    shutil.move(path_src, path_dst)
+                except:
+                    shutil.copy2(path_src, path_dst)
                 src_data_sub = bids_dst['SourceData'][-1]['Subject'][bids_dst.curr_subject['index']]
                 src_data_sub[mod_type] = eval(mod_type + '()')
                 tmp_attr = mod_dict2import.get_attributes()
