@@ -314,15 +314,15 @@ class BidsBrick(dict):
                                                                                         value.startswith('ses-'))]
                     has_broken = False
                     with os.scandir(drname) as it:
-                        for entry in it:
-                            entry_fname, entry_ext = os.path.splitext(entry.name)
-                            if entry_ext.lower() == '.gz':
+                        for idx in range(1, len(piece_fname)):
+                            j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
+                                     sidecar_dict.extension
+                            for entry in it:
                                 entry_fname, entry_ext = os.path.splitext(entry.name)
-                            if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
-                                    sidecar_dict.modality_field:
-                                for idx in range(1, len(piece_fname)):
-                                    j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
-                                             sidecar_dict.extension
+                                if entry_ext.lower() == '.gz':
+                                    entry_fname, entry_ext = os.path.splitext(entry.name)
+                                if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
+                                        sidecar_dict.modality_field:
                                     if entry.name == j_name:
                                         sidecar_dict.read_file(entry.path)
                                         has_broken = True
@@ -333,16 +333,16 @@ class BidsBrick(dict):
                 drname = os.path.dirname(drname)
                 has_broken = False
                 with os.scandir(drname) as it:
-                    for entry in it:
-                        entry_fname, entry_ext = os.path.splitext(entry.name)
-                        if entry_ext.lower() == '.gz':
+                    for idx in range(1, len(piece_fname)):
+                        j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
+                                 sidecar_dict.extension
+                        for entry in it:
                             entry_fname, entry_ext = os.path.splitext(entry.name)
-                        if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
-                                sidecar_dict.modality_field:
-                            for idx in range(1, len(piece_fname)):
-                                # a bit greedy because some case are not possible but should work
-                                j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
-                                         sidecar_dict.extension
+                            if entry_ext.lower() == '.gz':
+                                entry_fname, entry_ext = os.path.splitext(entry.name)
+                            if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
+                                    sidecar_dict.modality_field:
+
                                 if entry.name == j_name:
                                     # jsondict['fileLoc'] = entry.path
                                     sidecar_dict.read_file(entry.path)
@@ -722,8 +722,20 @@ class BidsBrick(dict):
 
         os.system(cmd_line)
         list_filename = [filename + ext for ext in conv_ext]
+        # store sidecars that were already present in the data2import (those have higher priority than the ones created
+        # by converters)
+        curr_sdcrs = self.get_modality_sidecars()
+        tmp_mod = getattr(modules[__name__], self.classname())()
+        tmp_mod.copy_values(curr_sdcrs)  # necessary because curr_sdcrs is the sidecars of self and will change the same
+        # way (mutable) this makes the two separate objects
         self.get_sidecar_files(in_bids_dir=False, input_dirname=Data2Import.dirname,
                                input_filename=filename)
+        for key in curr_sdcrs:
+            # replace the sidecars obtained by converter by sidecars found in data2import if not empty (as they may have
+            # additional info)
+            if tmp_mod[key]:
+                self[key] = tmp_mod[key]
+
         os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
         for fname in list_filename:
             if os.path.exists(os.path.join(Data2Import.dirname, fname)):
