@@ -527,36 +527,54 @@ class BidsBrick(dict):
 
     def check_requirements(self, specif_subs=None):
 
-        def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
-
-            type_dict = mod_req['type']
+        def get_amount_of_file(sub_mod_list, type_dict, modality):
             if isinstance(type_dict, dict):
                 type_dict = [type_dict]
+            # add empty keys to type dict empty_keys = [key for key in keylist if key not in type_req]
 
             amount = 0
             if sub_mod_list:
                 for type_req in type_dict:
-                    non_specif_keys = [key for key in type_req if type_req[key] == '_']
                     if 'modality' in type_req and type_req['modality'] == 'photo':
                         keylist = Photo.keylist
                     else:
                         keylist = eval(modality + '.keylist')
-                    empty_keys = [key for key in keylist if key not in type_req]
-                    reduced_dict = {key: type_req[key] for key in type_req if not type_req[key] == '_'}
-                    for sub_mod in sub_mod_list:
-                        attr_dict = sub_mod.get_attributes(empty_keys)
-                        if attr_dict == reduced_dict and not non_specif_keys or \
-                                [key for key in non_specif_keys if key in keylist and
-                                                                   key in attr_dict and attr_dict[key]]:
-                            amount += 1
+                    # add empty keys to type_req dict for sake of comparison with modality dict
+                    [type_req.__setitem__(key, '') for key in keylist if key not in type_req and
+                     key not in ['sub', 'fileLoc'] + BidsSidecar.get_list_subclasses_names()]
+                    non_specif_keys = [key for key in type_req if type_req[key] == '_']
 
-            if amount == 0:
-                str_iss = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
-            elif amount < mod_req['amount']:
-                str_iss = 'Subject ' + sub_name + ' misses ' + str(mod_req['amount']-amount) \
-                            + 'files of type: ' + str(type_dict) + '.'
+                    # empty_keys = [key for key in keylist if key not in type_req]
+                    # reduced_dict = {key: type_req[key] for key in type_req if not type_req[key] == '_'}
+                    for sub_mod in sub_mod_list:
+                        attr_dict = sub_mod.get_attributes(['sub', 'fileLoc'])
+                        # replace value for non specific keys by '_' in mod attribute dict if not empty for sake of
+                        # comparison (ex: 'run': '01' by run: '_' but 'run': '' remains unchanged)
+                        [attr_dict.__setitem__(key, '_') for key in non_specif_keys if key in attr_dict and attr_dict[key]]
+                        if attr_dict == type_req:
+                            amount += 1
+            return amount
+
+        def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
+            type_dict = mod_req['type']
+            amount = get_amount_of_file(sub_mod_list, type_dict, modality)
+
+            if isinstance(mod_req['amount'], (int, dict)):
+                if isinstance(mod_req['amount'], int):
+                    req_amount = mod_req['amount']
+                else:
+                    req_amount = get_amount_of_file(sub_mod_list, mod_req['amount'], modality)
+
+                if amount == 0:
+                    str_iss = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
+                elif amount < req_amount:
+                    str_iss = 'Subject ' + sub_name + ' misses ' + str(req_amount-amount) \
+                                + ' files of type: ' + str(type_dict) + '.'
+                else:
+                    return True
             else:
-                return True
+                str_iss = 'For subject ' + sub_name + ', the amount parameter for ' + str(type_dict) + \
+                          ' is wrongly set. It should be an integer or a dictionary.'
 
             self.write_log(str_iss)
             return False
@@ -589,10 +607,12 @@ class BidsBrick(dict):
                             self.is_subject_present(sub)
                             sub_index = self.curr_subject['index']
                             curr_sub_mod = self['Subject'][sub_index][bidsbrick_key[0]]
+                            bln_list = []
                             for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
                                 flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
-                                parttsv_idx = sub_list.index(sub)
-                                self['ParticipantsTSV'][1+parttsv_idx][bidsbrick_key[1]] = str(flag_req)
+                                bln_list.append(flag_req)
+                            parttsv_idx = sub_list.index(sub)
+                            self['ParticipantsTSV'][1+parttsv_idx][bidsbrick_key[1]] = str(all(bln_list))
 
             if sub_list and integrity_list:
                 idx_elec_name = IeegElecTSV.header.index('group')
