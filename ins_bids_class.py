@@ -4,7 +4,6 @@ from __future__ import print_function
 from __future__ import unicode_literals
 from __future__ import division
 from __future__ import absolute_import
-from builtins import dict
 from builtins import super
 from builtins import open
 from builtins import int
@@ -22,6 +21,10 @@ import gzip
 import shutil
 import random as rnd
 import getpass
+import csv
+import math
+import nibabel
+
 standard_library.install_aliases()
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
@@ -34,10 +37,7 @@ class BidsBrick(dict):
     required_keys = ['sub']
     access_time = datetime.now()
     time_format = "%Y-%m-%dT%H-%M-%S"
-    try:  # python 3
-        cwdir = os.getcwd()
-    except:  # python 2
-        cwdir = os.getcwdu()
+    cwdir = os.getcwd()
     allowed_modalities = []
     state_list = ['valid', 'invalid', 'forced', 'ready']
     curr_state = None
@@ -58,7 +58,7 @@ class BidsBrick(dict):
         for key in self.keylist:
             if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
-            elif key in BidsJSON.get_list_subclasses_names():
+            elif key in BidsJSON.get_list_subclasses_names() or key in BidsCSV.get_list_subclasses_names():
                 self[key] = {}
             else:
                 self[key] = ''
@@ -86,6 +86,12 @@ class BidsBrick(dict):
                     super().__setitem__(key, value)
                 else:
                     dict.__setitem__(self, key, [])
+            elif key in BidsCSV.get_list_subclasses_names():
+                if value and isinstance(value, eval(key)):
+                    # check whether the value is from the correct class when not empty
+                    super().__setitem__(key, value)
+                else:
+                    dict.__setitem__(self, key, {})
             elif key == 'fileLoc':
                 if value.__class__.__name__ in ['str', 'unicode']:  # makes it python 2 and python 3 compatible
                     if value:
@@ -228,7 +234,8 @@ class BidsBrick(dict):
         return [not bool(missing_elements), missing_elements]
 
     def get_attributes_from_filename(self, fname=None):
-        """ get the attribute from the filename, used when parsing pre-existing bids dataset """
+        # get the attribute from the filename, used when parsing pre-existing
+        #  bids dataset
 
         def parse_filename(mod_dict, file):
             fname_pieces = file.split('_')
@@ -284,23 +291,24 @@ class BidsBrick(dict):
     def get_sidecar_files(self, in_bids_dir=True, input_dirname=None, input_filename=None):
         # find corresponding JSON file and read its attributes and save fileloc
         def find_sidecar_file(sidecar_dict, fname, drname, direct_search):
+            if isinstance(sidecar_dict, IeegChannelsTSV):
+                tmp_sidecar = sidecar_dict[:]
             piece_fname = fname.split('_')
             if sidecar_dict.inheritance and not direct_search:
                 while os.path.dirname(drname) != BidsDataset.dirname:
                     drname = os.path.dirname(drname)
                     has_broken = False
                     with os.scandir(drname) as it:
-                        for idx in range(1, len(piece_fname)):
-                            # a bit greedy because some case are not possible but should work
-                            # firstly try to find an exact match (all attributes) then try to match fewer attributes
-                            j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
-                                     sidecar_dict.extension
-                            for entry in it:
+                        for entry in it:
+                            entry_fname, entry_ext = os.path.splitext(entry.name)
+                            if entry_ext.lower() == '.gz':
                                 entry_fname, entry_ext = os.path.splitext(entry.name)
-                                if entry_ext.lower() == '.gz':
-                                    entry_fname, entry_ext = os.path.splitext(entry.name)
-                                if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
-                                        sidecar_dict.modality_field:
+                            if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
+                                    sidecar_dict.modality_field:
+                                for idx in range(1, len(piece_fname)):
+                                    # a bit greedy because some case are not possible but should work
+                                    j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
+                                             sidecar_dict.extension
                                     if entry.name == j_name:
                                         # jsondict['fileLoc'] = entry.path
                                         sidecar_dict.read_file(entry.path)
@@ -314,17 +322,28 @@ class BidsBrick(dict):
                                                                                         value.startswith('ses-'))]
                     has_broken = False
                     with os.scandir(drname) as it:
-                        for idx in range(1, len(piece_fname)):
-                            j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
-                                     sidecar_dict.extension
-                            for entry in it:
+                        for entry in it:
+                            entry_fname, entry_ext = os.path.splitext(entry.name)
+                            if entry_ext.lower() == '.gz':
                                 entry_fname, entry_ext = os.path.splitext(entry.name)
-                                if entry_ext.lower() == '.gz':
-                                    entry_fname, entry_ext = os.path.splitext(entry.name)
-                                if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
-                                        sidecar_dict.modality_field:
+                            if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
+                                    sidecar_dict.modality_field:
+                                for idx in range(1, len(piece_fname)):
+                                    j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
+                                             sidecar_dict.extension
                                     if entry.name == j_name:
                                         sidecar_dict.read_file(entry.path)
+                                        if isinstance(sidecar_dict, IeegChannelsTSV):
+                                            idt = 1
+                                            while idt < len(tmp_sidecar):
+                                                ids = 1
+                                                name_tmp = tmp_sidecar[idt][0].lower()
+                                                status_tmp = tmp_sidecar[idt][10]
+                                                while ids < len(sidecar_dict):
+                                                    if sidecar_dict[ids][0] == name_tmp:
+                                                        sidecar_dict[ids][10] = status_tmp
+                                                    ids += 1
+                                                idt += 1
                                         has_broken = True
                                         break
                             if has_broken:
@@ -333,19 +352,31 @@ class BidsBrick(dict):
                 drname = os.path.dirname(drname)
                 has_broken = False
                 with os.scandir(drname) as it:
-                    for idx in range(1, len(piece_fname)):
-                        j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
-                                 sidecar_dict.extension
-                        for entry in it:
+                    for entry in it:
+                        entry_fname, entry_ext = os.path.splitext(entry.name)
+                        if entry_ext.lower() == '.gz':
                             entry_fname, entry_ext = os.path.splitext(entry.name)
-                            if entry_ext.lower() == '.gz':
-                                entry_fname, entry_ext = os.path.splitext(entry.name)
-                            if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
-                                    sidecar_dict.modality_field:
-
+                        if entry_ext == sidecar_dict.extension and entry_fname.split('_')[-1] == \
+                                sidecar_dict.modality_field:
+                            for idx in range(1, len(piece_fname)):
+                                # a bit greedy because some case are not possible but should work
+                                j_name = '_'.join(piece_fname[0:-idx] + [sidecar_dict.modality_field]) + \
+                                         sidecar_dict.extension
                                 if entry.name == j_name:
                                     # jsondict['fileLoc'] = entry.path
                                     sidecar_dict.read_file(entry.path)
+                                    #To put the status of channel as bad if it's written in data2import
+                                    if isinstance(sidecar_dict, IeegChannelsTSV):
+                                        idt = 1
+                                        while idt < len(tmp_sidecar):
+                                            ids = 1
+                                            name_tmp = tmp_sidecar[idt][0].lower()
+                                            status_tmp = tmp_sidecar[idt][10]
+                                            while ids < len(sidecar_dict):
+                                                if sidecar_dict[ids][0] == name_tmp:
+                                                    sidecar_dict[ids][10] = status_tmp
+                                                ids+=1
+                                            idt+=1
                                     has_broken = True
                                     break
                         if has_broken:
@@ -527,54 +558,36 @@ class BidsBrick(dict):
 
     def check_requirements(self, specif_subs=None):
 
-        def get_amount_of_file(sub_mod_list, type_dict, modality):
+        def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
+
+            type_dict = mod_req['type']
             if isinstance(type_dict, dict):
                 type_dict = [type_dict]
-            # add empty keys to type dict empty_keys = [key for key in keylist if key not in type_req]
 
             amount = 0
             if sub_mod_list:
                 for type_req in type_dict:
+                    non_specif_keys = [key for key in type_req if type_req[key] == '_']
                     if 'modality' in type_req and type_req['modality'] == 'photo':
                         keylist = Photo.keylist
                     else:
                         keylist = eval(modality + '.keylist')
-                    # add empty keys to type_req dict for sake of comparison with modality dict
-                    [type_req.__setitem__(key, '') for key in keylist if key not in type_req and
-                     key not in ['sub', 'fileLoc'] + BidsSidecar.get_list_subclasses_names()]
-                    non_specif_keys = [key for key in type_req if type_req[key] == '_']
-
-                    # empty_keys = [key for key in keylist if key not in type_req]
-                    # reduced_dict = {key: type_req[key] for key in type_req if not type_req[key] == '_'}
+                    empty_keys = [key for key in keylist if key not in type_req]
+                    reduced_dict = {key: type_req[key] for key in type_req if not type_req[key] == '_'}
                     for sub_mod in sub_mod_list:
-                        attr_dict = sub_mod.get_attributes(['sub', 'fileLoc'])
-                        # replace value for non specific keys by '_' in mod attribute dict if not empty for sake of
-                        # comparison (ex: 'run': '01' by run: '_' but 'run': '' remains unchanged)
-                        [attr_dict.__setitem__(key, '_') for key in non_specif_keys if key in attr_dict and attr_dict[key]]
-                        if attr_dict == type_req:
+                        attr_dict = sub_mod.get_attributes(empty_keys)
+                        if attr_dict == reduced_dict and not non_specif_keys or \
+                                [key for key in non_specif_keys if key in keylist and
+                                                                   key in attr_dict and attr_dict[key]]:
                             amount += 1
-            return amount
 
-        def check_dict_from_req(sub_mod_list, mod_req, modality, sub_name):
-            type_dict = mod_req['type']
-            amount = get_amount_of_file(sub_mod_list, type_dict, modality)
-
-            if isinstance(mod_req['amount'], (int, dict)):
-                if isinstance(mod_req['amount'], int):
-                    req_amount = mod_req['amount']
-                else:
-                    req_amount = get_amount_of_file(sub_mod_list, mod_req['amount'], modality)
-
-                if amount == 0:
-                    str_iss = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
-                elif amount < req_amount:
-                    str_iss = 'Subject ' + sub_name + ' misses ' + str(req_amount-amount) \
-                                + ' files of type: ' + str(type_dict) + '.'
-                else:
-                    return True
+            if amount == 0:
+                str_iss = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
+            elif amount < mod_req['amount']:
+                str_iss = 'Subject ' + sub_name + ' misses ' + str(mod_req['amount']-amount) \
+                            + 'files of type: ' + str(type_dict) + '.'
             else:
-                str_iss = 'For subject ' + sub_name + ', the amount parameter for ' + str(type_dict) + \
-                          ' is wrongly set. It should be an integer or a dictionary.'
+                return True
 
             self.write_log(str_iss)
             return False
@@ -607,12 +620,10 @@ class BidsBrick(dict):
                             self.is_subject_present(sub)
                             sub_index = self.curr_subject['index']
                             curr_sub_mod = self['Subject'][sub_index][bidsbrick_key[0]]
-                            bln_list = []
                             for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
                                 flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
-                                bln_list.append(flag_req)
-                            parttsv_idx = sub_list.index(sub)
-                            self['ParticipantsTSV'][1+parttsv_idx][bidsbrick_key[1]] = str(all(bln_list))
+                                parttsv_idx = sub_list.index(sub)
+                                self['ParticipantsTSV'][1+parttsv_idx][bidsbrick_key[1]] = str(flag_req)
 
             if sub_list and integrity_list:
                 idx_elec_name = IeegElecTSV.header.index('group')
@@ -697,9 +708,10 @@ class BidsBrick(dict):
                     self['ParticipantsTSV'][1 + present_sub_list.index(sub)][subject_ready_idx] = str(False)
             self['ParticipantsTSV'].write_file()
 
-    def convert(self):
+    def convert(self, dest_change=None):
         filename, dirname, ext = self.create_filename_from_attributes()
 
+        Nifti = 'False'
         if not Data2Import.dirname or not Data2Import.dirname:
             str_issue = 'Need import and bids directory to be set.'
             self.write_log(str_issue)
@@ -713,6 +725,43 @@ class BidsBrick(dict):
             for ext in conv_ext:
                 if os.path.exists(os.path.join(Data2Import.dirname, filename + ext)):
                     os.remove(os.path.join(Data2Import.dirname, filename + ext))
+
+            #Test to move the anat without converting
+            for anfile in os.listdir(os.path.join(Data2Import.dirname, self['fileLoc'])):
+                if os.path.isfile(os.path.join(Data2Import.dirname, self['fileLoc'], anfile)):
+                    name, ext = os.path.splitext(anfile)
+                    if ext == '.nii':
+                        old_name = os.path.join(Data2Import.dirname, self['fileLoc'], anfile)
+                        new_name = os.path.join(Data2Import.dirname, filename + ext)
+                        img = nibabel.load(old_name)
+                        header = img.header
+                        desc = header['descrip']
+                        desc = desc.tolist()
+                        desc = desc.decode("UTF8")
+                        if not self['AnatJSON']:
+                            self['AnatJSON'] = AnatJSON()
+                        self['AnatJSON']['NiftiDescription'] = desc
+                        #Write in details the AnatJSON if the description is clear
+                        '''desc_list = desc.split(' ')
+                        self['AnatJSON']['MagneticFieldStrength'] = desc_list[0][0:3]
+                        self['AnatJSON']['MRAcquisitionType'] = desc_list[1]
+                        self['AnatJSON']['ScanningSequence'] = desc_list[2]
+                        self['AnatJSON']['AcquisitionTime'] = desc_list[6]
+                        time_param = desc_list[3].split('/')
+                        for par in time_param:
+                            if par.split('=')[0] == 'TR':
+                                ms = re.findall('[0-9.]', par)
+                                self['AnatJSON']['RepetitionTime'] = ''.join(ms) + '.10e-3'
+                            elif par.split('=')[0] == 'TE':
+                                ms = re.findall('[0-9.]', par)
+                                self['AnatJSON']['EchoTime'] = ''.join(ms) + '.10e-3'
+                            elif par.split('=')[0] == 'FA':
+                                deg = re.findall('[0-9]', par)
+                                self['AnatJSON']['FlipAngle'] = ''.join(deg)'''
+                        nibabel.save(img, new_name)
+                        #shutil.copy(old_name, new_name)
+                        Nifti = 'True'
+
             cmd_line_base = '""' + converter_path + '"' + " -b y -ba y -m y -z n -f "
             cmd_line = cmd_line_base + filename + ' -o "' + Data2Import.dirname + '" "' + os.path.join(
                 Data2Import.dirname, self['fileLoc']) + '"'
@@ -728,39 +777,32 @@ class BidsBrick(dict):
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
             os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
-            try:
-                shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
-                    BidsDataset.dirname, dirname, fname))
-            except:
-                shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
-                    BidsDataset.dirname, dirname, fname))
+            shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
+                BidsDataset.dirname, dirname, fname))
             return [fname]
         else:
             str_issue = os.path.basename(self['fileLoc']) + ' cannot be converted!'
             self.write_log(str_issue)
             raise TypeError(str_issue)
 
-        os.system(cmd_line)
+        #To take into account the Nifti file
+        if Nifti == 'False':
+            os.system(cmd_line)
         list_filename = [filename + ext for ext in conv_ext]
-        # store sidecars that were already present in the data2import (those have higher priority than the ones created
-        # by converters)
-        curr_sdcrs = self.get_modality_sidecars()
-        tmp_mod = getattr(modules[__name__], self.classname())()
-        tmp_mod.copy_values(curr_sdcrs)  # necessary because curr_sdcrs is the sidecars of self and will change the same
-        # way (mutable) this makes the two separate objects
         self.get_sidecar_files(in_bids_dir=False, input_dirname=Data2Import.dirname,
                                input_filename=filename)
-        for key in curr_sdcrs:
-            # replace the sidecars obtained by converter by sidecars found in data2import if not empty (as they may have
-            # additional info)
-            if tmp_mod[key]:
-                self[key] = tmp_mod[key]
-
         os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
+        if dest_change:
+            os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
         for fname in list_filename:
             if os.path.exists(os.path.join(Data2Import.dirname, fname)):
-                shutil.move(os.path.join(Data2Import.dirname, fname),
+                if dest_change:
+                    shutil.move(os.path.join(Data2Import.dirname, fname),
+                                os.path.join(dest_change, dirname, fname))
+                else:
+                    shutil.move(os.path.join(Data2Import.dirname, fname),
                             os.path.join(BidsDataset.dirname, dirname, fname))
+
         return list_filename
 
     def is_empty(self):
@@ -924,6 +966,9 @@ class BidsSidecar(object):
             #              and self[key] == BidsSidecar.bids_default_unknown) or key not in self.keylist}
             # change into this otherwise cannot modify dataset_description.json (to test)
             attr_dict = {key: sidecar_elmt[key] for key in sidecar_elmt.keys() if sidecar_elmt[key]}
+            for key in attr_dict.keys():
+                if attr_dict[key] == 'n/a' and key in self.keys():
+                    attr_dict[key] = self[key]
             self.update(attr_dict)
         elif isinstance(self, BidsTSV) and isinstance(sidecar_elmt, list):
             if sidecar_elmt and len([word for word in sidecar_elmt[0] if word in self.required_fields]) >= \
@@ -936,6 +981,9 @@ class BidsSidecar(object):
                 sidecar_elmt = [sidecar_elmt]
             for line in sidecar_elmt:
                 self.append(line)
+        elif isinstance(self, BidsCSV):
+            attr_dict = {key: sidecar_elmt[key] for key in sidecar_elmt.keys() if sidecar_elmt[key]}
+            self.update(attr_dict)
         if simplify_flag:
             self.simplify_sidecar(required_only=False)
 
@@ -1035,27 +1083,13 @@ class BidsJSON(BidsSidecar, dict):
 class ModalityType(BidsBrick):
     required_keys = BidsBrick.required_keys + ['fileLoc']
 
-    def get_bids_dir_from_filename(self):
-        if not self['fileLoc']:
-            raise TypeError('There is no filename set for this object.')
-        if not self['sub']:
-            self.get_attributes_from_filename()
-        if not self['sub']:
-            raise TypeError(self['fileLoc'] + ' is incorrect since there is no subject attribute.')
-        dirname = os.path.dirname(self['fileLoc'])
-        dname_splt = dirname.split('sub-' + self['sub'])
-        if not len(dname_splt) == 2:
-            raise NotADirectoryError(dirname + ' is not a correct Bids directory.')
-        else:
-            return dname_splt[0]
-
 
 class Imagery(ModalityType):
     pass
 
 
 class Electrophy(ModalityType):
-    channel_type = ['EEG', 'SEEG', 'ECOG', 'MEG', 'EMG', 'ECG', 'EOG', 'Trigger', 'Misc']
+    channel_type = ['ECG', 'EOG', 'EEG', 'SEEG', 'ECOG', 'MEG', 'OTHER']
 
 
 class ImageryJSON(BidsJSON):
@@ -1146,7 +1180,7 @@ class BidsTSV(BidsSidecar, list):
         lines = [self.bids_default_unknown]*len(self.header)
         for key in dict2append:
             if key in self.header:
-                if dict2append[key] == '' or dict2append[key] is None:
+                if not dict2append[key]:
                     dict2append[key] = BidsTSV.bids_default_unknown
                 lines[self.header.index(key)] = str(dict2append[key])
         super().append(lines)
@@ -1192,6 +1226,21 @@ class BidsTSV(BidsSidecar, list):
                 alias = alias + consonants[rnd.randint(0, num_cons)]
         alias = alias + datetime.now().strftime('%y')
         return alias
+
+
+class BidsCSV(BidsSidecar, dict):
+    keylist = []
+    modality_field = ''
+
+    def __init__(self, keylist=None, modality_field=None):
+        super().__init__(modality_field=modality_field)
+        self.is_complete = False
+        if not keylist:
+            self.keylist = self.__class__.keylist
+        else:
+            self.keylist = keylist
+        for item in self.keylist:
+            self[item] = ''
 
 
 class EventsTSV(BidsTSV):
@@ -1291,23 +1340,6 @@ class Requirements(BidsBrick):
             os.makedirs(savedir)
         super().save_as_json(savedir, file_start=None, write_date=False, compress=False)
 
-    def make_option_dict(self, key):
-        req = self['Requirements']
-        new_brick = getattr(modules[__name__], key)()
-        options = dict()
-        if 'Subject' in req and key in req['Subject']:
-            for k in new_brick.keylist:
-                if k not in BidsBrick.get_list_subclasses_names() and k not in ['sub', 'modality']:
-                    options[k] = set()
-                    for elmt in req['Subject'][key]:
-                        if isinstance(elmt['type'], list):
-                            [options[k].add(l[k]) for l in elmt['type'] if k in l and not l[k] == '_']
-                        elif k in elmt['type'] and not elmt['type'][k] == '_':
-                            options[k].add(elmt['type'][k])
-                    options[k] = list(options[k])
-        options['modality'] = new_brick.allowed_modalities
-        return options
-
 
 ''' The different modality bricks, subclasses of BidsBrick. '''
 
@@ -1330,11 +1362,11 @@ class Ieeg(Electrophy):
         self['modality'] = 'ieeg'
 
 
-class IeegJSON(ElectrophyJSON):
+class IeegJSON(BidsJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
-               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration', 'RecordingType',
+               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDate', 'RecordingDuration', 'RecordingType',
                'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'iEEGPlacementScheme',
                'iEEGReferenceScheme', 'Stimulation', 'Medication']
     required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
@@ -1375,81 +1407,163 @@ class IeegPhoto(Photo):
     pass
 
 
+class IeegElecCSV(BidsCSV):
+    keylist = ['sub', 'ses', 'modality', 'Manufacturer', 'model', 'fileLoc']
+    #header = ['contact', 'MNI', 'T1pre Scanner Based', 'MarsAtlas', 'MarsAtlasFull', 'Freesurfer', ]
+    #allowed_file_formats = ['.csv']
+
+    def __init__(self):
+        super().__init__()
+
+    def create_dirname(self, bids_dir):
+        sub = 'sub-' + self['sub']
+        ses = 'ses-' + self['ses']
+        mod = self['modality']
+        PathImplant = os.path.join(bids_dir, sub, ses, mod)
+        return PathImplant
+
+    def get_xyz(self, str):
+        xyz = str.split('[')
+        xyz = xyz[1].split(']')
+        xyz = xyz[0].split(',')
+        coord = list(xyz)
+        x = coord[0]
+        y = coord[1]
+        z = coord[2]
+        return x, y, z
+
+    def get_the_size(self):
+        m_split = self['model'].split('-')
+        if m_split[0].lower() == 'dixi':
+            ray_elec = 0.4
+            h_elec = 2
+        elif m_split[0].lower() == 'adtech':
+            if m_split[1][0:2] == 'SD':
+                ray_elec = 1.1 / 2
+                h_elec = 2.4
+            elif m_split[1] == 'ET':
+                ray_elec = 1.1 / 2
+                h_elec = 2.4
+            elif m_split[1][0:2] == 'BF':
+                if m_split[2] == '9P':
+                    ray_elec = 1.1 / 2
+                    h_elec = 2.4
+                elif m_split[2] == 'SP51X_without2firstcontactsClose':
+                    ray_elec = 1.1 / 2
+                    h_elec = 1.57
+                else:
+                    ray_elec = 1.3 / 2
+                    h_elec = 1.57
+            elif m_split[1][0:3] == 'old':
+                ray_elec = 1.1 / 2
+                h_elec = 1.57
+            else:
+                ray_elec = 1.1 / 2
+                h_elec = 2.4
+        elif m_split[0].lower() == 'alcis':
+            ray_elec = 0.8 / 2
+            h_elec = 2
+        elif m_split[0].lower() == 'alcys':
+            ray_elec = 1 / 2
+            h_elec = 1
+        elif m_split[0].lower() == 'pmt':
+            ray_elec = 0.8 / 2
+            h_elec = 2
+            if m_split[1] == '8Large':
+                ray_elec = 1.2 / 2
+                h_elec = 4
+        elif m_split[0].lower() == 'medtronic':
+            ray_elec = 1.3 / 2
+            h_elec = 1
+        elif m_split[0].lower() == 'montrealhomemade':
+            ray_elec = 1 / 2
+            h_elec = 1
+        else:
+            ray_elec = 0.4
+            h_elec = 2
+
+        size = round(2 * math.pi * ray_elec * h_elec, 2)
+        return size
+
+    def create_ElecTSV_file(self, Pathname, bids_import):
+
+        def create_CoordSys_file(space, sub, ses, Pathname):
+            CoordSys = IeegCoordSysJSON()
+            CoordSys['iEEGCoordinateSystem'] = space
+            CoordSys['iEEGCoordinateUnits'] = 'mm'
+            CoordSys['iEEGCoordinateProcessingDescription'] = 'SEEG contacts segmentation on MRI scan'
+            CoordSys['IntendedFor'] = 'sub-' + sub + '\\ses-' + ses + '\\anat\\sub-' + sub + '_ses-' + ses + '_acq-postimp_T1w.nii'
+            FileName = 'sub-' + sub +'_ses-' + ses + '_space-' + space + '_coordsystem.json'
+
+            CoordSys.simplify_sidecar(required_only=False)
+            CoordSys.write_file(os.path.join(Pathname, FileName))
+
+
+        ElecMNITSV = IeegElecTSV()
+        ElecNativeTSV = IeegElecTSV()
+        linecsv = []
+        filetoconvert = os.path.join(bids_import, self['fileLoc'])
+        with open(filetoconvert, 'r') as csvin:
+            csvDict = csv.reader(csvin, delimiter='\t')
+            for row in csvDict:
+                linecsv.append(row)
+        lengthR = linecsv.__len__()
+        lengthC = linecsv[2].__len__()
+
+        Header_TSV = IeegElecTSV.required_fields + ['type'] + linecsv[2][3:lengthC]
+        ElecMNITSV.header = Header_TSV
+        ElecNativeTSV.header = Header_TSV
+        ElecMNITSV.clear()
+        ElecNativeTSV.clear()
+
+        dictMNI = dict()
+        dictNative = dict()
+        size_type = self.get_the_size()
+        for val in linecsv[3:lengthR - 13]:
+            if val == []:
+                pass
+            else:
+                i = 0
+                while i < len(val):
+                    if i == 0:
+                        dictMNI['name'] = val[i]
+                        dictNative['name'] = val[i]
+                    elif i == 1:
+                        x, y, z = self.get_xyz(val[i])
+                        dictMNI['x'] = x
+                        dictMNI['y'] = y
+                        dictMNI['z'] = z
+                    elif i == 2:
+                        x, y, z = self.get_xyz(val[i])
+                        dictNative['x'] = x
+                        dictNative['y'] = y
+                        dictNative['z'] = z
+                    elif i >= 3:
+                        dictMNI[Header_TSV[i+2]] = val[i]
+                        dictNative[Header_TSV[i+2]] = val[i]
+                    i += 1
+
+                dictMNI['size'] = size_type
+                dictNative['size'] = size_type
+                dictMNI['type'] = self['model']
+                dictNative['type'] = self['model']
+
+                ElecMNITSV.append(dictMNI)
+                ElecNativeTSV.append(dictNative)
+
+        #Write the TSV files and associate
+        MNIname = 'sub-'+ self['sub'] + '_ses-' + self['ses'] + '_space-MNI_electrodes.tsv'
+        Nativename = 'sub-' + self['sub'] + '_ses-' + self['ses'] + '_space-fsnative_electrodes.tsv'
+        ElecMNITSV.write_file(os.path.join(Pathname, MNIname))
+        ElecNativeTSV.write_file(os.path.join(Pathname, Nativename))
+        create_CoordSys_file(space='MNI', sub=self['sub'], ses=self['ses'], Pathname=Pathname)
+        create_CoordSys_file(space='fsnative', sub=self['sub'], ses=self['ses'], Pathname=Pathname)
+
+
 class IeegGlobalSidecars(GlobalSidecars):
     complementary_keylist = ['IeegElecTSV', 'IeegCoordSysJSON', 'IeegPhoto']
     required_keys = BidsBrick.required_keys
     allowed_file_formats = ['.tsv', '.json'] + IeegPhoto.allowed_file_formats
-    allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
-
-
-""" EEG brick with its file-specific (EegJSON, EegChannelsTSV) and global sidecar 
-(EegCoordSysJSON, EegElecTSV or EegPhoto) files. """
-
-
-class Eeg(Electrophy):
-
-    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'EegJSON',
-                                   'EegChannelsTSV', 'EegEventsTSV']
-    required_keys = Electrophy.required_keys + ['task', 'modality']
-    allowed_modalities = ['eeg']
-    allowed_file_formats = ['.edf', '.vhdr']
-    readable_file_formats = allowed_file_formats + ['.eeg', '.trc']
-    channel_type = ['EEG']
-
-    def __init__(self):
-        super().__init__()
-        self['modality'] = 'eeg'
-
-
-class EegJSON(ElectrophyJSON):
-    keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
-               'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
-               'ECOGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
-               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration', 'RecordingType',
-               'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'EEGPlacementScheme',
-               'EEGReferenceScheme', 'Stimulation', 'Medication']
-    required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
-
-
-class EegChannelsTSV(ChannelsTSV):
-    """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
-    frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
-
-    header = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
-              'description', 'status', 'status_description', 'software_filters']
-    required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
-    modality_field = 'channels'
-
-
-class EegEventsTSV(EventsTSV):
-    """Store the info of the #_events.tsv."""
-    pass
-
-
-class EegElecTSV(BidsTSV):
-    header = ['name', 'x', 'y', 'z', 'size', 'type', 'material', 'tissue', 'manufacturer', 'grid_size', 'group',
-              'hemisphere']
-    required_fields = ['name', 'x', 'y', 'z', 'size']
-    modality_field = 'electrodes'
-
-
-class EegCoordSysJSON(BidsJSON):
-    keylist = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateProcessingDescription', 'IntendedFor',
-               'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
-               'AssociatedImageCoordinateSystemDescription', 'EEGCoordinateProcessingReference']
-    required_keys = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateProcessingDescription',
-                     'IntendedFor', 'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
-    modality_field = 'coordsystem'
-
-
-class EegPhoto(Photo):
-    pass
-
-
-class EegGlobalSidecars(GlobalSidecars):
-    complementary_keylist = ['EegElecTSV', 'EegCoordSysJSON', 'EegPhoto']
-    required_keys = BidsBrick.required_keys
-    allowed_file_formats = ['.tsv', '.json'] + EegPhoto.allowed_file_formats
     allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
 
 
@@ -1470,7 +1584,7 @@ class Anat(Imagery):
 
 
 class AnatJSON(ImageryJSON):
-    pass
+    keylist = ImageryJSON.keylist + ['ContrastBolusIngredient', 'NiftiDescription']
 
 
 """ Func brick with its file-specific sidecar files. """
@@ -1563,19 +1677,10 @@ class Meg(Electrophy):
     allowed_modalities = ['meg']
     allowed_file_formats = ['.ctf', '.fif', '4D']
     readable_file_formats = allowed_file_formats
-    channel_type = ['MEG']
 
     def __init__(self):
         super().__init__()
         self['modality'] = 'meg'
-
-
-class MegJSON(ElectrophyJSON):
-    pass
-
-
-class MegChannelsTSV(ChannelsTSV):
-    pass
 
 
 class MegEventsTSV(EventsTSV):
@@ -1609,24 +1714,24 @@ class BehEventsTSV(EventsTSV):
 
 class Subject(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Eeg', 'Ieeg',
-                                   'Beh', 'IeegGlobalSidecars']
+    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Ieeg',
+                                   'Beh', 'IeegGlobalSidecars', 'IeegElecCSV', 'age', 'sex']
     required_keys = BidsBrick.required_keys
 
     def __setitem__(self, key, value):
-        if value and key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
+        if value and key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names() + BidsCSV.get_list_subclasses_names():
             if value['sub'] and self['sub'] and not value['sub'] == self['sub']:
                 err_str = value['fileLoc'] + ' cannot be added to ' + self['sub'] + ' since sub: ' + value['sub']
                 self.write_log(err_str)
                 raise KeyError(err_str)
         super().__setitem__(key, value)
         # if Subject 'sub' attribut changes than it changes all 'sub' of its Modality and globalsidecar objects
-        if key == 'sub' and value:
+        '''if key == 'sub' and value:
             for subkey in self:
                 if subkey in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
                     if self[subkey]:
                         for modalityy in self[subkey]:
-                            modalityy['sub'] = self['sub']
+                            modalityy['sub'] = self['sub']'''
 
     def get_attr_tsv(self, parttsv):
         if isinstance(parttsv, ParticipantsTSV):
@@ -1654,6 +1759,9 @@ class Pipeline(BidsBrick):
 class Derivatives(BidsBrick):
 
     keylist = ['Pipeline']
+
+    def __init__(self):
+        super().__init__()
 
 
 class Code(BidsBrick):
@@ -1685,7 +1793,8 @@ class DatasetDescJSON(BidsJSON):
         super().__setitem__(key, value)
 
     def write_file(self, jsonfilename=None):
-        jsonfilename = os.path.join(BidsDataset.dirname, DatasetDescJSON.filename)
+        if not jsonfilename:
+            jsonfilename = os.path.join(BidsDataset.dirname, DatasetDescJSON.filename)
         super().write_file(jsonfilename)
 
     def read_file(self, jsonfilename=None):
@@ -1756,7 +1865,8 @@ class ParticipantsTSV(BidsTSV):
         super().__init__()
 
     def write_file(self, tsv_full_filename=None):
-        tsv_full_filename = os.path.join(BidsDataset.dirname, ParticipantsTSV.filename)
+        if not tsv_full_filename:
+            tsv_full_filename = os.path.join(BidsDataset.dirname, ParticipantsTSV.filename)
 
         super().write_file(tsv_full_filename)
 
@@ -1790,6 +1900,7 @@ class ParticipantsTSV(BidsTSV):
 
 class MetaBrick(BidsBrick):
     curr_subject = {}
+    curr_pipeline = {}
     dirname = None
 
     def is_subject_present(self, subject_label):
@@ -1800,6 +1911,7 @@ class MetaBrick(BidsBrick):
         Ex: bids.is_subject_present('05') ->
         self.curr_subject = {'Subject': Suject(), 'isPresent': boolean, 'index': integer}
         """
+
         self.curr_subject = {'Subject': Subject(), 'isPresent': False, 'index': None}
         sub_list = self.get_subject_list()
         if subject_label in sub_list:
@@ -1807,11 +1919,45 @@ class MetaBrick(BidsBrick):
             self.curr_subject['Subject'] = self['Subject'][index]
             self.curr_subject.update({'isPresent': True, 'index': index})
 
+    def is_pipeline_present(self, pipeline):
+        self.curr_pipeline = {'Pipeline': Pipeline(), 'isPresent': False, 'index': None}
+        pip_list = self.get_derpip_list()
+        pipeline_label = pipeline['name']
+        pipeline_subject = pipeline['Subject']
+        if pipeline_label in pip_list:
+            indexPip = pip_list.index(pipeline_label)
+            #indexDer = der_list.index('Pipeline')
+            self.curr_pipeline['Pipeline'] = self['Derivatives'][-1]['Pipeline'][indexPip]
+            self.curr_pipeline.update({'isPresent': True, 'index': indexPip})
+            '''if not self['Derivatives'][-1]['Pipeline'][indexPip]['Subject']:
+                self['Derivatives'][-1]['Pipeline'][indexPip]['Subject'] = Subject()'''
+            #Add the subject of the pipeline in the self
+            for sub in pipeline_subject:
+                sub_present = False
+                #Ajouter un index pour trouver le sujet et verifier sa présence car bcp de sujet et pas toujours -1
+                for sub_pip in self['Derivatives'][-1]['Pipeline'][indexPip]['Subject']:
+                    if sub['sub'] == sub_pip['sub']:
+                        sub_pip.update(sub.get_attributes())
+                        sub_present = True
+                if not sub_present:
+                    #self['Derivatives'][-1]['Pipeline'][indexPip]['Subject'][-1] = Subject()
+                    self['Derivatives'][-1]['Pipeline'][indexPip]['Subject'].append(Subject())
+                    self['Derivatives'][-1]['Pipeline'][indexPip]['Subject'][-1].update(sub.get_attributes())
+
+    def get_derpip_list(self):
+        der_list = list()
+        pip_list = list()
+        for der in self['Derivatives']:
+            der_list.append(der['Pipeline'])
+            for pip in der['Pipeline']:
+                pip_list.append(pip['name'])
+        return pip_list
+
     def get_subject_list(self):
         return [sub['sub'] for sub in self['Subject']]
 
     def get_object_from_filename(self, filename, sub_id=None):
-        if filename.__class__.__name__ in ['str', 'unicode']:  # py2/py3 compatible...
+        if isinstance(filename, str):
             sub_list = self.get_subject_list()
             if isinstance(self, BidsDataset):
                 fname = os.path.splitext(os.path.basename(filename))[0]
@@ -1903,7 +2049,8 @@ class MetaBrick(BidsBrick):
 
 
 class Data2Import(MetaBrick):
-    keylist = ['Subject', 'DatasetDescJSON', 'Derivatives', 'UploadDate']
+    #Add Derivatives in keylist
+    keylist = ['Subject', 'Derivatives', 'DatasetDescJSON', 'UploadDate']
     filename = 'data2import.json'
     requirements = None
     curr_log = ''
@@ -2215,7 +2362,7 @@ class BidsDataset(MetaBrick):
 
     def import_data(self, data2import, keep_sourcedata=True, keep_file_trace=True):
 
-        def push_into_dataset(bids_dst, mod_dict2import, keep_srcdata, keep_ftrack):
+        def push_into_dataset(bids_dst, mod_dict2import, keep_srcdata, keep_ftrack, dest_deriv=None, bids_orig=None):
             filename, dirname, ext = mod_dict2import.create_filename_from_attributes()
 
             fname2import, ext2import = os.path.splitext(mod_dict2import['fileLoc'])
@@ -2226,18 +2373,36 @@ class BidsDataset(MetaBrick):
             mod_type = mod_dict2import.classname()
             sub = bids_dst.curr_subject['Subject']
 
-            # if ext2import == '.gz':
-            #     fname2import, ext2import = os.path.splitext(fname2import)
-            #     orig_ext = ext2import + orig_ext
-
-            fnames_list = mod_dict2import.convert()
-            tmp_attr = mod_dict2import.get_attributes()
-            tmp_attr['fileLoc'] = os.path.join(BidsDataset.dirname, dirname, fnames_list[0])
-            if isinstance(mod_dict2import, GlobalSidecars):
-                sub[mod_type] = eval(mod_type + '(tmp_attr["fileLoc"])')
+            if ext2import == '.txt':
+                path2import = os.path.join(dest_deriv, dirname, filename + '.txt')
+                os.makedirs(os.path.join(dest_deriv, dirname), exist_ok=True)
+                shutil.copyfile(os.path.join(Data2Import.dirname, modality['fileLoc']), path2import)
+                fnames_list = filename+'.txt'
+                tmp_attr = mod_dict2import.get_attributes()
+                tmp_attr['fileLoc'] = os.path.join(bids_dst.dirname, dirname, fnames_list)
             else:
-                sub[mod_type] = eval(mod_type + '()')
-            sub[mod_type][-1].update(tmp_attr)
+                fnames_list = mod_dict2import.convert(dest_deriv)
+                tmp_attr = mod_dict2import.get_attributes()
+                tmp_attr['fileLoc'] = os.path.join(bids_dst.dirname, dirname, fnames_list[0])
+            if bids_orig:
+                pip = bids_orig.curr_pipeline['Pipeline']
+                for sub_list in pip['Subject']:
+                    if sub['sub'] == sub_list['sub']:
+                        sub_pip = sub_list
+                if isinstance(mod_dict2import, GlobalSidecars):
+                    sub[mod_type] = eval(mod_type + '(tmp_attr["fileLoc"])')
+                    sub_pip[mod_type] = eval(mod_type + '(tmp_attr["fileLoc"])')
+                else:
+                    sub[mod_type] = eval(mod_type + '()')
+                    sub_pip[mod_type] = eval(mod_type + '()')
+                sub[mod_type][-1].update(tmp_attr)
+                sub_pip[mod_type][-1].update(tmp_attr)
+            else:
+                if isinstance(mod_dict2import, GlobalSidecars):
+                    sub[mod_type] = eval(mod_type + '(tmp_attr["fileLoc"])')
+                else:
+                    sub[mod_type] = eval(mod_type + '()')
+                sub[mod_type][-1].update(tmp_attr)
 
             if keep_srcdata and not isinstance(mod_dict2import, GlobalSidecars):
                 scr_data_dirname = os.path.join(BidsDataset.dirname, 'sourcedata', dirname)
@@ -2250,10 +2415,7 @@ class BidsDataset(MetaBrick):
                 # else:
                 #     # use copy2 for files
                 #     shutil.copy2(path_src, path_dst)
-                try:
-                    shutil.move(path_src, path_dst)
-                except:
-                    shutil.copy2(path_src, path_dst)
+                shutil.move(path_src, path_dst)
                 src_data_sub = bids_dst['SourceData'][-1]['Subject'][bids_dst.curr_subject['index']]
                 src_data_sub[mod_type] = eval(mod_type + '()')
                 tmp_attr = mod_dict2import.get_attributes()
@@ -2266,7 +2428,6 @@ class BidsDataset(MetaBrick):
                     scr_track = bids_dst['SourceData'][-1]['SrcDataTrack']
                     scr_track.append({'orig_filename': orig_fname, 'bids_filename': filename,
                                       'upload_date': upload_date})
-
             if sidecar_flag:
                 for sidecar_tag in sidecar_flag:
                     if mod_dict2import[sidecar_tag]:
@@ -2275,10 +2436,17 @@ class BidsDataset(MetaBrick):
                                                      mod_dict2import[sidecar_tag].modality_field)
                         else:
                             fname = filename
-                        fname2bewritten = os.path.join(BidsDataset.dirname, dirname, fname +
+                        if dest_deriv:
+                            fname2bewritten = os.path.join(dest_deriv, dirname, fname +
+                                                           mod_dict2import[sidecar_tag].extension)
+                        else:
+                            fname2bewritten = os.path.join(BidsDataset.dirname, dirname, fname +
                                                        mod_dict2import[sidecar_tag].extension)
                         mod_dict2import[sidecar_tag].write_file(fname2bewritten)
-                sub[mod_type][-1].get_sidecar_files()
+                if dest_deriv:
+                    sub[mod_type][-1].get_sidecar_files(input_dirname=dest_deriv, input_filename=fname)
+                else:
+                    sub[mod_type][-1].get_sidecar_files()
 
             mod_dict2import.write_log(mod_dict2import['fileLoc'] + ' was imported as ' + filename)
 
@@ -2480,15 +2648,156 @@ class BidsDataset(MetaBrick):
 
                             self.issues.remove(modality)
                             # need to get the index before importing because push_into_dataset adds data from sidecars
-                            idx2pop = copy_data2import['Subject'][import_sub_idx][modality_type].index(modality)
-                            push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
-                            self.save_as_json()
-                            self.issues.save_as_json()
-                            copy_data2import['Subject'][import_sub_idx][modality_type].pop(idx2pop)
-                            copy_data2import.save_as_json()
-                            sublist.add(sub['sub'])
+                            try:
+                                idx2pop = copy_data2import['Subject'][import_sub_idx][modality_type].index(modality)
+                                push_into_dataset(self, modality, keep_sourcedata, keep_file_trace)
+
+                                self.save_as_json()
+                                self.issues.save_as_json()
+                                copy_data2import['Subject'][import_sub_idx][modality_type].pop(idx2pop)
+                                copy_data2import.save_as_json()
+                                sublist.add(sub['sub'])
+                            except FileNotFoundError as err:
+                                self.write_log(str(err))
+                                self.is_subject_present(sub['sub'])
+                                sub_index = self.curr_subject['index']
+                                self['Subject'][sub_index][modality_type].pop(idx2pop)
+                                copy_data2import.save_as_json()
                     # if copy_data2import['Subject'][import_sub_idx].is_empty():
                     # pop empty subject
+                    elif modality_type in BidsCSV.get_list_subclasses_names():
+                        for modality in sub[modality_type]:
+                            modality = sub[modality_type]
+                            dirname= modality.create_dirname(BidsDataset.dirname)
+                            if not os.path.exists(dirname):
+                                os.makedirs(dirname)
+                            modality.create_ElecTSV_file(dirname, Data2Import.dirname)
+                            #idx2pop = copy_data2import['Subject'][import_sub_idx][modality_type].index(modality)
+                            copy_data2import['Subject'][import_sub_idx].pop(modality_type)
+                            copy_data2import.save_as_json()
+
+            #Add the derivatives folder
+            for dev in data2import['Derivatives']:
+                idxdev = data2import['Derivatives'].index(dev)
+                if not os.path.exists(os.path.join(BidsDataset.dirname, 'Derivatives')):
+                    os.makedirs(os.path.join(BidsDataset.dirname, 'Derivatives'))
+                for pip in dev['Pipeline']:
+                    idxpip = dev['Pipeline'].index(pip)
+                    if not os.path.exists(os.path.join(BidsDataset.dirname, 'Derivatives', pip['name'])):
+                        os.makedirs(os.path.join(BidsDataset.dirname, 'Derivatives', pip['name']))
+                    self.is_pipeline_present(pip)
+                    pip_present = self.curr_pipeline['isPresent']
+                    pip_index = self.curr_pipeline['index']
+                    pipDataset = PipelineDataset()
+                    pipDataset['ParticipantsTSV'] = ParticipantsTSV()
+                    pipDataset['DatasetDescJSON'] = DatasetDescJSON()
+                    pipDataset['DatasetDescJSON']['Name'] = pip['name']
+                    if pip_present:
+                        pipCurrent = self.curr_pipeline['Pipeline']
+                        pipDataset['name'] = pipCurrent['name']
+                        for sub in pipCurrent['Subject']:
+                            pipDataset['Subject'].append(sub)
+                    else:
+                        pipDataset['Subject'] = Subject()
+                        if not self['Derivatives']:
+                            self['Derivatives'] = Derivatives()
+                        '''if not self['Derivatives'][0]['Pipeline']:
+                            self['Derivatives'][0]['Pipeline'] = Pipeline()'''
+                        pipDataset['name'] = pip['name']
+                        # pipDataset.check_if_dataset(self)
+                        size_pipeline = len(self['Derivatives'][0]['Pipeline'])
+                        self['Derivatives'][0]['Pipeline'].append(Pipeline())
+                        pip_dict = {key: pipDataset[key] for key in pipDataset.keys() if key not in BidsSidecar.get_list_subclasses_names()}
+                        self['Derivatives'][0]['Pipeline'][size_pipeline].update(pip_dict)
+                        self.is_pipeline_present(pip)
+                    pipDataset.dirname = os.path.join(BidsDataset.dirname, 'Derivatives', pip['name'])
+                    #BidsDataset.dirname = os.path.join(self.dirname, 'Derivatives', pip['name'])
+                    #Copy all it's done for Subject => Pas  correct
+                    for sub in pip['Subject']:
+                        import_sub_idx = pip['Subject'].index(sub)
+
+                        # test if subject is already present
+                        if not pipDataset.curr_subject or not pipDataset.curr_subject['Subject']['sub'] == sub['sub']:
+                            # check whether the required subject is the current subject otherwise make it the
+                            # current one
+                            pipDataset.is_subject_present(sub['sub'])
+                        sub_present = pipDataset.curr_subject['isPresent']
+                        sub_index = pipDataset.curr_subject['index']
+
+                        if sub_present and not pipDataset.curr_subject['Subject'].get_attributes(['alias', 'upload_date']) == \
+                                               sub.get_attributes(['alias', 'upload_date']):
+                            error_str = 'The subject to be imported (' + data2import.dirname + \
+                                        ') has different attributes than the analogous subject in the bids dataset (' \
+                                        + str(sub.get_attributes()) + '=/=' + \
+                                        str(pipDataset.curr_subject['Subject'].get_attributes()) + ').'
+                            self.issues.add_issue('ImportIssue', brick=sub, description=error_str)
+                            self.write_log(error_str)
+                            continue
+
+                        for modality_type in sub.keys():
+                            if modality_type in BidsBrick.get_list_subclasses_names():
+                                for modality in sub[modality_type]:
+                                    self.write_log('Start importing in Derivatives/' + modality['fileLoc'])
+                                    """check again if the subject is present because it could be absent at the beginning but
+                                    you could have added data from the subject in a previous iteration of the loop.
+                                    For instance, if you add a T1w and by mistake add the another T1w but with the same
+                                    attributes you need to know what was previously imported for the subject"""
+                                    pipDataset.is_subject_present(sub['sub'])
+                                    sub_present = pipDataset.curr_subject['isPresent']
+                                    sub_index = pipDataset.curr_subject['index']
+
+                                    if sub_present:
+                                        nb_ses, bids_ses = pipDataset.get_number_of_session4subject(sub['sub'])
+                                        if modality['ses'] and bids_ses:
+                                            same_attr_der = have_data_same_attrs_and_sidecars(pipDataset, modality, sub_index)
+                                            if same_attr_der:
+                                                string_issue = 'Subject ' + sub['sub'] + '\'s file:' + modality[
+                                                    'fileLoc'] \
+                                                               + ' was not imported from ' + data2import.dirname + \
+                                                               ' because ' + \
+                                                               modality.create_filename_from_attributes()[0] + \
+                                                               ' is already present in the bids dataset).'
+                                                self.issues.add_issue('ImportIssue', brick=modality,
+                                                                      description=string_issue)
+                                                self.write_log(string_issue)
+                                                continue
+                                        else:
+                                            string_issue = 'Session structure of the data to be imported (' + \
+                                                            data2import.dirname + ')does not ' \
+                                                                                     'match the one of the current dataset.\nSession label(s): ' \
+                                                            + ', '.join(bids_ses) + '.\nSubject ' + sub['sub'] + \
+                                                            ' not imported.'
+                                            self.issues.add_issue('ImportIssue', brick=modality,
+                                                                      description=string_issue)
+                                            self.write_log(string_issue)
+                                    else:
+                                        pipDataset.add_subject(sub)
+                                        pipDataset.is_subject_present(sub['sub'])
+
+                                    self.issues.remove(modality)
+                                    # need to get the index before importing because push_into_dataset adds data from sidecars
+                                    try:
+                                        dest_data_deriv = pipDataset.dirname
+                                        idx2pop = copy_data2import['Derivatives'][idxdev]['Pipeline'][idxpip]['Subject'][import_sub_idx][modality_type].index(modality)
+                                        name2import, ext2import = os.path.splitext(modality['fileLoc'])
+                                        push_into_dataset(pipDataset, modality, keep_sourcedata, keep_file_trace, dest_data_deriv, self)
+
+                                        copy_data2import['Derivatives'][idxdev]['Pipeline'][idxpip]['Subject'][import_sub_idx][modality_type].pop(idx2pop)
+                                        copy_data2import.save_as_json()
+                                        sublist.add(sub['sub'])
+                                    except FileNotFoundError as err:
+                                        self.write_log(str(err))
+                                        copy_data2import.save_as_json()
+
+                                    part_present, part_info, part_index = pipDataset['ParticipantsTSV'].is_subject_present(sub)
+                                    if not part_present:
+                                        pipDataset['ParticipantsTSV'].add_subject(sub)
+                            # if copy_data2import['Subject'][import_sub_idx].is_empty():
+                            # pop empty subject
+                    if pipDataset['DatasetDescJSON']:
+                        pipDataset['DatasetDescJSON'].write_file(jsonfilename=os.path.join(pipDataset.dirname, 'dataset_description.json'))
+                    pipDataset['ParticipantsTSV'].write_file(tsv_full_filename=os.path.join(pipDataset.dirname, 'participants.tsv'))
+                    self.save_as_json()
 
             if copy_data2import.is_empty():
                 if all(file.endswith('.json') or file.endswith('.tsv') or file.endswith('.flt') or file.endswith('.mtg')
@@ -2501,6 +2810,7 @@ class BidsDataset(MetaBrick):
 
             if self['DatasetDescJSON']:
                 self['DatasetDescJSON'].write_file()
+
             if sublist:
                 sublist = list(sublist)
                 self.check_requirements(specif_subs=sublist)
@@ -2916,6 +3226,20 @@ class BidsDataset(MetaBrick):
                         self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
                                               sub=mod_brick['sub'], path=data2import.dirname,
                                               state=state)
+                elif key in BidsCSV.get_list_subclasses_names():
+                    if sub[key]:
+                        self.issues.add_issue('UpldFldrIssue', fileLoc=sub[key]['fileLoc'],
+                                          sub=sub[key]['sub'], path=data2import.dirname,
+                                          state=state)
+        for dev in data2import['Derivatives']:
+            for pip in dev['Pipeline']:
+                for sub in pip['Subject']:
+                    for key in sub:
+                        if key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
+                            for mod_brick in sub[key]:
+                                self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
+                                                      sub=mod_brick['sub'], path=data2import.dirname,
+                                                      state=state)
 
     def verif_upload_issues(self, import_dir):
         return self.issues.verif_upload_issues(import_dir)
@@ -3114,7 +3438,7 @@ class Issue(BidsBrick):
                         iss_test = getattr(modules[__name__], issue_key)()
                         try:
                             iss_test.copy_values(issue)
-                        except FileNotFoundError:  # is the only error that could occur
+                        except FileNotFoundError: # is the only error that could occur
                             self.write_log('Related ' + issue_key + ' issues are removed')
                             read_json[issue_key].pop(read_json[issue_key].index(issue))
 
@@ -3283,6 +3607,85 @@ class Issue(BidsBrick):
 
 ''' Additional class to handle pipelines and relative actions '''
 
+
+class PipelineDataset(BidsDataset):
+
+    keylist = ['Subject', 'name', 'DatasetDescJSON', 'ParticipantsTSV']
+    curr_name = None
+    list_ext = ['.nii', '.vhdr', '.txt']
+
+    def __init__(self):
+        self.requirements = BidsDataset.requirements
+        self.parsing_path = BidsDataset.parsing_path
+        self.log_path = BidsDataset.log_path
+        self.curr_subject = {'Subject': Subject(), 'isPresent': False, 'index': None}
+
+        for key in self.keylist:
+            if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
+                self[key] = []
+            elif key in BidsJSON.get_list_subclasses_names():
+                self[key] = {}
+            else:
+                self[key] = ''
+
+    def parse_filename_dervivatives(self, mod_dict, file):
+        fname_pieces = file.split('_')
+        for word in fname_pieces:
+            w = word.split('-')
+            if len(w) == 2 and w[0] in mod_dict.keys():
+                mod_dict[w[0]] = w[1]
+        if 'modality' in mod_dict and not mod_dict['modality']:
+            mod_dict['modality'] = fname_pieces[-1]
+        return mod_dict
+
+    def check_if_dataset(self, Bids_source):
+        for dir in os.listdir(self.dirname):
+            if dir.split('-')[0] == 'sub' and os.path.isdir(os.path.join(self.dirname, dir)):
+                sub = dir.split('-')[1]
+                if not self['Subject']:
+                    self['Subject'] = Subject()
+                    index_sub = 0
+                else:
+                    sub_list = self.get_subject_list()
+                    if sub in sub_list:
+                        index_sub = sub_list.index(sub)
+                    else:
+                        index_sub = len(sub_list)
+                self['Subject'][index_sub]['sub'] = sub
+                self.get_attributes_from_BidsSource(index_sub, Bids_source, sub)
+                for dirSub in os.listdir(os.path.join(self.dirname, dir)):
+                    if dirSub.split('-')[0] == 'ses' and os.path.isdir(os.path.join(self.dirname, dir, dirSub)):
+                        for dirSubSes in os.listdir(os.path.join(self.dirname, dir, dirSub)):
+                            if os.path.isdir(os.path.join(self.dirname, dir, dirSub, dirSubSes)):
+                                for key in self['Subject'][-1].keylist:
+                                    if dirSubSes.lower() == key.lower():
+                                        self['Subject'][-1][key] = eval(key + '()')
+                                        modal_dict = eval(key + '()')
+                                        for fileDev in os.listdir(os.path.join(self.dirname, dir, dirSub, dirSubSes)):
+                                            name, ext = fileDev.split('.')
+                                            index_mod = 0
+                                            if ext in self.list_ext:
+                                                self['Subject'][index_sub][key][index_mod] = self.parse_filename_dervivatives(modal_dict, name)
+                                                index_mod += 1
+                index_sub += 1
+
+    def get_attributes_from_BidsSource(self, index_sub, Bids_dir_source, subject_id):
+        sub_list = Bids_dir_source.get_subject_list()
+        for sub in sub_list:
+            if sub == subject_id:
+                index_source = sub_list.index(sub)
+                self['Subject'][index_sub]['age'] = Bids_dir_source['Subject'][index_source]['age']
+                self['Subject'][index_sub]['sex'] = Bids_dir_source['Subject'][index_source]['sex']
+
+    def add_subject(self, sub):
+        if not self['Subject']:
+            self['Subject'] = Subject()
+            self['Subject'][-1].update(sub.get_attributes())
+        else:
+            self['Subject'][-1].update(sub.get_attributes())
+        part_present, part_info, part_index = self['ParticipantsTSV'].is_subject_present(sub)
+        if not part_present:
+            self['ParticipantsTSV'].add_subject(sub)
 
 class Info(BidsFreeFile):
     pass
