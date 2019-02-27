@@ -28,9 +28,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.1.7'
-    bids_startfile = 'D:\\roehri\\BIDs\\small_2048_test'
-    import_startfile = 'D:\\roehri\\BIDs\\Temp_2048'
+    version = '0.1.10'
+    bids_startfile = r'D:\Data\Test_Ftract_Import'
+    import_startfile = r'D:\Data\Test_Ftract_Import\Original_deriv'
 
     def __init__(self):
         super().__init__()
@@ -1069,6 +1069,7 @@ class CommentDialog(TemplateDialog):
 class BidsTSVDialog(TemplateDialog):
 
     max_lines = 20
+    max_columns = 10
     bln_color = {'True': 'green', 'False': 'red', True: 'green', False: 'red', 'good': 'green', 'bad': 'red'}
 
     def __init__(self, parent, tsv_table, title=None):
@@ -1077,6 +1078,7 @@ class BidsTSVDialog(TemplateDialog):
             messagebox.showerror('Wrong input', error_str)
             return
         self.idx = 0
+        self.idx_col = 0
         self.str_title = title
         self.orig_order = [line[0] for line in tsv_table[1:]]
         self.main_brick = type(tsv_table)()  # copy the table  so reordering does not affect BidsTSV
@@ -1086,9 +1088,13 @@ class BidsTSVDialog(TemplateDialog):
         self.key_button = {key: '' for key in tsv_table.header}
         self.next_btn = None
         self.prev_btn = None
+        self.next_col_btn = None
+        self.prev_col_btn = None
         self.max_lines = min(self.n_lines, self.max_lines)
+        self.max_columns = min(self.n_columns, self.max_columns)
         self.key_labels = [[] for k in range(0, self.max_lines)]
         self.n_pages = round(self.n_lines / self.max_lines)
+        self.n_pages_columns = round(self.n_columns/self.max_columns)
         self.page_label_var = StringVar()
         self.page_label = None
         self.clmn_width = 0
@@ -1097,10 +1103,15 @@ class BidsTSVDialog(TemplateDialog):
         super().__init__(parent)
 
     def body(self, parent):
-        self.make_header(parent)
+        if self.n_pages_columns == 1:
+            self.make_header(parent)
+            self.max_columns = self.n_columns
         self.make_table(parent)
         self.page_label = Label(parent, textvariable=self.page_label_var)
-        self.page_label.grid(row=self.max_lines+1, column=0, columnspan=self.n_columns-2, sticky=W+E)
+        try:
+            self.page_label.grid(row=self.max_lines+1, column=0, columnspan=self.n_columns-2, sticky=W+E)
+        except:
+            pass
         if not self.n_pages == 1:
             self.prev_btn = Button(parent, text='Previous', state=DISABLED,
                                    command=lambda prnt=parent, stp=-1: self.change_page(prnt, stp))
@@ -1108,6 +1119,13 @@ class BidsTSVDialog(TemplateDialog):
             self.next_btn = Button(parent, text='Next', command=lambda prnt=parent, stp=1: self.change_page(prnt, stp))
             self.next_btn.grid(row=self.max_lines+1, column=self.n_columns-1, sticky=W+E)
             self.update_page_number()
+        if not self.n_pages_columns == 1:
+            self.key_button = {key: '' for key in self.main_brick.header[0:self.max_columns]}
+            self.make_header(parent)
+            self.prev_col_btn = Button(parent, text='Previous Columns', state=DISABLED, command=lambda prnt=parent, stp=-1: self.change_column_page(prnt, stp))
+            self.prev_col_btn.grid(row=self.max_lines+1, column=0, sticky=W + E)
+            self.next_col_btn = Button(parent, text='Next Columns', command=lambda prnt=parent, stp=1: self.change_column_page(prnt, stp))
+            self.next_col_btn.grid(row=self.max_lines+1, column=1, sticky=W + E)
         self.ok_cancel_button(parent, row=self.max_lines+2)
         # for i in range(self.max_lines):
         #     self.body_widget.grid_rowconfigure(i, weight=1, uniform='test')
@@ -1119,7 +1137,7 @@ class BidsTSVDialog(TemplateDialog):
 
     def make_table(self, parent):
         for line in range(0, min(self.max_lines, len(self.table2show))):
-            for clmn in range(0, self.n_columns):
+            for clmn in range(0, min(self.max_columns, self.n_columns)):
                 lbl = self.table2show[line][clmn]
                 self.key_labels[line].append(Label(parent, text=lbl, relief=RIDGE))
                 self.key_labels[line][-1].grid(row=line+1, column=clmn, sticky=W+E)
@@ -1142,7 +1160,7 @@ class BidsTSVDialog(TemplateDialog):
 
     def update_table(self):
         for line in range(0, min(self.max_lines, len(self.table2show))):
-            for clmn in range(0, self.n_columns):
+            for clmn in range(0, min(self.max_columns, len(self.table2show[0]))):
                 lbl = self.table2show[line][clmn]
                 self.key_labels[line][clmn]['text'] = lbl
                 if isinstance(self.main_brick, (bids.ParticipantsTSV, bids.ChannelsTSV))\
@@ -1155,9 +1173,37 @@ class BidsTSVDialog(TemplateDialog):
         self.update_page_number()
         start_idx = 1+self.idx*self.max_lines
         end_idx = start_idx + self.max_lines
+        start_col = self.idx_col * self.max_columns
+        end_col = start_col + self.max_columns
         if end_idx > self.n_lines+1:
             end_idx = self.n_lines+1
-        self.table2show = [line for line in self.main_brick[start_idx:end_idx]]
+        if end_col > self.n_columns:
+            end_col = self.n_columns
+        self.table2show = [line[start_col:end_col] for line in self.main_brick[start_idx:end_idx]]
+        self.update_table()
+
+    def change_column_page(self, parent, column_step):
+        #Erase header button
+        for cnt, key in enumerate(self.key_button):
+            self.key_button[key].destroy()
+        self.clear_table()
+        self.idx_col += column_step
+        start_col = self.idx_col*self.max_columns
+        end_col = start_col+self.max_columns
+        start_idx = 1+self.idx * self.max_lines
+        end_idx = start_idx + self.max_lines
+        self.next_col_btn.config(state=NORMAL)
+        self.prev_col_btn.config(state=NORMAL)
+        if end_idx > self.n_lines+1:
+            end_idx = self.n_lines+1
+        if end_col > self.n_columns:
+            end_col = self.n_columns
+            self.next_col_btn.config(state=DISABLED)
+        if start_col ==0:
+            self.prev_col_btn.config(state=DISABLED)
+        self.key_button = {key: '' for key in self.main_brick.header[start_col:end_col]}
+        self.make_header(parent)
+        self.table2show = [line[start_col:end_col] for line in self.main_brick[start_idx:end_idx]]
         self.update_table()
 
     def ok(self, event=None):
@@ -1205,9 +1251,11 @@ class BidsTSVDialog(TemplateDialog):
 
     def clear_table(self):
         for line in range(0, min(self.max_lines, len(self.table2show))):
-            for clmn in range(0, self.n_columns):
+            for clmn in range(0, min(self.max_columns, len(self.table2show[0]))):
                 # self.key_labels[line][clmn].grid_forget()
                 self.key_labels[line][clmn]['text'] = ''
+                if self.prev_col_btn:
+                    self.key_labels[line][clmn].config(fg='black', bg=self.prev_col_btn.cget("bg"))
             # self.key_labels[line] = []
 
 
@@ -1290,15 +1338,18 @@ class BidsBrickDialog(FormDialog):
     bidsdataset = None
     meta_brick = None
 
-    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None):
+    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None, flag_process=False):
         if not isinstance(input_dict, (bids.BidsBrick, bids.BidsJSON)):
             raise TypeError('Second input should be a BidsBrick instance.')
         if isinstance(input_dict, (bids.BidsDataset, bids.Data2Import)):
             BidsBrickDialog.meta_brick = input_dict.classname()  # meta_brick is either bids.BidsDataset or bids.Data2Import
             self.attr_dict = input_dict['DatasetDescJSON']
             self.input_dict = dict()
-            self.input_dict['Subject'] = input_dict['Subject']
-            self.input_dict['Derivatives'] = input_dict['Derivatives']
+            if not flag_process:
+                self.input_dict['Subject'] = input_dict['Subject']
+                self.input_dict['Derivatives'] = input_dict['Derivatives']
+            else:
+                self.input_dict['SubjectProcess'] = input_dict['SubjectProcess']
             title = input_dict.classname() + ': ' + input_dict['DatasetDescJSON']['Name']
             if disabled is None:
                 disabled = []
@@ -1404,6 +1455,9 @@ class BidsBrickDialog(FormDialog):
         elif isinstance(list_of_bbricks[0], bids.Derivatives):
             for ppln in list_of_bbricks[0]['Pipeline']:
                 list_of_elmts.append(ppln['name'])
+        elif isinstance(list_of_bbricks[0], bids.Scans):
+            for scan in list_of_bbricks:
+                list_of_elmts.append(scan['fileLoc'])
         else:
             raise TypeError('not allowed object type')
         BidsManager.populate_list(list_obj, list_of_elmts)
@@ -1412,7 +1466,7 @@ class BidsBrickDialog(FormDialog):
         if not self.key_listw[key].curselection():
             return
         curr_idx = self.key_listw[key].curselection()[0]
-        if key == 'Subject':
+        if key == 'Subject' or key == 'SubjectProcess':
             sub = self.main_brick[key][curr_idx]
             if 'Subject' in self.key_disabled:
                 disabl = sub.keylist
@@ -1420,6 +1474,18 @@ class BidsBrickDialog(FormDialog):
                 disabl = None
             BidsBrickDialog(self, sub, disabled=disabl,
                             title=sub.classname() + ': ' + sub['sub'])
+        elif key == 'Derivatives':
+            pip = self.main_brick[key][0]['Pipeline'][curr_idx]
+            if 'Derivatives' in self.key_disabled:
+                disabl = pip.keylist
+            else:
+                disabl = None
+            BidsBrickDialog(self, pip, disabled=disabl,
+                            title=pip.classname() + ': ' + pip['name'], flag_process=True)
+        elif key == 'Scans':
+            sdcr_file = self.main_brick['Scans'][curr_idx]['ScansTSV']
+            title=None
+            BidsTSVDialog(self, sdcr_file, title=title).apply()
         elif key in bids.BidsJSON.get_list_subclasses_names():
             sdcr_file = self.main_brick[key]
             # pop_menu = Menu(self.body_widget, tearoff=0)
