@@ -1015,7 +1015,7 @@ class BidsSidecar(object):
                     len(self.required_fields):
                 self.header = sidecar_elmt[0]
                 #Add to take into account the header for the first line
-                self[:] = []
+                #self[:] = []
                 for line in sidecar_elmt[1:]:
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
         elif isinstance(self, BidsFreeFile):
