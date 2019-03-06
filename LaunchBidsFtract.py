@@ -1,4 +1,11 @@
 #!/usr/bin/python3
+# -*-coding:Utf-8 -*
+
+"""
+   This module was written by Aude Jegou <aude.jegou@univ-amu.fr>.   
+   This module contains GUI to import subjects from F-Tract database in Bids format.
+   v0.1 March 2019
+"""
 
 import ins_bids_class as bids
 import os
@@ -11,16 +18,28 @@ import Pmw
 
 reload(bids)
 reload(upload)
+
+def center(win):
+    """
+        Center the windows
+    """
+    win.update_idletasks()
+    width = win.winfo_width()
+    height = win.winfo_height()
+    x = (win.winfo_screenwidth() // 2) - (width // 2)
+    y = (win.winfo_screenheight() // 2) - (height // 2)
+    win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+
 class BidsImportation(Frame):
     # Initiate the filename and path
-    PathUploads = r'D:\Data\Test_Ftract_Import\Original_deriv\01-uploads'
-    PathBidsDir = r'D:\Data\Test_Ftract_Import\Bids_Ftract'
-    PathImportData = r'D:\Data\Test_Ftract_Import\Original_deriv'
-    ConverterImageryFile = r'D:\Software\Bids_Manager\dcm2niix.exe'
-    ConverterElectrophyFile = r'C:\anywave_december\AnyWave\AnyWave.exe'
-    RequirementsFile = r'D:\Data\Test_Ftract_Import\Original_deriv\requirements.json'
+    PathUploads = '/gin/data/database/01-uploads'
+    PathBidsDir = '/gin/data/database/07-bids'
+    PathImportData = '/gin/data/database'
+    ConverterImageryFile = 'dcm2niix'
+    ConverterElectrophyFile = 'anywave'
+    RequirementsFile = '/home/audeciment/Documents/requirements.json'
     ProtocolName = 'FTract'
-    First_implantation = True
+    version = '0.1'
 
     def __init__(self):
         super().__init__()
@@ -44,7 +63,7 @@ class BidsImportation(Frame):
         menubar.add_cascade(label="Help", menu=menuaide)
         root.config(menu=menubar)
 
-        root.title('Select the centers and the subjects to import in bids format')
+        root.title('Ftract2Bids v' + self.version)
         self.center_choices = Variable(root, ('GRE', 'LYO', 'MIL', 'MAR', 'FRE'))
         self.select_center = Listbox(root, listvariable=self.center_choices, selectmode=MULTIPLE)
         self.select_center.pack(side=LEFT)
@@ -70,6 +89,9 @@ class BidsImportation(Frame):
     #Garder quand mm la selection des centres à côté au cas où il voudrait modifier
 
     def open_file(self, file_type=None):
+        """
+            Select paths for different requirements
+        """
         if file_type=='BidsDirectory':
             bids_dir = tkinter.filedialog.askdirectory(title='Select a Bids Directory', initialdir=self.PathBidsDir)
             if not bids_dir:
@@ -94,47 +116,42 @@ class BidsImportation(Frame):
             return
 
     def About(self):
-        tkinter.messagebox.showinfo('About', 'GUI to select the subjects to import in our Bids Directory.\n In Files, you can select the Bids Directory and Dataset to import.\n If there is no selection, Bids directory and Dataset directory are set by default.' )
+        tkinter.messagebox.showinfo('About', 'GUI to select the subjects to import in your Bids Directory.\n In Files, you can select the Bids Directory and Dataset to import.\n If there is no selection, Bids directory and Dataset directory are set by default.' )
 
     def selected_center(self):
+        self.centre_select =[]
         for index in self.select_center.curselection():
             self.centre_select.append(self.select_center.get(index))
         self.read_sujets()
         self.select_subjects.setlist(self.subjects_list)
 
     def read_sujets(self):
+        """
+            Create the subjects list according to selected center.
+        """
+        self.subjects_list = []
         for site in self.centre_select:
             ftract_center = 'ftract-' + site.lower()
             pathsubject = os.path.join(self.PathUploads, ftract_center, 'uploads')
-            with os.scandir(pathsubject) as it:
-                for entry in it:
-                    if entry.is_dir():
-                        self.subjects_list.append(entry.name)
+            for entry in os.listdir(pathsubject):
+                if os.path.isdir(os.path.join(pathsubject, entry)):
+                    self.subjects_list.append(entry)
         self.subjects_list = tuple(self.subjects_list)
 
     def add_subjects(self):
         self.chosen.clear()
         #subject_list = listbox.get()
-
         for index in self.select_subjects.curselection():
             self.chosen.insert(END, self.select_subjects.get(index) + "\n")
             self.subject_selected.append(self.select_subjects.get(index))
 
-    def get_import_choice(self, var):
-        if var=='ieeg_var':
-            self.label_ieeg = var.get()
-        elif var=='anat_var':
-            self.label_anat = var.get()
-        elif var=='proc_var':
-            self.label_process = var.get()
 
     def Import_bids_data(self):
 
-        #Write the data2import
         root.destroy()
         mafenetre = Tk()
         #mafenetre.geometry('500x500')
-        mafenetre.title('What do you want to import in Bids directory?')
+        mafenetre.title('Select data type to import')
         ieeg_var = BooleanVar(mafenetre, '1')
         anat_var = BooleanVar(mafenetre, '1')
         proc_var = BooleanVar(mafenetre, '1')
@@ -148,9 +165,11 @@ class BidsImportation(Frame):
         checkbox_process.pack(side=LEFT, padx=5, pady=5)
         BouttonOk = Button(mafenetre, text='OK', command=mafenetre.destroy)
         BouttonOk.pack(side=LEFT, padx=5, pady=5)
+        center(mafenetre)
         mafenetre.mainloop()
         #print(ieeg_var.get(), anat_var.get(), proc_var.get())
-        with os.scandir(self.PathImportData) as it:
+        print('Everything has been set, we are ready to import the data')
+        with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
             for entry in it:
                 if entry.name == 'data2import.json':
                     os.remove(entry)
@@ -176,12 +195,13 @@ class BidsImportation(Frame):
 
             curr_bids = bids.BidsDataset(self.PathBidsDir)
 
+        #Import the data in the current bids directory
         curr_data2import = bids.Data2Import(self.PathImportData, os.path.join(bids.BidsDataset.dirname, 'code', 'requirements.json'))
 
         curr_bids.make_upload_issues(curr_data2import, force_verif=True)
         curr_bids.import_data(data2import=curr_data2import, keep_sourcedata=False, keep_file_trace=False)
 
-        with os.scandir(self.PathImportData) as it:
+        with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
             for entry in it:
                 if entry.name.startswith('sub') and entry.is_file():
                     os.remove(entry)
@@ -189,4 +209,5 @@ class BidsImportation(Frame):
 if __name__ == '__main__':
     root = Tk()
     my_gui = BidsImportation()
+    center(root)
     root.mainloop()
