@@ -1,4 +1,11 @@
 #!/usr/bin/python3
+# -*-coding:Utf-8 -*
+
+"""
+   This module was written by Aude Jegou <aude.jegou@univ-amu.fr>.
+   This module create the data2import for F-Tract database.
+   v0.1 March 2019
+"""
 
 import os
 import json
@@ -6,10 +13,18 @@ import hashlib
 import math
 import csv
 import re
-from datetime import datetime
+import datetime
+from collections import OrderedDict
+
+#pour les requêtes
+#import sys
+#sys.path.append('/home/audeciment/django')
+import ftractdjango
+ftractdjango.init()
+from ftdata.models import *
 
 import ins_bids_class as util
-
+#Ie = OrderedDict((k, IeDict[k]) for k in IeDict.keylist)
 
 class IeegElecCSV(dict):
     keylist = ['sub', 'ses', 'Manufacturer', 'model', 'fileLoc']
@@ -99,15 +114,17 @@ class IeegElecCSV(dict):
         size = round(2 * math.pi * ray_elec * h_elec, 2)
         return size
 
-    def create_ElecTSV_file(self):
+    def create_ElecTSV_file(self, ctPresent):
 
-        def create_CoordSys_file(space, sub, ses):
+        def create_CoordSys_file(space, sub, ses, ct):
             CoordSys = util.IeegCoordSysJSON()
             CoordSys['iEEGCoordinateSystem'] = space
             CoordSys['iEEGCoordinateUnits'] = 'mm'
-            CoordSys['iEEGCoordinateProcessingDescription'] = 'SEEG contacts segmentation on MRI scan'
-            #A modifier
-            CoordSys['IntendedFor'] = 'sub-' + sub + '\\ses-' + ses + '\\anat\\sub-' + sub + '_ses-' + ses + '_acq-postimp_T1w.nii'
+            CoordSys['iEEGCoordinateProcessingDescription'] = 'SEEG contacts segmentation on scan'
+            if not ct:
+                CoordSys['IntendedFor'] = 'sub-' + sub + '\\ses-' + ses + '\\anat\\sub-' + sub + '_ses-' + ses + '_T1w.nii'
+            elif ct:
+                CoordSys['IntendedFor'] = 'sub-' + sub + '\\ses-' + ses + '\\anat\\sub-' + sub + '_ses-' + ses + '_CT.nii'
 
             CoordSys.simplify_sidecar(required_only=False)
             return CoordSys
@@ -149,7 +166,7 @@ class IeegElecCSV(dict):
                             dictElec['y'] = y
                             dictElec['z'] = z
                         elif i >= 3:
-                            dictElec[Header_TSV[i+2]] = val[i]
+                            dictElec[Header_TSV[i+3]] = val[i]
                         i += 1
 
                     dictElec['size'] = size_type
@@ -161,7 +178,7 @@ class IeegElecCSV(dict):
             PathToWrite = os.path.dirname(self['fileLoc'])
             Elecname = self.create_filename(space=sp_type, modality='electrodes', f_list=fname_list)
             ElecTSV.write_file(os.path.join(PathToWrite, Elecname))
-            Elecoord = create_CoordSys_file(space=sp_type, sub=self['sub'], ses=self['ses'])
+            Elecoord = create_CoordSys_file(space=sp_type, sub=self['sub'], ses=self['ses'], ct=ctPresent)
             Elecoordname = self.create_filename(space=sp_type, modality='coordsystem', f_list=fname_list)
             Elecoord.write_file(os.path.join(PathToWrite, Elecoordname))
 
@@ -230,20 +247,27 @@ class SeizureRun(dict):
 
 
 def calculate_age_at_acquisition(birthD, seegD):
-    bDate = datetime.fromisoformat(birthD)
-    sDate = datetime.fromisoformat(seegD)
-    year = sDate.year - bDate.year - ((sDate.month, sDate.day) < (bDate.month, bDate.day))
-    if bDate.month > sDate.month:
-        month = sDate.month - bDate.month + 12
+    bDate_year, bDate_month, bDate_day = birthD.split('-')
+    sDate_year, sDate_month, sDate_day = seegD.split('-')
+    year = int(sDate_year) - int(bDate_year) - ((int(sDate_month), int(sDate_day)) < (int(bDate_month), int(bDate_day)))
+    if int(bDate_month) > int(sDate_month):
+        month = int(sDate_month) - int(bDate_month) + 12
     else:
-        month = sDate.month - bDate.month
-    if bDate.day < sDate.day:
+        month = int(sDate_month) - int(bDate_month)
+    if int(bDate_day) < int(sDate_day):
         month +=1
     else:
         month -=1
     real_age = str(year) + ',' + str(month)
     return real_age
 
+def create_relative_date(seeg_date, exam_date):
+    days = exam_date - seeg_date
+    ini_seeg = datetime.date(1900, 1, 1)
+    gap = ini_seeg + days
+    relative_date = str(gap) + 'T00:00:00'
+    
+    return relative_date
 
 def remove_unused_keys(dic):
     key = dic.keys()
@@ -264,11 +288,12 @@ def hash_object(obj):
 
 
 def split_stim_name(name):
-    contact = name.split('_')[0]
-    amplitude = name.split('_')[1]
-    frequency = name.split('_')[2]
-    time = name.split('_')[3]
-    run = name.split('_')[4]
+    contact = name.split('_')[1]
+    contact = contact.split('-')[0] + contact.split('-')[1]
+    amplitude = name.split('_')[2]
+    frequency = name.split('_')[3]
+    time = name.split('_')[4]
+    run = name.split('_')[5]
     return contact, amplitude, frequency, time, run
 
 
@@ -289,28 +314,17 @@ def get_the_manufacturer(subject_name):
     return Manufacturer
 
 
-def get_bad_channels(contact):
-    size = len(contact)
-    elec = contact[0]
-    if size == 3:
-        num1 = contact[1]
-        num2 = contact[2]
-    elif size == 5:
-        num1 = contact[1:3]
-        num2 = contact[3:5]
-    channel1 = elec + num1
-    channel2 = elec + num2
-
-    #Create the dict
-    chan1_dict = dict()
-    chan2_dict = dict()
-    chan1_dict['name'] = channel1
-    chan2_dict['name'] = channel2
-    chan1_dict['status'] = 'bad'
-    chan2_dict['status'] = 'bad'
-
-    return chan1_dict, chan2_dict
-
+def get_bad_channels(file_name):
+    with open(file_name, 'r') as fichier:
+        txt = fichier.readlines()
+    channel_list = list()
+    for elt in txt:
+        chan_dict = dict()
+        chan = elt.split(' ')[1]
+        chan_dict['name'] = chan.strip()
+        chan_dict['status'] = 'bad'
+        channel_list.append(chan_dict)
+    return channel_list
 
 def check_subject_in_list(subject_list, subject_name):
     subject_present = False
@@ -326,7 +340,7 @@ def check_pipeline_in_list(pip_list, pip_name):
     pip_present = False
     index_pip=None
     for elt in pip_list:
-        if elt['Name'] == pip_name:
+        if elt['name'] == pip_name:
             pip_present = True
             index_pip = pip_list.index(elt)
     return pip_present, index_pip
@@ -352,10 +366,10 @@ def convert_txt_in_tsv(file):
             wfile.write(line)
 
 
-def create_names_from_attributes(Idict):
+def create_names_from_attributes(Idict, ext):
     filename = ''
     dirname = ''
-    ext = '.vhdr'
+    ext = ext
     lname = []
     ldirname = []
     keydir = ['sub', 'ses']
@@ -375,7 +389,10 @@ def create_names_from_attributes(Idict):
 
 
 def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=None, flagIeeg=True, flagAnat=True, flagProc=True):
-    now = datetime.now()
+    """
+        Reads the directory to create the data2import with the selected subjects.
+    """
+    now = datetime.datetime.now()
     if RequirementFile:
         raw_data = util.Data2Import(pathTempMIP, RequirementFile)
     else:
@@ -384,14 +401,74 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
 
     #ext accepted by bids
     ext_ieeg = ['.mat', '.eeg', '.TRC', '.edf', '.eab', '.vhdr', '.cnt']
-    ext_process = ['.txt']
+    ext_process = ['.txt', '.pial']
 
     #Create the ftract centre list
     ftract_site = ['ftract-'+site.lower() for site in centres]
 
-    ###Go throught all the folders to find the ieeg and anat###
+    ###Go throught all folders to find ieeg and anat data###
     subject_list = list()
     subject_tab = list()
+    clinical_list = raw_data.requirements['Requirements']['Subject']['keys']
+    #Get the clinical information for each subject
+    for sub_elt in sujets:
+        hashed_sub = hash_object(sub_elt)
+        subject_present, index_subject = check_subject_in_list(subject_list, hashed_sub)
+        if not subject_present:
+            sub = util.Subject()
+            sub['sub'] = hashed_sub
+        else:
+            sub = subject_list[index_subject]
+        p_dob = Patient.objects.filter(patient_code=sub_elt).values('birth_date').get()
+        p_gender = Patient.objects.filter(patient_code=sub_elt).values('gender').get()
+        crfs = CRF.objects.filter(patient__patient_code__contains=sub_elt).values().get()
+        temp_seeg = crfs['SEEG_date']
+        for key_req in crfs.keys():
+            if key_req in clinical_list:
+                if isinstance(crfs[key_req], datetime.date):
+                    if key_req=='SEEG_date':
+                        sub[key_req] = '1900-01-01T00:00:00'
+                    elif crfs[key_req]:
+                        sub[key_req] = create_relative_date(temp_seeg, crfs[key_req])
+                elif crfs[key_req] == 'Y':
+                    sub[key_req] = crfs[key_req] + ' - ' + crfs[key_req+'_comment']
+                elif not crfs[key_req]:
+                    sub[key_req] = 'n/a'
+                else:
+                    sub[key_req] = str(crfs[key_req])  
+            elif key_req.startswith('anat_lesion_classif') and crfs[key_req]==True:
+                sub['anat_lesion_classif'] = sub['anat_lesion_classif'] + ' '.join(key_req.split('_')[3::])
+            elif key_req.startswith('seizure_type_seeg_period') and crfs[key_req]==True:
+                sub['seizure_type_seeg_period'] = sub['seizure_type_seeg_period'] +' '.join(key_req.split('_')[4::])+ ', '
+            elif key_req.startswith('seizure_freq_seeg_period') and crfs[key_req]==True:
+                sub['seizure_freq_seeg_period'] = ' '.join(key_req.split('_')[4::])
+            elif key_req.startswith('epilepsy_type_after_seeg') and crfs[key_req]==True:
+                sub['epilepsy_type_after_seeg'] = sub['epilepsy_type_after_seeg'] + ' '.join(key_req.split('_')[4::]) + ', ' 
+            elif key_req == 'epilepsy_duration_unit':
+                sub['epilepsy_duration'] = sub['epilepsy_duration'] + ' ' + crfs[key_req]
+            elif key_req.startswith('age_first_seizure') and crfs[key_req]:
+                sub['age_first_seizure'] = sub['age_first_seizure'] + ' ' + str(crfs[key_req])
+            elif key_req.startswith('clinic_exam') and crfs[key_req]:
+                sub['clinic_exam'] = sub['clinic_exam'] + ' ' + crfs[key_req]
+            elif key_req.startswith('perso_history') and crfs[key_req]:
+                if len(key_req)>27:
+                    sub[key_req[0:22]] = sub[key_req[0:22]] + ' ' + crfs[key_req]
+                else:
+                    sub[key_req[0:19]] = sub[key_req[0:19]] + ' ' + crfs[key_req]        
+            elif key_req.startswith('treatment_during_CCEP') and crfs[key_req]:
+                sub['treatment_during_CCEP'] = sub['treatment_during_CCEP'] + ' ' + crfs[key_req]
+            elif key_req.startswith('pre_iEEG') and crfs[key_req] and isinstance(crfs[key_req], datetime.date):
+                sub['pre_iEEG_date'] =  create_relative_date(temp_seeg, crfs[key_req])
+        sub['age'] = calculate_age_at_acquisition(str(p_dob['birth_date']), str(temp_seeg))
+        sub['sex'] = p_gender['gender']
+        if not sub['anat_lesion_classif']:
+            sub['anat_lesion_classif'] = 'n/a'
+        subject_present, index_subject = check_subject_in_list(subject_list, sub['sub'])
+        if not subject_present:
+            subject_list.append(sub)
+        else:
+            subject_list[index_subject].update(sub.get_attributes())
+
     #Take the seizure from 01-uploads
     PathSeizure = os.path.join(pathTempMIP, '01-uploads')
     for dircentre in os.listdir(PathSeizure):
@@ -413,19 +490,19 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                         sub_tab['sub'] = hashed_sub
                     else:
                         sub_tab = subject_tab[sub_tab_index]
-                    with os.scandir(PathSujet) as it:
-                        for entry in it:
-                            label_run = re.findall(r'\d+', entry.name)
-                            num_run = sub_tab.get_the_number('SeizureRun', label_run)
-                            IeDict = util.Ieeg()
-                            IeDict['sub'] = sub['sub']
-                            IeDict['task'] = 'Seizure'
-                            IeDict['ses'] = str(1).zfill(2)
-                            IeDict['modality'] = 'ieeg'
-                            IeDict['run'] = str(num_run).zfill(2)
-                            IeDict['fileLoc'] = entry.path
+                    for entry in os.listdir(PathSujet):
+                        nameE, ext = os.path.splitext(entry)
+                        label_run = nameE.split('_')[1]
+                        num_run = sub_tab.get_the_number('SeizureRun', label_run)
+                        IeDict = util.Ieeg()
+                        IeDict['sub'] = sub['sub']
+                        IeDict['task'] = 'seizure'
+                        IeDict['ses'] = 'postimp' + str(1).zfill(2)
+                        IeDict['modality'] = 'ieeg'
+                        IeDict['run'] = str(num_run).zfill(2)
+                        IeDict['fileLoc'] = os.path.join(PathSujet, entry)
 
-                            sub['Ieeg'] = IeDict
+                        sub['Ieeg'] = IeDict
 
                     subject_present, index_subject = check_subject_in_list(subject_list, sub['sub'])
                     if not subject_present:
@@ -437,6 +514,7 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                         subject_tab.append(sub_tab)
                     else:
                         subject_tab[sub_tab_index].update(sub_tab.get_attributes())
+    #Take the seeg data from 02-raw
     PathSEEG = os.path.join(pathTempMIP, '02-raw')
     for Subdir in os.listdir(PathSEEG):
         if Subdir in sujets and flagIeeg:
@@ -455,78 +533,74 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                 sub_tab = subject_tab[sub_tab_index]
             # Get the Manufacturer
             Manufacturer = get_the_manufacturer(Subdir)
-            with os.scandir(os.path.join(PathSEEG, Subdir)) as it:
-                for entry in it:
-                    if entry.name.startswith('patient') and entry.is_file():
-                        with open(entry.path) as json_file:
-                            json_data = json.load(json_file)
-                        sub['sex'] = json_data[0]['gender']
-                        birthDate = json_data[0]['birth_date']
+            for entry in os.listdir(os.path.join(PathSEEG, Subdir, 'SEEG')):
+                if entry.startswith('StimLF'):
+                    [Stim, date] = entry.split('_')
+                    [year, month, day] = date.split('-')
+                    label_date = day+month+year
+                    num_ses = sub_tab.get_the_number('Session', label_date)
+                    for dirRaw in os.listdir(os.path.join(PathSEEG, Subdir, 'SEEG', entry)):
+                        if os.path.isdir(os.path.join(PathSEEG, Subdir, 'SEEG', entry, dirRaw)) and dirRaw == 'BadChannels':
+                            for filMod in os.listdir(os.path.join(PathSEEG, Subdir, 'SEEG', entry, dirRaw)):
+                                if os.path.isfile(os.path.join(PathSEEG, Subdir, 'SEEG', entry, dirRaw, filMod)):
+                                    name, ext = os.path.splitext(filMod)
+                                    if ext in ext_ieeg:
+                                        contact, amplitude, frequency, time, run = split_stim_name(name)
+                                        IeDict = util.Ieeg()
+                                        IeDict['sub'] = sub['sub']
+                                        IeDict['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                        IeDict['task'] = 'ccep'#stimuli'
+                                        IeDict['acq'] = contact
+                                        IeDict['run'] = str(run).zfill(2)
+                                        IeDict['fileLoc'] = os.path.join(PathSEEG, Subdir, 'SEEG', entry, dirRaw, filMod)
 
-                    elif entry.name.startswith('crf') and entry.is_file():
-                        with open(entry.path) as json_file:
-                            json_data = json.load(json_file)
-                        SeegDate = json_data[0]['SEEG_date']
+                                        ieJ = util.IeegJSON()
+                                        ieJ['TaskName'] = 'ccep'
+                                        ieJ['Manufacturer'] = Manufacturer
+                                        ieJ['TaskDescription'] = 'Epoch starting around 40s before the first stimulus and ending 2-3s after the stimuli block'
+                                        ieJ['Stimulation'] = 'Electrodes stimulated = ' + contact + ', Amplitude = ' + amplitude + ', Frequency = ' + frequency + ', Pulse width = ' + time
+                                        #ieJ['RecordingDate'] = SeegDate
+                                        ieJ.simplify_sidecar(required_only=False)
+                                        IeDict['IeegJSON'] = ieJ
 
-                    elif entry.name.startswith('StimLF') and entry.is_dir():
-                        [Stim, date] = entry.name.split('_')
-                        num_ses = sub_tab.get_the_number('Session', date)
-                        for dirRaw in os.listdir(entry.path):
-                            if os.path.isdir(os.path.join(entry.path, dirRaw)) and dirRaw == 'BadChannels':
-                                for filMod in os.listdir(os.path.join(entry.path, dirRaw)):
-                                    if os.path.isfile(os.path.join(entry.path, dirRaw, filMod)):
-                                        name, ext = os.path.splitext(filMod)
-                                        if ext in ext_ieeg:
-                                            contact, amplitude, frequency, time, run = split_stim_name(name)
-                                            IeDict = util.Ieeg()
-                                            IeDict['sub'] = sub['sub']
-                                            IeDict['ses'] = str(num_ses).zfill(2)
-                                            IeDict['task'] = 'Stimuli'
-                                            IeDict['acq'] = contact
-                                            IeDict['run'] = str(run).zfill(2)
-                                            IeDict['fileLoc'] = os.path.join(entry.path, dirRaw, filMod)
+                                        ieChan = util.IeegChannelsTSV()
+                                        Bchan_list = get_bad_channels(os.path.join(PathSEEG, Subdir, 'SEEG', entry, dirRaw, name+'_bChans.txt'))
+                                        #modify the entry in the function get_bad_channels and put the file
+                                        for BadC in Bchan_list:
+                                            ieChan.append(BadC)
+                                        IeDict['IeegChannelsTSV'] = ieChan
 
-                                            ieJ = util.IeegJSON()
-                                            ieJ['TaskName'] = 'Stimuli'
-                                            ieJ['Manufacturer'] = Manufacturer
-                                            ieJ['TaskDescription'] = 'Epoch starting around 40s before the first stimulus and ending 2-3s after the stimuli block'
-                                            ieJ['Stimulation'] = 'Electrodes stimulated = ' + contact + ', Amplitude = ' + amplitude + ', Frequency = ' + frequency + ', Pulse width = ' + time
-                                            ieJ['RecordingDate'] = SeegDate
-                                            ieJ.simplify_sidecar(required_only=False)
-                                            IeDict['IeegJSON'] = ieJ
-
-                                            ieChan = util.IeegChannelsTSV()
-                                            #modify the entry in the function get_bad_channels and put the file
-                                            Chan1, Chan2 = get_bad_channels(contact)
-                                            ieChan.append(Chan1)
-                                            ieChan.append(Chan2)
-                                            IeDict['IeegChannelsTSV'] = ieChan
-
-                                            sub['Ieeg'] = IeDict
-                        sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub['sub'])
-                        if not sub_tab_pres:
-                            subject_tab.append(sub_tab)
-                        else:
-                            subject_tab[sub_tab_index].update(sub_tab.get_attributes())
-            sub['age'] = calculate_age_at_acquisition(birthDate, SeegDate)
+                                        sub['Ieeg'] = IeDict
+                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub['sub'])
+                    if not sub_tab_pres:
+                        subject_tab.append(sub_tab)
+                    else:
+                        subject_tab[sub_tab_index].update(sub_tab.get_attributes())
             subject_present, index_subject = check_subject_in_list(subject_list, sub['sub'])
             if not subject_present:
                 subject_list.append(sub)
             else:
                 subject_list[index_subject].update(sub.get_attributes())
 
+    #Take the processed data
     PathPreprocessed = os.path.join(pathTempMIP, '03-preprocessed')
     Dev_folder = util.Derivatives()
     pip_folder_list = list()
     for dirSoft in os.listdir(PathPreprocessed):
-        if dirSoft == 'BrainVisa' and os.path.isdir(os.path.join(PathPreprocessed, dirSoft)) and flagIeeg:
+        if dirSoft == 'Brainvisa' and os.path.isdir(os.path.join(PathPreprocessed, dirSoft)) and flagIeeg:
             PathBrain = os.path.join(PathPreprocessed, dirSoft, 'Epilepsy')
+            '''pip_present, pip_index = check_pipeline_in_list(pip_folder_list, 'Brain)
+            if not pip_present:
+                pip_folder_list.append(pip_folder)
+            else:
+                attr_dict = {key: pip_folder[key] for key in pip_folder.keys() if pip_folder[key]}
+                pip_folder_list[pip_index].update(attr_dict)
             pip_folder = util.Pipeline()
-            pip_folder['Name'] = 'BrainVisa'
-            subj_brain_list = list()
-            with os.scandir(PathBrain) as it:
-                for entry in it:
-                    name, date = entry.name.split('_')
+            pip_folder['name'] = 'Brainvisa'''
+            #subj_brain_list = list()
+            for entry in os.listdir(PathBrain):
+                if os.path.isdir(os.path.join(PathBrain, entry)) and entry!='trash':
+                    name, date = entry.split('_')
                     if name in sujets:
                         hashed_sub = hash_object(name)
                         Manufacturer = get_the_manufacturer(name)
@@ -544,21 +618,27 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                             sub_tab = subject_tab[sub_tab_index]
                         num_ses = sub_tab.get_the_number('Session', date)
                         ieImplant = IeegElecCSV()
-                        for fileSujet in os.listdir(os.path.join(entry.path, 'implantation')):
-                            fname, ext = os.path.splitext(fileSujet)
-                            if ext == '.csv':
-                                ieImplant['fileLoc'] = os.path.join(entry.path, 'implantation', fileSujet)
-                                ieImplant['sub'] = sub['sub']
-                                ieImplant['Manufacturer'] = Manufacturer
-                                ieImplant['ses'] = str(num_ses).zfill(2)
-                            elif ext == '.elecimplant':
-                                with open(os.path.join(entry.path, 'implantation', fileSujet)) as json_file:
-                                    json_data = json.load(json_file)
-                                ieImplant['model'] = json_data['electrodes'][-1]['model']
-                        fname_list = ieImplant.create_ElecTSV_file()
+                        ct_present=False
+                        #import pdb; pdb.set_trace()
+                        for folder in os.listdir(os.path.join(PathBrain, entry)):
+                            if os.path.isdir(os.path.join(PathBrain, entry, folder)) and folder == 'ct':
+                                ct_present=True
+                            elif os.path.isdir(os.path.join(PathBrain, entry, folder)) and folder == 'implantation':
+                                for fileSujet in os.listdir(os.path.join(PathBrain, entry, folder)):
+                                    fname, ext = os.path.splitext(fileSujet)
+                                    if ext == '.csv':
+                                        ieImplant['fileLoc'] = os.path.join(PathBrain, entry, folder, fileSujet)
+                                        ieImplant['sub'] = sub['sub']
+                                        ieImplant['Manufacturer'] = Manufacturer
+                                        ieImplant['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                    elif ext == '.elecimplant':
+                                        with open(os.path.join(PathBrain, entry, folder, fileSujet)) as json_file:
+                                            json_data = json.load(json_file)
+                                        ieImplant['model'] = json_data['electrodes'][-1]['model']
+                        fname_list = ieImplant.create_ElecTSV_file(ct_present)
 
                         for elecfile in fname_list:
-                            ieSidecar = util.IeegGlobalSidecars(os.path.join(entry.path, 'implantation', elecfile))
+                            ieSidecar = util.IeegGlobalSidecars(os.path.join(PathBrain, entry, 'implantation', elecfile))
                             ieSidecar.get_attributes_from_filename()
                             sub['IeegGlobalSidecars'] = ieSidecar
 
@@ -586,69 +666,164 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                         sub_imagin = subj_imagin_list[index_subject]
                     '''pres_sub_raw, sub_raw_index = check_subject_in_list(subject_list, hashed_sub)
                     if pres_sub_raw:
-                        sub_imagin['sex'] = subject_list[sub_raw_index]['sex']
-                        sub_imagin['age'] = subject_list[sub_raw_index]['age']'''
+                        for key in sub_imagin.keylist:
+                            if key in clinical_list: 
+                                sub_imagin[key] = subject_list[sub_raw_index][key]'''
                     sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, hashed_sub)
                     if not sub_tab_pres:
                         sub_tab = TabRecap()
                         sub_tab['sub'] = hashed_sub
                     else:
                         sub_tab = subject_tab[sub_tab_index]
-                    with os.scandir(os.path.join(PathPreprocessed, dirSoft, dirSujet, 'SEEG')) as it:
-                        for entry in it:
-                            nom, date = entry.name.split('_')
-                            num_ses = sub_tab.get_the_number('Session', date)
-                            if nom == 'Ictal':
+                    Pathentry = os.path.join(PathPreprocessed, dirSoft, dirSujet, 'SEEG')
+                    for entry in os.listdir(Pathentry):
+                        nom, date = entry.split('_')
+                        [year, month, day] = date.split('-')
+                        label_date = day+month+year
+                        num_ses = sub_tab.get_the_number('Session', label_date)
+                        if nom.startswith('Ictal'):
+                            pip_present, pip_index = check_pipeline_in_list(pip_folder_list, 'Brainstorm')
+                            if not pip_present:
                                 pip_folder = util.Pipeline()
-                                pip_folder['Name'] = 'Brainstorm'
-                                for dirEI in os.listdir(os.path.join(entry.path, 'EI')):
-                                    SZ_list = ['SZGroup', 'SZGroup1', 'SZGroup2', 'SZGroup3']
-                                    if dirEI in SZ_list:
-                                        for fileEI in os.listdir(os.path.join(entry.path, 'EI', dirEI, 'ImaGIN_epileptogenicity')):
-                                            sujet_run, ext = os.path.splitext(fileEI)
-                                            if sujet_run.split('_')[0] == 'EI' and ext in ext_process:
-                                                convert_txt_in_tsv(os.path.join(entry.path, 'EI', dirEI, 'ImaGIN_epileptogenicity', fileEI))
-                                                #A modifier car prend aussi les paramètres alors que je veux juste le num
-                                                label_run = re.findall(r'\d+', sujet_run)
+                                pip_folder['name'] = 'Brainstorm'
+                                pip_folder['DatasetDescJSON'] = util.DatasetDescJSON()
+                                pip_folder['DatasetDescJSON']['Name'] = pip_folder['name']
+                                pip_folder['DatasetDescJSON']['AnalysisType'] = 'Calculate the seizures epileptogenicity mapping'                    
+                            else:
+                                pip_folder = pip_folder_list[pip_index]
+                            
+                            for dirEI in os.listdir(os.path.join(Pathentry, entry, 'EI')):
+                                SZ_list = ['SZGroup', 'SZGroup1', 'SZGroup2', 'SZGroup3']
+                                if dirEI in SZ_list:
+                                    for fileEI in os.listdir(os.path.join(Pathentry, entry, 'EI', dirEI, 'ImaGIN_epileptogenicity')):
+                                        sujet_run, ext = os.path.splitext(fileEI)
+                                        if sujet_run.split('_')[0] == 'EI' and ext in ext_process:
+                                            name_run, param_run = sujet_run.split('__')
+                                            if ext=='.txt':
+                                                convert_txt_in_tsv(os.path.join(Pathentry, entry, 'EI', dirEI, 'ImaGIN_epileptogenicity', fileEI))
+                                            if sujet_run.split('_')[1] == 'Group':
+                                                num_run = ''
+                                            else:
+                                                label_run = sujet_run.split('_')[2]
                                                 num_run = sub_tab.get_the_number('SeizureRun', label_run)
-                                                IeDict = util.create_subclass_instance('IeegProcess', util.Process)
-                                                IeDict['sub'] = sub_imagin['sub']
-                                                IeDict['ses'] = str(num_ses).zfill(2)
-                                                IeDict['proc'] = 'EpileptogenicityMapping'
-                                                IeDict['run'] = str(num_run).zfill(2)
-                                                IeDict['task'] = 'Seizure'
-                                                IeDict['fileLoc'] = os.path.join(entry.path, 'EI', dirEI, 'ImaGIN_epileptogenicity', sujet_run+'.tsv')
+                                            IeDict = util.create_subclass_instance('IeegProcess', util.Process)
+                                            IeDict['sub'] = sub_imagin['sub']
+                                            IeDict['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                            IeDict['proc'] = 'EM'
+                                            IeDict['run'] = str(num_run).zfill(2)
+                                            IeDict['task'] = 'seizure'
+                                            IeDict['fileLoc'] = os.path.join(Pathentry, entry, 'EI', dirEI, 'ImaGIN_epileptogenicity', sujet_run+'.tsv')
+                                            fmin, fmax, win, inst = param_run.split('_')
+                                            ieJ = util.ProcessJSON()
+                                            ieJ['Description'] = 'Epileptogenicity mapping of seizure data'
+                                            ieJ['Sources'] = create_names_from_attributes(IeDict, '.vhdr')
+                                            ieJ['Frequency band'] = fmin + ' - ' + fmax + 'Hz'
+                                            ieJ['Window size'] = win + 's'
+                                            ieJ['Start'] = inst
+                                            ieJ['Date'] = str(now)
+                                            ieJ.modality_field = 'ieeg'
+                                            ieJ.simplify_sidecar(required_only=False)
+                                            IeDict['ProcessJSON'] = ieJ
 
-                                                ieJ = util.ProcessJSON()
-                                                ieJ['Description'] = 'Epileptogenicity mapping of the Seizure data'
-                                                ieJ['Sources'] = create_names_from_attributes(IeDict)
-                                                ieJ.modality_field = 'ieeg'
-                                                ieJ.simplify_sidecar(required_only=False)
-                                                IeDict['ProcessJSON'] = ieJ
+                                            sub_imagin['IeegProcess'] = IeDict
 
-                                                sub_imagin['IeegProcess'] = IeDict
+                            subject_present, index_subject = check_subject_in_list(subj_imagin_list, sub_imagin['sub'])
+                            if not subject_present:
+                                subj_imagin_list.append(sub_imagin)
+                            else:
+                                subj_imagin_list[index_subject].update(sub_imagin.get_attributes())
+                            sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub_imagin['sub'])
+                            if not sub_tab_pres:
+                                subject_tab.append(sub_tab)
+                            else:
+                                subject_tab[sub_tab_index].update(sub_tab.get_attributes())
 
-                    subject_present, index_subject = check_subject_in_list(subj_imagin_list, sub_imagin['sub'])
+                            for sub_dev in subj_imagin_list:
+                                pip_folder['SubjectProcess'].append(sub_dev)
+                            pip_present, pip_index = check_pipeline_in_list(pip_folder_list, pip_folder['name'])
+                            if not pip_present:
+                                 pip_folder_list.append(pip_folder)
+                            else:
+                                 attr_dict = {key: pip_folder[key] for key in pip_folder.keys() if pip_folder[key]}
+                                 pip_folder_list[pip_index].update(attr_dict)
+
+        elif dirSoft == 'Freesurfer' and os.path.isdir(os.path.join(PathPreprocessed, dirSoft)) and flagProc:
+            subj_freesurfer_list = list()
+            pip_present, pip_index = check_pipeline_in_list(pip_folder_list, 'FreeSurfer')
+            if not pip_present:
+                pip_folder = util.Pipeline()
+                pip_folder['name'] = 'FreeSurfer'
+                pip_folder['DatasetDescJSON'] = util.DatasetDescJSON()
+                pip_folder['DatasetDescJSON']['Name'] = pip_folder['name']
+                pip_folder['DatasetDescJSON']['AnalysisType'] = 'Extract pial surface'                               
+            else:
+                pip_folder = pip_folder_list[pip_index]
+            for dirSujet in os.listdir(os.path.join(PathPreprocessed, dirSoft)):
+                try:
+                    subject_name, date_ses = dirSujet.split('_')
+                except:
+                    subject_name = 'NotInSubjectList'
+                if subject_name in sujets:
+                    hashed_sub = hash_object(subject_name)
+                    subject_present, index_subject = check_subject_in_list(subj_freesurfer_list, hashed_sub)
                     if not subject_present:
-                        subj_imagin_list.append(sub_imagin)
+                        sub_freesurfer = util.SubjectProcess()
+                        sub_freesurfer['sub'] = hashed_sub
                     else:
-                        subj_imagin_list[index_subject].update(sub_imagin.get_attributes())
-                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub_imagin['sub'])
+                        sub_freesurfer= subj_freesurfer_list[index_subject]
+                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, hashed_sub)
+                    if not sub_tab_pres:
+                        sub_tab = TabRecap()
+                        sub_tab['sub'] = hashed_sub
+                    else:
+                        sub_tab = subject_tab[sub_tab_index]
+                    Pathentry = os.path.join(PathPreprocessed, dirSoft, dirSujet, 'surf')
+                    file_list = ['rh.pial', 'lh.pial']
+                    [day, month, year] = date_ses.split('-')
+                    label_date = day+month+year
+                    num_ses = sub_tab.get_the_number('Session', label_date)
+
+                    for fpial in file_list:
+                        hem, ext = os.path.splitext(fpial)
+                        AnaDict = util.create_subclass_instance('AnatProcess', util.Process)
+                        AnaDict['sub'] = sub_freesurfer['sub']
+                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                        AnaDict['proc'] = hem.upper()
+                        AnaDict['fileLoc'] = os.path.join(Pathentry, fpial)
+                        AnaJ = util.ProcessJSON()
+                        if hem=='rh':
+                            AnaJ['Description'] = 'Pial surface of right hemisphere'
+                        elif hem=='lh':
+                            AnaJ['Description'] = 'Pial surface of left hemisphere'
+                        AnaJ['Source'] = create_names_from_attributes(AnaDict, '.nii')
+                        AnaJ.modality_field = 'anat'
+                        AnaJ.simplify_sidecar(required_only=False)
+                        AnaDict['ProcessJSON'] = AnaJ
+
+                        sub_freesurfer['AnatProcess'] = AnaDict 
+
+                    subject_present, index_subject = check_subject_in_list(subj_freesurfer_list, sub_freesurfer['sub'])
+                    if not subject_present:
+                        subj_freesurfer_list.append(sub_freesurfer)
+                    else:
+                        subj_freesurfer_list[index_subject].update(sub_freesurfer.get_attributes())
+                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub_freesurfer['sub'])
                     if not sub_tab_pres:
                         subject_tab.append(sub_tab)
                     else:
                         subject_tab[sub_tab_index].update(sub_tab.get_attributes())
 
-            for sub_dev in subj_imagin_list:
+            for sub_dev in subj_freesurfer_list:
                 pip_folder['SubjectProcess'].append(sub_dev)
-            pip_present, pip_index = check_pipeline_in_list(pip_folder_list, pip_folder['Name'])
+            pip_present, pip_index = check_pipeline_in_list(pip_folder_list, pip_folder['name'])
             if not pip_present:
                 pip_folder_list.append(pip_folder)
             else:
                 attr_dict = {key: pip_folder[key] for key in pip_folder.keys() if pip_folder[key]}
                 pip_folder_list[pip_index].update(attr_dict)
+                        
 
-        elif dirSoft == 'Deface' and os.path.isdir(os.path.join(PathPreprocessed, dirSoft)) and flagAnat:
+        elif dirSoft == 'defaced' and os.path.isdir(os.path.join(PathPreprocessed, dirSoft)) and flagAnat:
             for dirSujet in os.listdir(os.path.join(PathPreprocessed, dirSoft)):
                 if dirSujet in sujets:
                     hashed_sub = hash_object(dirSujet)
@@ -658,62 +833,218 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                         sub['sub'] = hashed_sub
                     else:
                         sub = subject_list[index_subject]
-                    with os.scandir(os.path.join(PathPreprocessed, dirSoft, dirSujet)) as it:
-                        for entry in it:
-                            if entry.name.startswith('T1') and entry.is_dir():
-                                for dirT1 in os.listdir(entry.path):
-                                    if os.path.isdir(os.path.join(entry.path, dirT1)):
-                                        #il faudra vérifier pour les sessions
-                                        if dirT1.split('_')[0] == 'T1post':
-                                            AnaDict = util.Anat()
-                                            AnaDict['sub'] = sub['sub']
-                                            AnaDict['ses'] = str(1).zfill(2)
-                                            AnaDict['acq'] = 'postimp'
-                                            AnaDict['modality'] = 'T1w'
-                                            AnaDict['fileLoc'] = os.path.join(entry.path, dirT1)
-                                            sub['Anat'] = AnaDict
+                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, hashed_sub)
+                    if not sub_tab_pres:
+                        sub_tab = TabRecap()
+                        sub_tab['sub'] = hashed_sub
+                    else:
+                        sub_tab = subject_tab[sub_tab_index]
+                    for entry in os.listdir(os.path.join(PathPreprocessed, dirSoft, dirSujet)):
+                        if entry.startswith('T1') and os.path.isdir(os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)):
+                            Pathentry = os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)
+                            for dirT1 in os.listdir(Pathentry):
+                                if os.path.isdir(os.path.join(Pathentry, dirT1)):
+                                    [AnatType, date] = dirT1.split('_')
+                                    [year, month, day] = date.split('-')
+                                    label_date = day+month+year
+                                    num_ses = sub_tab.get_the_number('Session', label_date)
+                                    if AnatType == 'T1post':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postimp'
+                                        AnaDict['modality'] = 'T1w'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT1)
+                                        sub['Anat'] = AnaDict
 
-                                        elif dirT1.split('_')[0] == 'T1postop':
-                                            AnaDict = util.Anat()
-                                            AnaDict['sub'] = sub['sub']
-                                            AnaDict['ses'] = str(1).zfill(2)
-                                            AnaDict['acq'] = 'postop'
-                                            AnaDict['modality'] = 'T1w'
-                                            AnaDict['fileLoc'] = os.path.join(entry.path, dirT1)
+                                    elif AnatType == 'T1pre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'T1w'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT1)
+                                        sub['Anat'] = AnaDict
 
-                                            sub['Anat'] = AnaDict
+                                    elif AnatType == 'T1postop':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'post'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postop'
+                                        AnaDict['modality'] = 'T1w'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT1)
+                                        sub['Anat'] = AnaDict
 
-                                        elif dirT1.split('_')[0] == 'T1gadopre':
-                                            AnaDict = util.Anat()
-                                            AnaDict['sub'] = sub['sub']
-                                            AnaDict['ses'] = str(1).zfill(2)
-                                            AnaDict['acq'] = 'preop'
-                                            AnaDict['modality'] = 'T1w'
-                                            AnaDict['ce'] = 'gado'
-                                            AnaDict['fileLoc'] = os.path.join(entry.path, dirT1)
-                                            AnaJ = util.AnatJSON()
-                                            AnaJ['ContrastBolusIngredient'] = 'Gadolinium'
-                                            AnaDict['AnatJSON'] = remove_unused_keys(AnaJ)
+                                    elif AnatType == 'T1gadopre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'T1w'
+                                        AnaDict['ce'] = 'gado'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT1)
+                                        AnaJ = util.AnatJSON()
+                                        AnaJ['ContrastBolusIngredient'] = 'Gadolinium'
+                                        AnaDict['AnatJSON'] = remove_unused_keys(AnaJ)
+                                        sub['Anat'] = AnaDict
 
-                                            sub['Anat'] = AnaDict
+                        elif entry.startswith('T2') and os.path.isdir(os.path.join(PathPreprocessed, dirSoft, dirSujet, entry)):
+                            Pathentry = os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)
+                            for dirT2 in os.listdir(Pathentry):
+                                if os.path.isdir(os.path.join(Pathentry, dirT2)):
+                                    [AnatType, date] = dirT2.split('_')
+                                    [year, month, day] = date.split('-')
+                                    label_date = day+month+year
+                                    num_ses = sub_tab.get_the_number('Session', label_date)
+                                    if AnatType == 'T2post':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postimp'
+                                        AnaDict['modality'] = 'T2w'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT2)
+                                        sub['Anat'] = AnaDict
 
-                                        elif dirT1.split('_')[0] == 'T1pre':
-                                            AnaDict = util.Anat()
-                                            AnaDict['sub'] = sub['sub']
-                                            AnaDict['ses'] = str(1).zfill(2)
-                                            AnaDict['acq'] = 'preop'
-                                            AnaDict['modality'] = 'T1w'
-                                            AnaDict['fileLoc'] = os.path.join(entry.path, dirT1)
+                                    elif AnatType == 'T2pre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'T2w'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT2)
+                                        sub['Anat'] = AnaDict
 
-                                            sub['Anat'] = AnaDict
+                                    elif AnatType == 'T2postop':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'post'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postop'
+                                        AnaDict['modality'] = 'T2w'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT2)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'T2gadopre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'T2w'
+                                        AnaDict['ce'] = 'gado'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirT2)
+                                        AnaJ = util.AnatJSON()
+                                        AnaJ['ContrastBolusIngredient'] = 'Gadolinium'
+                                        AnaDict['AnatJSON'] = remove_unused_keys(AnaJ)
+                                        sub['Anat'] = AnaDict
+
+                        elif entry.startswith('CT') and os.path.isdir(os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)):
+                            Pathentry = os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)
+                            for dirCT in os.listdir(Pathentry):
+                                if os.path.isdir(os.path.join(Pathentry, dirCT)):
+                                    [AnatType, date] = dirCT.split('_')
+                                    [year, month, day] = date.split('-')
+                                    label_date = day+month+year
+                                    num_ses = sub_tab.get_the_number('Session', label_date)
+                                    if AnatType == 'CTpost':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postimp'
+                                        AnaDict['modality'] = 'CT'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirCT)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'CTpre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'CT'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirCT)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'CTpostop':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'post'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postop'
+                                        AnaDict['modality'] = 'CT'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirCT)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'CTgadopre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'CT'
+                                        AnaDict['ce'] = 'gado'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirCT)
+                                        AnaJ = util.AnatJSON()
+                                        AnaJ['ContrastBolusIngredient'] = 'Gadolinium'
+                                        AnaDict['AnatJSON'] = remove_unused_keys(AnaJ)
+                                        sub['Anat'] = AnaDict
+
+                        elif entry.startswith('Flair') and os.path.isdir(os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)):
+                            Pathentry = os.path.join(PathPreprocessed, dirSoft, dirSujet,entry)
+                            for dirFl in os.listdir(Pathentry):
+                                if os.path.isdir(os.path.join(Pathentry, dirFl)):
+                                    [AnatType, date] = dirFl.split('_')
+                                    [year, month, day] = date.split('-')
+                                    label_date = day+month+year
+                                    num_ses = sub_tab.get_the_number('Session', label_date)
+                                    if AnatType == 'Flairpost':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'postimp'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postimp'
+                                        AnaDict['modality'] = 'FLAIR'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirFl)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'Flairpre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'FLAIR'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirFl)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'Flairpostop':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'post'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'postop'
+                                        AnaDict['modality'] = 'FLAIR'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirFl)
+                                        sub['Anat'] = AnaDict
+
+                                    elif AnatType == 'Flairgadopre':
+                                        AnaDict = util.Anat()
+                                        AnaDict['sub'] = sub['sub']
+                                        AnaDict['ses'] = 'pre'+str(num_ses).zfill(2)
+                                        #AnaDict['acq'] = 'preop'
+                                        AnaDict['modality'] = 'FLAIR'
+                                        AnaDict['ce'] = 'gado'
+                                        AnaDict['fileLoc'] = os.path.join(Pathentry, dirFl)
+                                        AnaJ = util.AnatJSON()
+                                        AnaJ['ContrastBolusIngredient'] = 'Gadolinium'
+                                        AnaDict['AnatJSON'] = remove_unused_keys(AnaJ)
+                                        sub['Anat'] = AnaDict
+
                     subject_present, index_subject = check_subject_in_list(subject_list, sub['sub'])
                     if not subject_present:
                         subject_list.append(sub)
                     else:
                         subject_list[index_subject].update(sub.get_attributes())
-
-        for pip in pip_folder_list:
-            Dev_folder['Pipeline'].append(pip)
+                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub['sub'])
+                    if not sub_tab_pres:
+                        subject_tab.append(sub_tab)
+                    else:
+                        subject_tab[sub_tab_index].update(sub_tab.get_attributes())
+    #import pdb; pdb.set_trace()
+    for pip in pip_folder_list:
+        Dev_folder['Pipeline'].append(pip)
 
 
     for sub_elt in subject_list:
@@ -724,14 +1055,15 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
     DataName['Authors'] = 'Aude'
     raw_data['DatasetDescJSON'] = remove_unused_keys(DataName)
     #print(raw_data)
-    raw_data.save_as_json(savedir=pathTempMIP)
-    print('Tha data2import has been created')
+    raw_data.save_as_json(savedir=os.path.join(pathTempMIP, 'temp_bids'))
+    print('The data2import has been created')
 
 
 if __name__ == '__main__':
-    print('This script allow to create the data2import of a given folder !!!')
-    PathToImport = r'D:\Data\Test_Ftract_Import\Original_deriv'
-    RequirementFile = r'D:\Data\Test_Ftract_Import\Original_deriv\requirements.json'
+    print('Create the data2import of a given folder !!!')
+    PathToImport = r'/gin/data/database'
+    RequirementFile = r'/home/audeciment/Documents/requirements.json'
     centre_select = ['GRE']
-    subject_selected=['0137GRE']
-    read_ftract_folders(PathToImport, RequirementFile, centres=centre_select, sujets=subject_selected)
+    subject_selected=['0001GRE']
+    read_ftract_folders(PathToImport, RequirementFile, centres=centre_select, sujets=subject_selected, flagIeeg=False, flagAnat=False, flagProc=True)
+
