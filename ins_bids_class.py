@@ -2747,6 +2747,7 @@ class BidsDataset(MetaBrick):
                         pipDataset['name'] = pipCurrent['name']
                         for sub in pipCurrent['SubjectProcess']:
                             pipDataset['SubjectProcess'].append(sub)
+                        pipDataset['ParticipantsTSV'] = pipCurrent['ParticipantsTSV']
                     else:
                         pipDataset['SubjectProcess'] = Subject()
                         if not self['Derivatives']:
