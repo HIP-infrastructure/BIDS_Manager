@@ -1,5 +1,12 @@
 #!/usr/bin/python3
 
+"""
+    This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
+    (with minor changes by Aude Jegou <aude.jegou@univ-amu.fr)
+    This module is GUI to explore bids dataset.
+    v0.1.10 March 2019
+"""
+
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -778,9 +785,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             str2print = ''
         else:
             str2print = '\n' + str2print
-        root.config(cursor="wait")
+        root.config(cursor="watch")
         for key in self.main_frame:
-            self.main_frame[key].config(cursor="wait")
+            self.main_frame[key].config(cursor="watch")
         self.banner.configure(bg="red")
         self.banner_label.set(self.banner_label._default + str2print)
         self.update()
@@ -1539,7 +1546,8 @@ class BidsBrickDialog(FormDialog):
 
     @staticmethod
     def open_file(fname):
-        os.startfile(os.path.normpath(os.path.join(bids.BidsBrick.cwdir, fname)))
+        #os.startfile(os.path.normpath(os.path.join(bids.BidsBrick.cwdir, fname)))
+        os.system("xdg-open " + os.path.normpath(os.path.join(bids.BidsBrick.cwdir, fname)))
 
     def remove_file(self, mod_brick, key, index):
         if BidsBrickDialog.meta_brick == 'BidsDataset' and \
