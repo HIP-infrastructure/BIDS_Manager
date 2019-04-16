@@ -652,6 +652,7 @@ class BidsBrick(dict):
                         for sub in sub_list:
                             self.is_subject_present(sub)
                             sub_index = self.curr_subject['index']
+                            #import pdb; pdb.set_trace()
                             curr_sub_mod = self['Subject'][sub_index][bidsbrick_key[0]]
                             for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
                                 flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
@@ -684,9 +685,16 @@ class BidsBrick(dict):
 
                         elect_tsv = [brick['IeegElecTSV'] for brick in sdcr_list if brick['modality'] == 'electrodes']
                         # several electrodes.tsv can be found (e.g. for several space)
+                        elecname = []
                         for tsv in elect_tsv:
                             if not ref_elec:
-                                elecname = [line[idx_elec_name] for line in tsv[1:]]
+                                if not tsv[0][idx_elec_name] == 'group':
+                                    idx_elec_name = tsv[0].index('name')
+                                    for line in tsv[1:]:
+                                        str_group = [c for c in line[idx_elec_name] if not c.isdigit()]
+                                        elecname.append(''.join(str_group))
+                                else:
+                                    elecname = [line[idx_elec_name] for line in tsv[1:]]
                                 [ref_elec.append(name) for name in elecname if name not in ref_elec]
                             else:
                                 curr_elec = []
@@ -1020,7 +1028,7 @@ class BidsSidecar(object):
                 self.header = sidecar_elmt[0]
                 #Add to take into account the header for the first													   
                 #if isinstance(self, ParticipantsTSV):
-                #    self[:] = []
+                self[:] = []
                 for line in sidecar_elmt[1:]:
                     #import pdb; pdb.set_trace()
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
@@ -1433,17 +1441,17 @@ class IeegJSON(BidsJSON):
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
                'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDate', 'RecordingDuration', 'RecordingType',
                'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'iEEGPlacementScheme',
-               'iEEGReferenceScheme', 'Stimulation', 'Medication', 'iEEGReference', 'SamplingFrequency', 'SoftwareFilters']
-    required_keys = ['TaskName', 'iEEGReference', 'SamplingFrequency', 'PowerLineFrequency', 'SoftwareFilters']
+               'iEEGReferenceScheme', 'ElectricalStimulation', 'ElectricalStimulationParameters', 'Medication', 'iEEGReference', 'SamplingFrequency', 'SoftwareFilters']
+    required_keys = ['TaskName', 'PowerLineFrequency', 'SoftwareFilters','iEEGReference', 'SamplingFrequency']
 
 
 class IeegChannelsTSV(ChannelsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
     frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
 
-    header = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
-              'description', 'status', 'status_description', 'software_filters']
-    required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
+    header = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff', 'reference', 'group', 'sampling_frequency', 
+              'description', 'notch', 'status', 'status_description', 'software_filters']
+    required_fields = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff']#, 'sampling_frequency', 'notch', 'reference']
     modality_field = 'channels'
 
 
@@ -1464,7 +1472,7 @@ class IeegCoordSysJSON(BidsJSON):
                'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
                'AssociatedImageCoordinateSystemDescription', 'iEEGCoordinateProcessingReference']
     required_keys = ['iEEGCoordinateSystem', 'iEEGCoordinateUnits', 'iEEGCoordinateProcessingDescription',
-                     'IntendedFor', 'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
+                     'IntendedFor']#, 'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
     modality_field = 'coordsystem'
 
 
@@ -2650,7 +2658,7 @@ class BidsDataset(MetaBrick):
                             sub_index = self.curr_subject['index']
 
                             if sub_present:
-
+                                #import pdb; pdb.set_trace()
                                 nb_ses, bids_ses = self.get_number_of_session4subject(sub['sub'])
                                 if modality['ses'] and bids_ses:
                                     """ if subject is present, have to check if ses in the data2import matches
