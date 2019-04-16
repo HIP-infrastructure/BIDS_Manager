@@ -10,8 +10,8 @@
 import ins_bids_class as bids
 import os
 from importlib import reload
-import UploadFtract as upload
-from tkinter import *
+import upload_ftract as upload
+from tkinter import Tk, Menu, Variable, Listbox, Button, BooleanVar, Checkbutton, Frame, MULTIPLE, LEFT, RIGHT, EXTENDED, YES, NO, BOTH
 import tkinter.filedialog
 import tkinter.messagebox
 import Pmw
@@ -59,7 +59,7 @@ class BidsImportation(Frame):
         menufichier.add_command(label='Set Requirements file', command=lambda: self.open_file(file_type='Requirements'))
         menubar.add_cascade(label='Files', menu=menufichier)
         menuaide = Menu(menubar, tearoff=0)
-        menuaide.add_command(label="About", command=self.About)
+        menuaide.add_command(label="About", command=self.about)
         menubar.add_cascade(label="Help", menu=menuaide)
         root.config(menu=menubar)
 
@@ -82,7 +82,7 @@ class BidsImportation(Frame):
 
         self.chosen.pack(side=LEFT, expand=YES, fill=BOTH, padx=5, pady=5)
 
-        self.TransferButton = Button(root, text='Import Subjects', command=self.Import_bids_data)
+        self.TransferButton = Button(root, text='Import Subjects', command=self.import_bids_data)
         self.TransferButton.pack(side=RIGHT, padx=5, pady=5)
     #Utiliser Listbox pour faire apparaître la sélection
     #Une fois les centre choisies, afficher les sujets
@@ -115,7 +115,7 @@ class BidsImportation(Frame):
         elif not file_type:
             return
 
-    def About(self):
+    def about(self):
         tkinter.messagebox.showinfo('About', 'GUI to select the subjects to import in your Bids Directory.\n In Files, you can select the Bids Directory and Dataset to import.\n If there is no selection, Bids directory and Dataset directory are set by default.' )
 
     def selected_center(self):
@@ -146,7 +146,7 @@ class BidsImportation(Frame):
             self.subject_selected.append(self.select_subjects.get(index))
 
 
-    def Import_bids_data(self):
+    def import_bids_data(self):
 
         root.destroy()
         mafenetre = Tk()
@@ -163,8 +163,8 @@ class BidsImportation(Frame):
         checkbox_ieeg.pack(side=LEFT, padx=5, pady=5)
         checkbox_anat.pack(side=LEFT, padx=5, pady=5)
         checkbox_process.pack(side=LEFT, padx=5, pady=5)
-        BouttonOk = Button(mafenetre, text='OK', command=mafenetre.destroy)
-        BouttonOk.pack(side=LEFT, padx=5, pady=5)
+        bouttonOk = Button(mafenetre, text='OK', command=mafenetre.destroy)
+        bouttonOk.pack(side=LEFT, padx=5, pady=5)
         center(mafenetre)
         mafenetre.mainloop()
         #print(ieeg_var.get(), anat_var.get(), proc_var.get())
@@ -200,6 +200,7 @@ class BidsImportation(Frame):
 
         curr_bids.make_upload_issues(curr_data2import, force_verif=True)
         curr_bids.import_data(data2import=curr_data2import, keep_sourcedata=False, keep_file_trace=False)
+        curr_bids.parse_bids()
 
         with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
             for entry in it:
