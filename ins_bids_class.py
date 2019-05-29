@@ -800,7 +800,8 @@ class BidsBrick(dict):
             #           os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
             #           name_cmd + ' --bids_dir "' + os.path.join(Data2Import.dirname, 'temp_bids') + '" --bids_format vhdr"'
 
-            cmd_line = converter_path + ' --seegBIDS '+ os.path.join(Data2Import.dirname, self['fileLoc']) + ' ' + name_cmd + ' --bids_dir ' + os.path.join(Data2Import.dirname, 'temp_bids') + ' --bids_format vhdr'
+            # = converter_path + ' --seegBIDS '+ os.path.join(Data2Import.dirname, self['fileLoc']) + ' ' + name_cmd + ' --bids_dir ' + os.path.join(Data2Import.dirname, 'temp_bids') + ' --bids_format vhdr'
+            cmd_line = converter_path + ' --toBIDS --input_file ' + os.path.join(Data2Import.dirname, self['fileLoc']) + ' --output_dir ' + os.path.join(Data2Import.dirname, 'temp_bids') + ' ' + name_cmd + ' --bids_format vhdr'
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
             os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
