@@ -11,7 +11,7 @@ import ins_bids_class as bids
 import os
 from importlib import reload
 import upload_ftract as upload
-from tkinter import Tk, Menu, Variable, Listbox, Button, BooleanVar, Checkbutton, Frame, MULTIPLE, LEFT, RIGHT, EXTENDED, YES, NO, BOTH
+from tkinter import Tk, Menu, Variable, Listbox, Button, BooleanVar, Checkbutton, Frame, Label, MULTIPLE, LEFT, RIGHT, EXTENDED, YES, NO, BOTH, END, BOTTOM, TOP, GROOVE, messagebox
 import tkinter.filedialog
 import tkinter.messagebox
 import Pmw
@@ -30,6 +30,29 @@ def center(win):
     y = (win.winfo_screenheight() // 2) - (height // 2)
     win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
 
+def change_seeg_in_ecg(Bidspath, sub_list):
+    for subject in os.listdir(Bidspath):
+        if subject.startswith('sub') and os.path.isdir(os.path.join(Bidspath, subject)):
+            for session in os.listdir(os.path.join(Bidspath, subject)):
+                ses, nameS = session.split('-')
+                if os.path.isdir(os.path.join(Bidspath, subject, session)) and nameS.startswith('postimp'):
+                    for mod in os.listdir(os.path.join(Bidspath, subject, session)):
+                        if mod.startswith('ieeg') and os.path.isdir(os.path.join(Bidspath, subject, session, mod)):
+                            with os.scandir(os.path.join(Bidspath, subject, session, mod)) as it:
+                                for entry in it:
+                                    split_name = entry.name.split('_')
+                                    if split_name[-1].endswith('channels.tsv'):
+                                        f = open(entry.path, 'r+')
+                                        f_cont = f.readlines()
+                                        idx = [f_cont.index(elt) for elt in f_cont if 'ecg' in elt]
+                                        for ind in idx:
+                                            f_cont[ind] = f_cont[ind].replace('SEEG', 'ECG')
+                                        f.seek(0)
+                                        f.truncate()
+                                        f.write(''.join(f_cont))
+                                        print(entry.name + ' has been modified')
+                                        f.close()
+
 class BidsImportation(Frame):
     # Initiate the filename and path
     PathUploads = '/gin/data/database/01-uploads'
@@ -39,7 +62,7 @@ class BidsImportation(Frame):
     ConverterElectrophyFile = 'anywave'
     RequirementsFile = '/home/audeciment/Documents/requirements.json'
     ProtocolName = 'FTract'
-    version = '0.1'
+    version = '0.2'
 
     def __init__(self):
         super().__init__()
@@ -49,7 +72,8 @@ class BidsImportation(Frame):
         self.label_ieeg = True
         self.label_anat = True
         self.label_process = True
-
+        #root.geometry('500x500')
+        root.resizable(True, False)
         #Menu to set the different file
         menubar = Menu(root)
         menufichier = Menu(menubar, tearoff=0)
@@ -62,28 +86,43 @@ class BidsImportation(Frame):
         menuaide.add_command(label="About", command=self.about)
         menubar.add_cascade(label="Help", menu=menuaide)
         root.config(menu=menubar)
-
         root.title('Ftract2Bids v' + self.version)
-        self.center_choices = Variable(root, ('GRE', 'LYO', 'MIL', 'MAR', 'FRE'))
-        self.select_center = Listbox(root, listvariable=self.center_choices, selectmode=MULTIPLE)
+
+        frame_subject = Frame(root, relief=GROOVE, borderwidth=2)
+        self.center_choices = Variable(frame_subject, ('GRE', 'LYO', 'MIL', 'MAR', 'FRE'))
+        self.select_center = Listbox(frame_subject, listvariable=self.center_choices, selectmode=MULTIPLE)
         self.select_center.pack(side=LEFT)
 
         # print(select_center.curselection())
-        self.Okbutton = Button(root, text='OK', command=self.selected_center)
+        self.Okbutton = Button(frame_subject, text='OK', command=self.selected_center)
         self.Okbutton.pack(side=LEFT, padx=5, pady=5)
-
-        self.select_subjects = Pmw.ScrolledListBox(root, items=self.subjects_list,
+        self.select_subjects = Pmw.ScrolledListBox(frame_subject, items=self.subjects_list,
                                               vscrollmode='static', listbox_selectmod=EXTENDED)
         self.select_subjects.pack(side=LEFT, expand=YES, fill=BOTH, padx=5, pady=5)
-
-        self.chosen = Pmw.ScrolledText(root, text_height=6, text_width=20)
-        self.copyButton = Button(root, text=">>>", command=self.add_subjects)
+        self.chosen = Pmw.ScrolledText(frame_subject, text_height=6, text_width=20)
+        self.copyButton = Button(frame_subject, text=">>>", command=self.add_subjects)
         self.copyButton.pack(side=LEFT, padx=5, pady=5)
-
         self.chosen.pack(side=LEFT, expand=YES, fill=BOTH, padx=5, pady=5)
-
+        frame_subject.pack(side=LEFT)
+        frame_data = Frame(root, relief=GROOVE, borderwidth=2)
+        
+        Label(frame_data, text='Select data type to import').pack(side=TOP)
+        self.ieeg_var = BooleanVar(frame_data, '1')
+        self.anat_var = BooleanVar(frame_data, '1')
+        self.proc_var = BooleanVar(frame_data, '1')
+        checkbox_ieeg = Checkbutton(frame_data, text='Ieeg data', variable=self.ieeg_var)
+        checkbox_anat = Checkbutton(frame_data, text='Anat data', variable=self.anat_var)
+        checkbox_process = Checkbutton(frame_data, text='Processed data', variable=self.proc_var)
+        #Place the checkbox on the window
+        checkbox_ieeg.pack(side=LEFT, padx=5, pady=5)
+        checkbox_anat.pack(side=LEFT, padx=5, pady=5)
+        checkbox_process.pack(side=LEFT, padx=5, pady=5)
+        frame_data.pack(side=BOTTOM)
+       
         self.TransferButton = Button(root, text='Import Subjects', command=self.import_bids_data)
-        self.TransferButton.pack(side=RIGHT, padx=5, pady=5)
+        self.TransferButton.pack(side=LEFT, anchor= 'center', padx=5, pady=5)
+        self.cancel = Button(root, text='Cancel', command=lambda: root.destroy())
+        self.cancel.pack(side=LEFT, anchor='e')
     #Utiliser Listbox pour faire apparaître la sélection
     #Une fois les centre choisies, afficher les sujets
     #Garder quand mm la selection des centres à côté au cas où il voudrait modifier
@@ -147,65 +186,52 @@ class BidsImportation(Frame):
 
 
     def import_bids_data(self):
+        if not self.subject_selected:
+            messagebox.showerror('Error:',  'No subjects have been selected')
+        elif not os.path.isdir(self.PathBidsDir):
+            messagebox.showerror('Error:', 'The directory selects as Bids directory is not a directory')
+        else:
+            root.destroy()
+            import pdb; pdb.set_trace()
+            print('Everything has been set, we are ready to import the data')
+            with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
+                for entry in it:
+                    if entry.name == 'data2import.json':
+                        os.remove(entry)
+            sub_list = upload.read_ftract_folders(self.PathImportData, self.RequirementsFile, centres=self.centre_select, sujets=self.subject_selected, flagIeeg=self.ieeg_var.get(), flagAnat=self.anat_var.get(), flagProc=self.proc_var.get())
 
-        root.destroy()
-        mafenetre = Tk()
-        #mafenetre.geometry('500x500')
-        mafenetre.title('Select data type to import')
-        ieeg_var = BooleanVar(mafenetre, '1')
-        anat_var = BooleanVar(mafenetre, '1')
-        proc_var = BooleanVar(mafenetre, '1')
-        checkbox_ieeg = Checkbutton(mafenetre, text='Ieeg data', variable=ieeg_var)
-        checkbox_anat = Checkbutton(mafenetre, text='Anat data', variable=anat_var)
-        checkbox_process = Checkbutton(mafenetre, text='Processed data', variable=proc_var)
+            os.makedirs(self.PathBidsDir, exist_ok=True)
 
-        #Place the checkbox on the window
-        checkbox_ieeg.pack(side=LEFT, padx=5, pady=5)
-        checkbox_anat.pack(side=LEFT, padx=5, pady=5)
-        checkbox_process.pack(side=LEFT, padx=5, pady=5)
-        bouttonOk = Button(mafenetre, text='OK', command=mafenetre.destroy)
-        bouttonOk.pack(side=LEFT, padx=5, pady=5)
-        center(mafenetre)
-        mafenetre.mainloop()
-        #print(ieeg_var.get(), anat_var.get(), proc_var.get())
-        print('Everything has been set, we are ready to import the data')
-        with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
-            for entry in it:
-                if entry.name == 'data2import.json':
-                    os.remove(entry)
-        upload.read_ftract_folders(self.PathImportData, self.RequirementsFile, centres=self.centre_select, sujets=self.subject_selected, flagIeeg=ieeg_var.get(), flagAnat=anat_var.get(), flagProc=proc_var.get())
+            #Indicate the bids dir
+            if not os.listdir(self.PathBidsDir):
+                req_dict = bids.Requirements(self.RequirementsFile)
 
-        os.makedirs(self.PathBidsDir, exist_ok=True)
-
-        #Indicate the bids dir
-        if os.path.isdir(self.PathBidsDir):
-            req_dict = bids.Requirements(self.RequirementsFile)
-
-            bids.BidsDataset.converters['Imagery']['path'] = self.ConverterImageryFile
-            req_dict['Converters']['Imagery']['path'] = self.ConverterImageryFile
-            bids.BidsDataset.converters['Electrophy']['path'] = self.ConverterElectrophyFile
-            req_dict['Converters']['Electrophy']['path'] = self.ConverterElectrophyFile
-
-            bids.BidsDataset.dirname = self.PathBidsDir
-            req_dict.save_as_json(os.path.join(bids.BidsDataset.dirname, 'code', 'requirements.json'))
-
-            datasetDes = bids.DatasetDescJSON()
-            datasetDes['Name'] = self.ProtocolName
-            datasetDes.write_file()
-
+                bids.BidsDataset.converters['Imagery']['path'] = self.ConverterImageryFile
+                req_dict['Converters']['Imagery']['path'] = self.ConverterImageryFile
+                bids.BidsDataset.converters['Electrophy']['path'] = self.ConverterElectrophyFile
+                req_dict['Converters']['Electrophy']['path'] = self.ConverterElectrophyFile
+    
+                bids.BidsDataset.dirname = self.PathBidsDir
+                req_dict.save_as_json(os.path.join(bids.BidsDataset.dirname, 'code', 'requirements.json'))
+    
+                datasetDes = bids.DatasetDescJSON()
+                datasetDes['Name'] = self.ProtocolName
+                datasetDes.write_file()
+ 
             curr_bids = bids.BidsDataset(self.PathBidsDir)
 
-        #Import the data in the current bids directory
-        curr_data2import = bids.Data2Import(self.PathImportData, os.path.join(bids.BidsDataset.dirname, 'code', 'requirements.json'))
+            #Import the data in the current bids directory
+            curr_data2import = bids.Data2Import(self.PathImportData, os.path.join(bids.BidsDataset.dirname, 'code', 'requirements.json'))
 
-        curr_bids.make_upload_issues(curr_data2import, force_verif=True)
-        curr_bids.import_data(data2import=curr_data2import, keep_sourcedata=False, keep_file_trace=False)
-        curr_bids.parse_bids()
+            curr_bids.make_upload_issues(curr_data2import, force_verif=True)
+            curr_bids.import_data(data2import=curr_data2import, keep_sourcedata=False, keep_file_trace=False)
+            change_seeg_in_ecg(self.PathBidsDir, sub_list)
+            curr_bids.parse_bids()
 
-        with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
-            for entry in it:
-                if entry.name.startswith('sub') and entry.is_file():
-                    os.remove(entry)
+            with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
+                for entry in it:
+                    if entry.name.startswith('sub') and entry.is_file():
+                        os.remove(entry)
 
 if __name__ == '__main__':
     root = Tk()
