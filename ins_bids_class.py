@@ -1,6 +1,12 @@
 #!/usr/bin/python3
 # -*-coding:Utf-8 -*
 
+"""
+    This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
+    (with changes by Aude Jegou <aude.jegou@univ-amu.fr)
+    This module is concerned by managing BIDS directory.
+    v0.1.10 March 2019
+"""  
 from __future__ import print_function
 from __future__ import unicode_literals
 from __future__ import division
@@ -17,7 +23,6 @@ from sys import modules
 import json
 import brainvision_hdr as bv_hdr
 from datetime import datetime
-from collections import OrderedDict
 import pprint
 import gzip
 import shutil
@@ -272,7 +277,10 @@ class BidsBrick(dict):
             if isinstance(self, GlobalSidecars):
                 mod_type = mod_type.lower().replace(GlobalSidecars.__name__.lower(), '')
             elif isinstance(self, Process):
-                mod_type = self['modality'].lower()
+                if self['modality'] == 'pial':
+                    mod_type = 'anat'
+                else:
+                    mod_type = self['modality'].lower()
             else:
                 mod_type = mod_type.lower()
             piece_dirname += [mod_type]
@@ -670,10 +678,17 @@ class BidsBrick(dict):
                             continue
 
                         elect_tsv = [brick['IeegElecTSV'] for brick in sdcr_list if brick['modality'] == 'electrodes']
+                        elecname = []
                         # several electrodes.tsv can be found (e.g. for several space)
                         for tsv in elect_tsv:
                             if not ref_elec:
-                                elecname = [line[idx_elec_name] for line in tsv[1:]]
+                                if not tsv[0][idx_elec_name] == 'group':
+                                    idx_elec_name = tsv[0].index('name')
+                                    for line in tsv[1:]:
+                                        str_group = [c for c in line[idx_elec_name] if not c.isdigit()]
+                                        elecname.append(''.join(str_group))
+                                else:
+                                    elecname = [line[idx_elec_name] for line in tsv[1:]]
                                 [ref_elec.append(name) for name in elecname if name not in ref_elec]
                             else:
                                 curr_elec = []
@@ -802,6 +817,10 @@ class BidsBrick(dict):
             cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
                        os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
                        name_cmd + ' --bids_dir "' + os.path.join(Data2Import.dirname, 'temp_bids') + '" --bids_format vhdr"'
+            # cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + \
+            #            os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + \
+            #            name_cmd + ' --output_dir "' + os.path.join(Data2Import.dirname,
+            #                                                      'temp_bids') + '" --bids_format vhdr"'
             #import pdb;pdb.set_trace()
             #cmd_line = converter_path + ' --seegBIDS ' + os.path.join(Data2Import.dirname, self[
              #   'fileLoc']) + name_cmd + ' --bids_dir ' + os.path.join(Data2Import.dirname,
@@ -813,11 +832,26 @@ class BidsBrick(dict):
                 BidsDataset.dirname, dirname, fname))
             return [fname]
         elif isinstance(self, Process):
-            fname = filename + os.path.splitext(self['fileLoc'])[1]
-            os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
-            shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
-                dest_change, dirname, fname))
-            return [fname]
+            name, ext = os.path.splitext(self['fileLoc'])
+            #Aude: To modify
+            if ext=='.pial':
+                #import pdb; pdb.set_trace()
+                conv_ext = ['.pial', '.surf.gii']
+                old_name = os.path.join(Data2Import.dirname, self['fileLoc'])
+                new_path = os.path.join(Data2Import.dirname, 'temp_bids')
+                os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
+                [coord, face] = nibabel.freesurfer.io.read_geometry(old_name)
+                coord_array = nibabel.gifti.GiftiDataArray(data=coord, intent=nibabel.nifti1.intent_codes['NIFTI_INTENT_POINTSET'], encoding='GIFTI_ENCODING_ASCII')                                           
+                face_array = nibabel.gifti.GiftiDataArray(data=face, intent=nibabel.nifti1.intent_codes['NIFTI_INTENT_TRIANGLE'], encoding='GIFTI_ENCODING_ASCII')                                            
+                gii = nibabel.gifti.GiftiImage(darrays=[coord_array, face_array])                                                                                              
+                nibabel.save(gii, os.path.join(new_path, filename + '.surf.gii'))
+                shutil.copy(old_name, os.path.join(new_path, filename + '.pial'))
+                Nifti=True                 
+            else:
+                fname = filename + ext					  
+                os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
+                shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(dest_change, dirname, fname))
+                return [fname]
         else:
             str_issue = os.path.basename(self['fileLoc']) + ' cannot be converted!'
             self.write_log(str_issue)
@@ -1127,9 +1161,9 @@ class Imagery(ModalityType):
 
 
 class Process(ModalityType):
-    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'ProcessJSON']
-    required_keys = ModalityType.required_keys + ['proc']
-    allowed_file_formats = ['.tsv', '.txt', '.mat']
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'hemi', 'modality', 'fileLoc', 'ProcessJSON']
+    required_keys = ModalityType.required_keys
+    allowed_file_formats = ['.tsv', '.txt', '.mat', '.nii', '.pial', '.gii']
 
     def __init__(self):
         super().__init__()
@@ -1137,7 +1171,7 @@ class Process(ModalityType):
 
 class ProcessJSON(BidsJSON):
     keylist = []
-    required_keys = ['Description', 'Sources']
+    required_keys = ['Description', 'Sources', 'User', 'Date']
     detrending_keys = ['Detendring']
     filter_keys = ['FilterType', 'HighCutoff', 'LowCutoff', 'HighCutoffDefinition', 'LowCutoffDefinition',
                    'FilterOrder', 'Direction', 'DirectionDescription']
@@ -1362,7 +1396,7 @@ class Photo(BidsBrick):
 class Requirements(BidsBrick):
     keywords = ['_ready', '_integrity']
 
-    def __init__(self, full_filename):
+    def __init__(self, full_filename=None):
 
         if full_filename:
             self['Requirements'] = dict()
@@ -1376,6 +1410,12 @@ class Requirements(BidsBrick):
                 if 'Converters' in json_dict.keys():
                     BidsDataset.converters = json_dict['Converters']
                     self['Converters'] = json_dict['Converters']
+        else:
+            self['Requirements'] = dict()
+            self['Requirements']['Subject'] = dict()
+            self['Converters'] = dict()
+            self['Converters']['Imagery'] = dict()
+            self['Converters']['Electrophy'] = dict()
 
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
@@ -1424,17 +1464,17 @@ class IeegJSON(BidsJSON):
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
                'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDate', 'RecordingDuration',
                'RecordingType', 'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'iEEGPlacementScheme',
-               'iEEGReferenceScheme', 'Stimulation', 'Medication', 'iEEGReference', 'SamplingFrequency', 'SoftwareFilters']
-    required_keys = ['TaskName', 'iEEGReference', 'SamplingFrequency', 'PowerLineFrequency', 'SoftwareFilters']
+               'iEEGReferenceScheme', 'ElectricalStimulationParameter', 'Medication', 'iEEGReference', 'SamplingFrequency', 'SoftwareFilters']
+    required_keys = ['TaskName', 'PowerLineFrequency', 'SoftwareFilters', 'iEEGReference', 'SamplingFrequency']
 
 
 class IeegChannelsTSV(ChannelsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
     frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
 
-    header = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
-              'description', 'status', 'status_description', 'software_filters']
-    required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
+    header = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff', 'reference', 'group', 'sampling_frequency', 'description', 'notch',
+               'status', 'status_description', 'software_filters']
+    required_fields = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff']#, 'sampling_frequency', 'notch', 'reference']
     modality_field = 'channels'
 
 
@@ -1455,7 +1495,7 @@ class IeegCoordSysJSON(BidsJSON):
                'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
                'AssociatedImageCoordinateSystemDescription', 'iEEGCoordinateProcessingReference']
     required_keys = ['iEEGCoordinateSystem', 'iEEGCoordinateUnits', 'iEEGCoordinateProcessingDescription',
-                     'IntendedFor', 'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
+                     'IntendedFor'] #'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
     modality_field = 'coordsystem'
 
 
@@ -1572,13 +1612,39 @@ class Meg(Electrophy):
     # keybln = BidsBrick.create_keytype(keylist)
     required_keys = Imagery.required_keys + ['task', 'modality']
     allowed_modalities = ['meg']
-    allowed_file_formats = ['.ctf', '.fif', '4D']
+    allowed_file_formats = ['.ctf', '.ds', '.fif', '4D', '.kdf', '.raw', '.mhd', '.sqd', '.con', '.ave', '.mrk']
     readable_file_formats = allowed_file_formats
 
     def __init__(self):
         super().__init__()
         self['modality'] = 'meg'
 
+class MegJSON(BidsJSON):
+    keylist = ['TaskName', 'InstitutionName', 'InstitutionAddress', 'Manufacturer', 'ManufacturersModelName', 'SoftwareVersions',
+               'TaskDescription', 'Instructions', 'CogAtlasID', 'CogPOID',  'DeviceSerialNumber', 'PowerLineFrequency',
+               'DewarPosition', 'DigitizedLandmarks', 'DigitizedHeadPoints', 'SamplingFrequency', 'SoftwareFilters',
+               'MEGChannelCount', 'MEGREFChannelCount', 'EEGChannelCount', 'ECOGChannelCount', 'SEEGChannelCount',
+               'EOGChannelCount', 'ECGChannelCount', 'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration',
+               'RecordingType', 'EpochLength', 'ContinuousHeadLocalization', 'HeadCoilFrequency', 'MaxMovement', 'SubjectArtefactDescription',
+               'AssociatedEmptyRoom', 'HardwareFilters', 'EEGPlacementScheme', 'ManufacturersAmplifierModelName', 'CapManufacturer',
+               'CapManufacturersModelName', 'EEGReference']
+    required_keys = ['TaskName', 'PowerLineFrequency', 'SoftwareFilters', 'SamplingFrequency', 'DewarPosition', 'DigitizedLandmarks', 'DigitizedHeadPoints']
+
+class MegChannelsTSV(ChannelsTSV):
+    header = ['name', 'type', 'units', 'description', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'software_filters',
+               'status', 'status_description']
+    required_fields = ['name', 'type', 'units']
+    modality_field = 'channels'
+
+class MegCoordSysJSON(BidsJSON):
+    keylist = ['MEGCoordinateSystem', 'MEGCoordinateUnits', 'MEGCoordinateSystemDescription', 'IntendedFor',
+               'EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateSystemDescription',
+               'HeadCoilCoordinates', 'HeadCoilCoordinateSystem', 'HeadCoilCoordinatesUnits', 'HeadCoilCoordinateSystemDescription',
+               'DigitizedHeadPoints', 'DigitizedHeadPointsCoordinateSystem', 'DigitizedHeadPointsCoordinateUnits',
+               'DigitizedHeadPointsCoordinateSystemDescription', 'IntendedFor', 'AnatomicalLandmarkCoordinates',
+               'AnatomicalLandmarkCoordinateSystem', 'AnatomicalLandmarkCoordinateUnits', 'AnatomicalLandmarkCoordinateSystemDescription', 'FiducialsDescription']
+    required_keys = ['MEGCoordinateSystem', 'MEGCoordinateUnits']
+    modality_field = 'coordsystem'
 
 class MegEventsTSV(EventsTSV):
     """Store the info of the #_events.tsv."""
@@ -1608,16 +1674,26 @@ class BehEventsTSV(EventsTSV):
 class Scans(BidsBrick):
     keylist = BidsBrick.keylist + ['ses', 'fileLoc', 'ScansTSV']
 
-    def add_modality(self, mod_dict):
-        scan_name = os.path.join(mod_dict.classname().lower(), os.path.basename(mod_dict['fileLoc']))
+    def add_modality(self, mod_dict, mod_type, bids_dir):
+        scan_name = os.path.join(mod_type.lower(), os.path.basename(mod_dict['fileLoc']))
         if not self['ScansTSV']:
             self['ScansTSV'] = ScansTSV()
         self['sub'] = mod_dict['sub']
         self['ses'] = mod_dict['ses']
-        if mod_dict[mod_dict.classname()+'JSON']['RecordingISODate']:
-            scan_time = mod_dict[mod_dict.classname() + 'JSON']['RecordingISODate']
-        elif mod_dict[mod_dict.classname()+'JSON']['AcquisitionTime']:
-            scan_time = '1900-01-01T'+ mod_dict[mod_dict.classname()+'JSON']['AcquisitionTime']
+        '''if mod_dict[mod_dict.classname()+'JSON']['RecordingISODate']:
+            scan_time = mod_dict[mod_type + 'JSON']['RecordingISODate']
+        elif mod_dict[mod_type+'JSON']['AcquisitionTime']:
+            scan_time = '1900-01-01T'+ mod_dict[mod_dict.classname()+'JSON']['AcquisitionTime']'''
+        if bids_dir['DatasetDescJSON']['Name'] == 'FTract' and mod_type=='Anat':
+            ind_pre = bids_dir['ParticipantsTSV'][0].index('pre_iEEG_date')
+            ind_post = bids_dir['ParticipantsTSV'][0].index('post_resection_MRI_date')
+            for elt in bids_dir['ParticipantsTSV']:
+               if self['sub'] in elt:
+                   indeP = bids_dir['ParticipantsTSV'].index(elt)
+            if self['ses'].startswith('pre'):
+                scan_time = bids_dir['ParticipantsTSV'][indeP][ind_pre]
+            elif self['ses'].startswith('post'):
+                scan_time = bids_dir['ParticipantsTSV'][indeP][ind_post]									
         else:
             scan_time = '1900-01-01T00:00:00'
         self['ScansTSV'].append({'filename': scan_name, 'acq_time': scan_time})
@@ -1915,7 +1991,7 @@ class MetaBrick(BidsBrick):
                 self.curr_pipeline['Pipeline'] = self['Derivatives'][-1]['Pipeline'][indexPip]
                 self.curr_pipeline.update({'isPresent': True, 'index': indexPip})
                 # Add the subject of the pipeline in the self
-                for sub in pipeline_subject:
+                '''for sub in pipeline_subject:
                     sub_present = False
                     # Ajouter un index pour trouver le sujet et verifier sa présence car bcp de sujet et pas toujours -1
                     for sub_pip in self['Derivatives'][-1]['Pipeline'][indexPip]['SubjectProcess']:
@@ -1926,7 +2002,7 @@ class MetaBrick(BidsBrick):
                     if not sub_present:
                         # self['Derivatives'][-1]['Pipeline'][indexPip]['Subject'][-1] = Subject()
                         self['Derivatives'][-1]['Pipeline'][indexPip]['SubjectProcess'].append(SubjectProcess())
-                        self['Derivatives'][-1]['Pipeline'][indexPip]['SubjectProcess'][-1].update(sub.get_attributes())
+                        self['Derivatives'][-1]['Pipeline'][indexPip]['SubjectProcess'][-1].update(sub.get_attributes())'''
 
     def get_derpip_list(self):
         der_list = list()
@@ -2423,10 +2499,10 @@ class BidsDataset(MetaBrick):
                 ses_list = [scan['ses'] for scan in sub['Scans']]
                 if tmp_attr['ses'] in ses_list:
                     ses_index = ses_list.index(tmp_attr['ses'])
-                    sub['Scans'][ses_index].add_modality(tmp_attr)
+                    sub['Scans'][ses_index].add_modality(tmp_attr, mod_type, bids_dst)
                 else:
                     sub['Scans'].append(Scans())
-                    sub['Scans'][-1].add_modality(tmp_attr)
+                    sub['Scans'][-1].add_modality(tmp_attr, mod_type, bids_dst)
 
             if keep_srcdata and not isinstance(mod_dict2import, GlobalSidecars):
                 scr_data_dirname = os.path.join(BidsDataset.dirname, 'sourcedata', dirname)
@@ -2711,13 +2787,14 @@ class BidsDataset(MetaBrick):
                     pipDataset['ParticipantsTSV'] = ParticipantsTSV()
                     pipDataset['ParticipantsTSV'].header = ['participant_id']
                     pipDataset['ParticipantsTSV'].required_fields = ['participant_id']
-                    pipDataset['DatasetDescJSON'] = DatasetDescJSON()
-                    pipDataset['DatasetDescJSON']['Name'] = pip['name']
+                    pipDataset['ParticipantsTSV'][:] =[]																  
+                    pipDataset['DatasetDescJSON'] = pip['DatasetDescJSON']
                     if pip_present:
                         pipCurrent = self.curr_pipeline['Pipeline']
                         pipDataset['name'] = pipCurrent['name']
                         for sub in pipCurrent['SubjectProcess']:
                             pipDataset['SubjectProcess'].append(sub)
+                        pipDataset['ParticipantsTSV'] = pipCurrent['ParticipantsTSV']																					 
                     else:
                         pipDataset['SubjectProcess'] = Subject()
                         if not self['Derivatives']:

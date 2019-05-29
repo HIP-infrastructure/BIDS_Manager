@@ -1,5 +1,11 @@
 #!/usr/bin/python3
 
+"""
+    This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
+    (with minor changes by Aude Jegou <aude.jegou@univ-amu.fr)
+    This module is GUI to explore bids dataset.
+    v0.1.10 March 2019
+""" 
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -11,12 +17,14 @@ from builtins import dict
 from builtins import str
 from builtins import object
 from future import standard_library
+from copy import deepcopy
 import ins_bids_class as bids
+import pipeline_analysis as pip
 import os
 import platform
-from tkinter import Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
-    Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
-    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu
+from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
+    Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, S, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
+    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, GROOVE, YES, Variable, Canvas, font
 try:
     from importlib import reload
 except:
@@ -31,6 +39,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     version = '0.1.10'
     bids_startfile = r'D:\Data\Test_Ftract_Import'
     import_startfile = r'D:\Data\Test_Ftract_Import\Original_deriv'
+    folder_software = r'D:\ProjectPython\SoftwarePipeline'
 
     def __init__(self):
         super().__init__()
@@ -78,10 +87,16 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         issue_menu.add_command(label='Solve channel issues',
                                command=lambda: self.solve_issues('ElectrodeIssue'), state=DISABLED)
         # fill up the pipeline menu
-        self.pipeline_settings = bids.PipelineSettings()
-        self.pipeline_settings.read_file()
-        for cnt, pipl in enumerate(self.pipeline_settings['Settings']):
-            pipeline_menu.add_command(label=pipl['label'], command=lambda idx=cnt: self.launch_pipeline(idx), state=DISABLED)
+
+        with os.scandir(self.folder_software) as it:
+            for entry in it:
+                name, ext = os.path.splitext(entry.name)
+                if ext == '.json':
+                    pipeline_menu.add_command(label=name, command=lambda nm=name: self.run_analysis(nm), state=DISABLED)
+        #self.pipeline_settings = bids.PipelineSettings()
+        #self.pipeline_settings.read_file()
+        #for cnt, pipl in enumerate(self.pipeline_settings['Settings']):
+        #    pipeline_menu.add_command(label=pipl['label'], command=lambda idx=cnt: self.launch_pipeline(idx), state=DISABLED)
         # settings_menu.add_command(label='Exit', command=self.quit)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
@@ -254,7 +269,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     def ask4bidsdir(self, isnew_dir=False):
         """Either set (isnew_dir = False) or create Bids directory (isnew_dir=True)"""
 
-        def create_new_bidsdataset(bids_dir):
+        def create_new_bidsdataset(parent, bids_dir):
             error_str = ''
             if os.listdir(bids_dir):
                 error_str += 'The folder is not empty!'
@@ -273,30 +288,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                             str(bids.DatasetDescJSON.required_keys) + 'to be filled.'
                 return error_str
             # Select type of requirements
-            req_fname = filedialog.askopenfilename(title='Select requirements type',
-                                                   filetypes=[('req.', "*.json")],
-                                                   initialdir=os.path.join(os.path.dirname(__file__),
-                                                                           'requirements_templates'))
-            if not req_fname:
-                error_str += 'Bids Manager requires a requirements.json file to be operational.'
-                return error_str
-            req_dict = bids.Requirements(req_fname)
-            # set the converter paths (read path should be handled in a future release)
-            fname = filedialog.askopenfilename(title='Select converter for imagery data type (dcm2niix)')
-            if not fname or 'dcm2niix' not in os.path.basename(fname):
-                error_str += 'Bids Manager requires dcm2niix to convert imagery data.'
-                return error_str
-            bids.BidsDataset.converters['Imagery']['path'] = fname
-            req_dict['Converters']['Imagery']['path'] = fname
-            fname = filedialog.askopenfilename(title='Select converter for electrophy. data type (AnyWave)')
-            if not fname or 'AnyWave' not in os.path.basename(fname):
-                error_str += 'Bids Manager requires AnyWave to convert electrophy. data.'
-                return error_str
-            bids.BidsDataset.converters['Electrophy']['path'] = fname
-            req_dict['Converters']['Electrophy']['path'] = fname
-            bids.BidsDataset.dirname = bids_dir
-            datasetdesc.write_file()
-            req_dict.save_as_json()
+            error_str = RequirementsDialog(parent, bids_dir).error_str
+
+            return error_str
+
 
         def check_access():
             if os.path.isfile(self.curr_bids.access.filename):
@@ -321,7 +316,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.curr_bids = None
         if isnew_dir:
             # if new bids directory than create dataset_desc.json and but the requirements in code
-            error_str = create_new_bidsdataset(bids_dir)
+            error_str = create_new_bidsdataset(self, bids_dir)
             if error_str:
                 messagebox.showerror('Error', error_str)
                 self.change_menu_state(self.uploader_menu, state=DISABLED)
@@ -356,6 +351,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
         # enable all bids sub-menu
         self.change_menu_state(self.bids_menu)
+        self.change_menu_state(self.pipeline_menu)
         self.bids_menu.entryconfigure(5, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
         self.bids_menu.entryconfigure(6, command=self.explore_bids_dataset)
         # enable selection of upload directory
@@ -792,6 +788,17 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.banner.configure(bg="blue")
         self.banner_label.set(self.banner_label._default)
         self.update()  # may not be necessary if at the end of method but is needed otherwise...
+
+    def run_analysis(self, nameS):
+        if not self.curr_bids:
+            error_str = 'Bids directory should be selected'
+            raise TypeError(error_str)
+        soft_analyse = pip.Analysis(nameS, self.curr_bids)
+        output_dict = BidsSelectDialog(self, self.curr_bids, soft_analyse)
+        #add the parameters
+        self.update_text('Subjects selected \n' + '\n'.join(output_dict.results['sub']) + '\nThe analysis is ready to be run')
+        soft_analyse.run_analysis()
+        self.update_text('The analysis is done')
 
     @staticmethod
     def make_table(table):
@@ -1636,6 +1643,792 @@ class BidsBrickDialog(FormDialog):
             else:
                 if isinstance(self.key_entries[key], Entry) and not self.key_entries[key].get() == self.main_brick[key]:
                     self.main_brick[key] = self.key_entries[key].get()
+
+
+class BidsSelectDialog(TemplateDialog):
+    bidsdataset = None
+    select_subject = None
+    subject_list = {'SubjectToAnalyse': []}
+
+    def __init__(self, parent, input_dict, analysis_dict=None):
+        self.vars = {}
+        if isinstance(input_dict, bids.BidsDataset):
+            BidsSelectDialog.bidsdataset = input_dict
+        elif analysis_dict and not isinstance(analysis_dict, pip.Analysis):
+            raise TypeError('Third input should be a pipeline analysis')
+        else:
+            raise TypeError('Second input should be a bids dataset')
+        ses_type = []
+        task_type = []
+        self.subject_dict =dict()
+        #self.param_dict =dict()
+        for sub in BidsSelectDialog.bidsdataset['Subject']:
+            for mod in sub:
+                if mod and mod in bids.ModalityType.get_list_subclasses_names():
+                    for elt in sub[mod]:
+                        try:
+                            if elt['ses'] and not elt['ses'] == '':
+                                ses_type.append(elt['ses'])
+                            if elt['task'] and not elt['task'] == '':
+                                task_type.append(elt['task'])
+                        except:
+                            pass
+        ses_type = list(set(ses_type))
+        task_type = list(set(task_type))
+        self.required_criteria = {'ses': ses_type, 'task': task_type}
+
+        self.participants = BidsSelectDialog.bidsdataset['ParticipantsTSV']
+        self.display_dict, self.vars = self.select_criteria(self.participants)
+
+        self.subject_dict['Subject'] = []
+        for sub in BidsSelectDialog.bidsdataset['Subject']:
+            self.subject_dict['Subject'].append(sub['sub'])
+        self.key_label = {key: '' for key in self.display_dict.keys()}
+        self.req_label = {key: '' for key in self.required_criteria.keys()}
+
+        #self.vars = [value for key, value in self.display_dict.items()]
+        self.vars_req = {'IntVar_'+key: value for key, value in self.required_criteria.items()}
+
+        if analysis_dict:
+            self.software = analysis_dict
+            self.param_dict, self.param_vars = self.software.select_parameter_analysis()
+
+        super().__init__(parent)
+
+    def select_criteria(self, participant_dict):
+
+        def check_numerical_value(element):
+            is_numerical = False
+            punctuation = ',.?!:'
+            temp = element.translate(str.maketrans('', '', punctuation))
+            temp = temp.strip('YymM ')
+            if temp.isnumeric():
+                is_numerical = True
+            return is_numerical
+
+        display_dict = dict()
+        req_keys = self.bidsdataset.requirements['Requirements']['Subject']['keys']
+        for key, value in req_keys.items():
+            if value:
+                display_dict[key] = value
+            elif 'age' in key:
+                display_dict[key] = value
+            elif 'duration' in key:
+                display_dict[key] = value
+        criteria = participant_dict.header
+        key_list = display_dict.keys()
+
+        var_dict = dict()
+        key_to_remove = []
+
+        for key in key_list:
+            idx = criteria.index(key)
+            is_string = False
+            display_value = []
+            for val_part in participant_dict[1::]:
+                is_number = check_numerical_value(val_part[idx])
+                if is_number and display_dict[key]:
+                    display_value.append(val_part[idx])
+                elif is_number:
+                    display_value.append('min_' + key)
+                    display_value.append('max_' + key)
+                    is_string = True
+                else:
+                    l_elt = val_part[idx].split(', ')
+                    for l in l_elt:
+                        display_value.append(l)
+            display_value = list(set(display_value))
+            if is_string:
+                display_value = sorted(display_value, reverse=True)
+                var_dict['StringVar_' + key] = [value for value in display_value]
+            elif display_value:
+                display_value = list(set(display_value).intersection(set(display_dict[key])))
+                if len(display_value) == 1 and not 'n/a' in display_value:
+                    var_dict['Label_'+key] = [value for value in display_value]
+                elif len(display_value) > 1:
+                    var_dict['Variable_' + key] = [value for value in display_value]
+                else:
+                    key_to_remove.append(key)
+
+        for key in key_to_remove:
+            del display_dict[key]
+
+        return display_dict, var_dict
+
+    def body(self, parent):
+        def enable(frame, state):
+            for child in frame.winfo_children():
+                try:
+                    child.configure(state=state)
+                except:
+                    pass
+
+        def enable_frame(frame, button):
+            button_value = button.get()
+            if button_value == 1:
+                enable(frame, 'normal')
+            elif button_value == 0:
+                enable(frame, 'disabled')
+
+        self.title('Select Subjects and parameters')
+        self.All_sub = IntVar()
+        self.Id_sub = IntVar()
+        self.Crit_sub = IntVar()
+        All_sub_butt = Checkbutton(parent, text='All subjects', variable=self.All_sub)
+        All_sub_butt.grid(row=0, column=0, sticky=W+E)
+        Id_sub_butt = Checkbutton(parent, text='Select subject(s) Id(s)', variable=self.Id_sub, command=lambda: enable_frame(Frame_list, self.Id_sub))
+        Id_sub_butt.grid(row=0, column=1, sticky=W+E)
+        Crit_sub_butt = Checkbutton(parent, text='Select subjects by criteria', variable=self.Crit_sub, command=lambda: enable_frame(Frame_criteria, self.Crit_sub))
+        Crit_sub_butt.grid(row=0, column=2, sticky=W+E)
+        Frame_list = Frame(parent, relief=GROOVE, borderwidth=2)
+        Frame_req_criteria = Frame(parent, relief=GROOVE, borderwidth=2)
+        Label(Frame_req_criteria, text='Select required criteria:').grid(row=0)
+        Frame_criteria = Frame(parent, relief=GROOVE, borderwidth=2)
+        Label(Frame_criteria, text='Select criteria for multiple subjects analysis:').grid(row=0)
+
+        #Subject list
+        self.subject = Label(Frame_list, text='Subject')
+        self.subject.grid(row=0, sticky=W)
+        list_choice = Variable(Frame_list, self.subject_dict['Subject'])
+        self.select_subject = Listbox(Frame_list, listvariable=list_choice, selectmode=MULTIPLE)
+        self.select_subject.grid(row=1, column=1, sticky=W + E)
+
+        #Criteria to select subjects
+        max_crit, cntC = self.create_button(Frame_criteria, self.key_label,  self.vars)
+
+        #Required criteria for all option
+        max_req, cntR = self.create_button(Frame_req_criteria, self.req_label, self.vars_req)
+
+        #place the frame
+        Frame_req_criteria.grid(row=1, column=1, rowspan=cntR, columnspan=max_req)
+        Frame_list.grid(row=1, column=0, columnspan=1, rowspan=cntR + cntC)
+        enable(Frame_list, 'disabled')
+        Frame_criteria.grid(row=2, column=1, rowspan=cntC, columnspan=max_crit)
+        enable(Frame_criteria, 'disabled')
+
+        if self.param_dict:
+            Frame_analysis = Frame(parent, relief=GROOVE, borderwidth=2)
+            Label(Frame_analysis, text='Select analysis parameters:').grid(row=0)
+            max_param, cntP = self.create_button(Frame_analysis, self.param_dict, self.param_vars)
+            col_p = max(max_crit, max_req)
+            length = max(cntC, cntP+cntR)
+            Frame_analysis.grid(row=0, column=col_p+1, rowspan=length, columnspan=max_param)
+
+        self.ok_cancel_button(parent, row=cntR+cntC+1)
+
+    def ok(self):
+        self.results, self.sub_criteria = self.get_the_subject_id()
+        self.software.get_analysis_value(self.param_vars, self.results)
+        self.destroy()
+
+    def get_the_subject_id(self):
+
+        def get_subject_list_from_criteria(bids_dialog, input_dict, subject_list):
+            for elt in bids_dialog.participants[1::]:
+                elt_in = []
+                for key, value in input_dict.items():
+                    idx_key = bids_dialog.participants.header.index(key)
+                    if isinstance(value, range):
+                        elt[idx_key] = elt[idx_key].replace(',', '.')
+                        age_p = round(float(elt[idx_key].rstrip('YyMm ')))
+                        if age_p in value:
+                            elt_in.append(True)
+                    elif isinstance(value, list):
+                        for val in value:
+                            if val in elt[idx_key]:
+                                elt_in.append(True)
+                            else:
+                                elt_in.append(False)
+                    elif isinstance(value, str):
+                        if value in elt[idx_key]:
+                            elt_in.append(True)
+                        else:
+                            elt_in.append(False)
+                elt_in = list(set(elt_in))
+                if len(elt_in) == 1 and elt_in[0] is True:
+                    subject_list.append(elt[0])
+
+        subject_list = []
+        res_dict = dict()
+        if self.All_sub.get():
+            subject_list = self.subject_dict['Subject']
+        elif self.Id_sub.get():
+            for index in self.select_subject.curselection():
+                subject_list.append(self.select_subject.get(index))
+        elif self.Crit_sub.get():
+            for var in self.vars.keys():
+                isntype = var.split('_')
+                clef_size = len(isntype[0]) + 1
+                key = var[clef_size::]
+                if isntype[0] == 'Variable':
+                    for id_var in self.vars[var]:
+                        if id_var.get():
+                            try:
+                                res_dict[key].append(id_var._name)
+                            except:
+                                res_dict[key] = []
+                                res_dict[key].append(id_var._name)
+                elif isntype[0] == 'StringVar':
+                    num_value = False
+                    for id_var in self.vars[var]:
+                        if id_var.get().isalnum():
+                            if id_var._name.startswith('min'):
+                                minA = int(id_var.get())
+                            elif id_var._name.startswith('max'):
+                                maxA = int(id_var.get())
+                            num_value = True
+                    if num_value:
+                        res_dict[key] = range(minA, maxA)
+                elif isntype[0] == 'IntVar':
+                    for id_var in self.vars[var]:
+                        if id_var.get():
+                            try:
+                                res_dict[key].append(id_var._name)
+                            except:
+                                res_dict[key] = []
+                                res_dict[key].append(id_var._name)
+            get_subject_list_from_criteria(self, res_dict, subject_list)
+
+        ses_list = []
+        task_list = []
+        for var in self.vars_req:
+            isntype = var.split('_')
+            clef_size = len(isntype[0]) + 1
+            key = var[clef_size::]
+            if isntype[0] == 'IntVar':
+                for id_var in self.vars_req[var]:
+                    if id_var.get() and key == 'ses':
+                        ses_list.append(id_var._name)
+                    elif id_var.get() and key == 'task':
+                        task_list.append(id_var._name)
+
+        resultats = {'sub': subject_list, 'ses': ses_list, 'task': task_list}
+
+        return resultats, res_dict
+
+    def create_button(self, frame, label_d, var_d):
+        max_col = 1
+        for cnt, key in enumerate(label_d):
+            label_d[key] = Label(frame, text=key)
+            label_d[key].grid(row=cnt+1, sticky=W)
+            for clef in var_d.keys():
+                isn_type = clef.split('_')
+                taille = len(isn_type[0]) +1
+                if clef[taille::] == key:
+                    if isn_type[0] == 'IntVar':
+                        if isinstance(var_d[clef], list):
+                            idx_var = 0
+                            while idx_var < len(var_d[clef]):
+                                temp = var_d[clef][idx_var]
+                                var_d[clef][idx_var] = IntVar()
+                                var_d[clef][idx_var]._name = temp
+                                l = Checkbutton(frame, text=temp, variable=var_d[clef][idx_var])
+                                l.grid(row=cnt + 1, column=idx_var + 1, sticky=W + E)
+                                idx_var += 1
+                            max_col = max(max_col, idx_var)
+                        elif isinstance(var_d[clef], str):
+                            temp = var_d[clef]
+                            var_d[clef] = IntVar()
+                            var_d[clef]._name = temp
+                            l = Checkbutton(frame, text=temp, variable=var_d[clef])
+                            l.insert(END, var_d[clef]._name)
+                            l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+                    elif isn_type[0] == 'StringVar':
+                        if isinstance(var_d[clef], list):
+                            idx_var = 0
+                            while idx_var < len(var_d[clef]):
+                                temp = var_d[clef][idx_var]
+                                var_d[clef][idx_var] = StringVar()
+                                var_d[clef][idx_var]._name = temp
+                                l = Entry(frame, textvariable=temp)
+                                l.insert(END, temp)
+                                l.grid(row=cnt + 1, column=idx_var+1, sticky=W + E)
+                                idx_var += 1
+                            max_col = max(max_col, idx_var)
+                        elif isinstance(var_d[clef], str):
+                            temp = var_d[clef]
+                            var_d[clef] = StringVar()
+                            if len(temp.split('_')) > 1:
+                                var_d[clef]._name = temp.split('_')[1]
+                            else:
+                                var_d[clef]._name = temp
+                            l = Entry(frame, textvariable=var_d[clef]._name)
+                            l.insert(END, var_d[clef]._name)
+                            l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+                    elif isn_type[0] == 'Variable':
+                        CheckbuttonList(frame, var_d[clef], row_list=cnt+1, col_list=max_col)
+                    elif isn_type[0] == 'askopenfile':
+                        pass
+                    elif isn_type[0] == 'Bool':
+                        var_d[clef] = BooleanVar()
+                        var_d[clef].set(False)
+                        l = Checkbutton(frame, text='True', variable=var_d[clef])
+                        l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+                    elif isn_type[0] == 'Label':
+                        l = Label(frame, text=var_d[clef])
+                        l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+
+        return max_col, cnt
+
+
+class RequirementsDialog(TemplateDialog):
+
+    def __init__(self, parent, bids_dir):
+        self.subject_key = ['keys', 'required_keys']
+        self.info_key_label = []
+        self.info_value_label = []
+        self.req_button = []
+        self.import_req = IntVar()
+        self.create_req = IntVar()
+        self.info_button = []
+        self.modality_required_key = []
+        self.modality_required_value = []
+        self.modality_required_name = []
+        self.modality_required_amount = []
+        self.modality_required_button = []
+        self.modality_required_label = []
+        self.modality_key = []
+        self.modality_value = []
+        self.modality_name = []
+        self.modality_button = []
+        self.modality_label = []
+        self.modality_list = bids.Imagery.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names()
+        self.req_name=''
+        self.elec_name=''
+        self.imag_name=''
+        self.bids_dir = bids_dir
+        self.error_str=''
+        super().__init__(parent)
+
+    def ask4path(self, file_type, display=None):
+        if file_type == 'req':
+            self.req_name = filedialog.askopenfilename(title='Select requirements type',
+                                                       filetypes=[('req.', "*.json")],
+                                                       initialdir=os.path.join(os.path.dirname(__file__),
+                                                                               'requirements_templates'))
+            if display:
+                display.delete(0,END)
+                display.insert(END, self.req_name)
+        elif file_type == 'elec':
+            self.elec_name = filedialog.askopenfilename(title='Select converter for electrophy. data type (AnyWave)')
+            if display:
+                display.delete(0, END)
+                display.insert(END, self.elec_name)
+        elif file_type == 'imag':
+            self.imag_name = filedialog.askopenfilename(title='Select converter for imagery data type (dcm2niix)')
+            if display:
+                display.delete(0, END)
+                display.insert(END, self.imag_name)
+
+    def body(self, parent):
+        def enable(frame, state):
+            for child in frame.winfo_children():
+                try:
+                    child.configure(state=state)
+                except:
+                    pass
+
+        def enable_frames(frame, button):
+            button_value = button.get()
+            if button_value == 1:
+                if isinstance(frame, list):
+                    for fr in frame:
+                        enable(fr, 'normal')
+                else:
+                    enable(frame, 'normal')
+            elif button_value == 0:
+                if isinstance(frame, list):
+                    for fr in frame:
+                        enable(fr, 'disabled')
+                else:
+                    enable(frame, 'disabled')
+
+        self.geometry('1600x800')
+        smallfont = font.Font(family="Segoe UI", size=9)
+        self.option_add('*Font', smallfont)
+        placement = Frame(parent)
+        toolbar = Frame(placement)
+        import_req_button = Checkbutton(placement, text='Select your Requirements', variable=self.import_req, command=lambda: enable_frames(toolbar, self.import_req))
+        import_req_button.pack(side=LEFT)
+        entry_path = Entry(toolbar, state=DISABLED)
+        req_path = Button(toolbar, text='Filename path', command=lambda: self.ask4path(file_type='req', display=entry_path), state=DISABLED)
+        req_path.pack(side=LEFT)
+        entry_path.pack(side=LEFT)
+        toolbar.pack(side=LEFT)
+        placement.pack(side=TOP)
+        create_req_button = Checkbutton(parent, text='Create your Requirements', variable=self.create_req, command=lambda: enable_frames([frame_subject_info.frame, frame_required.frame, frame_modality.frame], self.create_req))
+        create_req_button.pack(side=TOP)
+
+        Frame_path = Frame(parent)
+        Frame_path .pack(side=LEFT, fill=BOTH)
+        Label(Frame_path, text='Indicate the path of the converters').pack(side=TOP, anchor=N)
+
+        #Scrollbar the subject's frame
+        frame_subject_info = VerticalScrollbarFrame(parent)
+        Label(frame_subject_info.frame, text='Indicate the subjects information you need').grid(row=0)
+        Label(frame_subject_info.frame, text='Label').grid(row=1, column=0)
+        Label(frame_subject_info.frame, text='Possible Values').grid(row=1, column=1)
+
+        # Scrollbar the frame with canvas
+        frame_required = VerticalScrollbarFrame(parent)
+        Label(frame_required.frame, text='Indicate the modality required in the dataset').grid(row=0)
+
+        #Scrollbar the modality's frame
+        frame_modality = VerticalScrollbarFrame(parent)
+        Label(frame_modality.frame, text='Indicate the different values for modality').grid(row=0)
+        frame_modality.frame.pack(side=LEFT, fill=BOTH, expand=True)
+
+        #initiate the first button
+        self.subject_info_button(frame_subject_info.frame)
+        l4 = Button(frame_subject_info.frame, text='+', command=lambda: self.add_lines_command(frame_subject_info.frame, canvas=frame_subject_info.canvas))
+        l4.grid(row=1, column=2)
+        l5 = Button(frame_subject_info.frame, text='-', command=lambda: self.remove_lines_command())
+        l5.grid(row=1, column=3)
+        frame_subject_info.update_scrollbar()
+
+        #initiate the modality button
+        m1 = ttk.Combobox(frame_required.frame, values=self.modality_list)
+        m1.grid(row=1, column=0)
+        m2 = Button(frame_required.frame, text='+', command=lambda: self.add_lines_command(frame_required.frame, canvas=frame_required.canvas, mod=self.modality_list[m1.current()], required=True))
+        m2.grid(row=1, column=1)
+        m5 = Button(frame_required.frame, text='-', command=lambda: self.remove_lines_command(mod=True, required=True))
+        m5.grid(row=1, column=2)
+        frame_required.update_scrollbar()
+
+        m3 = ttk.Combobox(frame_modality.frame, values=self.modality_list)
+        m3.grid(row=1, column=0)
+        m4 = Button(frame_modality.frame, text='+', command=lambda: self.add_lines_command(frame_modality.frame, canvas=frame_modality.canvas, mod=self.modality_list[m3.current()]))
+        m4.grid(row=1, column=1)
+        m6 = Button(frame_modality.frame, text='-', command=lambda: self.remove_lines_command(mod=True))
+        m6.grid(row=1, column=2)
+        frame_modality.update_scrollbar()
+
+        #path in frame path
+        Label(Frame_path, text='Select the Electrophisiology converters').pack(anchor='w')
+        entry_elec = Entry(Frame_path)
+        Button(Frame_path, text='Electrophysiology converters', command=lambda: self.ask4path(file_type='elec', display=entry_elec)).pack(anchor='center')#grid(row=3)
+        entry_elec.pack()
+        Label(Frame_path, text='Select the Imagery converters').pack(anchor='w')
+        entry_imag = Entry(Frame_path)
+        Button(Frame_path, text='Imagery converters', command=lambda: self.ask4path(file_type='imag', display=entry_imag)).pack(anchor='center')#.grid(row=7)
+        entry_imag.pack()
+
+        enable(frame_subject_info.frame, 'disabled')
+        enable(frame_required.frame, 'disabled')
+        enable(frame_modality.frame, 'disabled')
+
+        self.ok_cancel_button(Frame_path)
+
+    def subject_info_button(self, parent):
+        self.info_key_label.append(StringVar())
+        self.info_value_label.append(StringVar())
+        self.req_button.append(IntVar())
+        cnt = len(self.info_key_label) + 1
+        l1 = Entry(parent, textvariable=self.info_key_label[-1])
+        l1.grid(row=cnt, column=0)
+        self.info_button.append(l1)
+        l2 = Entry(parent, textvariable=self.info_value_label[-1])
+        l2.grid(row=cnt, column=1)
+        self.info_button.append(l2)
+        l3 = Checkbutton(parent, text='required', variable=self.req_button[-1])
+        l3.grid(row=cnt, column=2)
+        self.info_button.append(l3)
+
+    def ok_cancel_button(self, parent, row=None):
+        self.btn_ok = Button(parent, text='OK', command=self.ok, height=self.button_size[0],
+                             width=self.button_size[1])
+
+        self.btn_cancel = Button(parent, text='Cancel', command=self.cancel, height=self.button_size[0],
+                                 width=self.button_size[1], default=ACTIVE)
+        self.btn_ok.pack(side=LEFT, anchor='sw', expand=1, padx=10, pady=5)
+        self.btn_cancel.pack(side=RIGHT, anchor='se', expand=1, padx=10, pady=5)
+
+    def remove_lines_command(self, mod=False, required=False):
+        if mod:
+            if required:
+                req = 'required_'
+            else:
+                req=''
+            keys = eval('self.modality_'+req+'key')
+            button = eval('self.modality_'+req+'button')
+            name = eval('self.modality_'+req+'name')
+            value = eval('self.modality_'+req+'value')
+            label = eval('self.modality_'+req+'label')
+            try:
+                number_line = len(keys[-1])
+                end_line = len(button) - 1
+                idx = end_line - number_line
+                while end_line > idx:
+                    button[end_line].grid_forget()
+                    del button[end_line]
+                    end_line = end_line-1
+                for key in keys[-1].keys():
+                    keys[-1][key].grid_forget()
+                label[-1].grid_forget()
+                del keys[-1]
+                del name[-1]
+                del value[-1]
+                del label[-1]
+            except IndexError:
+                messagebox.showerror('Error', 'There are no buttons to delete')
+        else:
+            end_button = len(self.info_button)-1
+            if end_button < 0:
+                messagebox.showerror('Error', 'There are no buttons to delete')
+            else:
+                idx = end_button - 3
+                while end_button > idx:
+                    self.info_button[end_button].grid_forget()
+                    del self.info_button[end_button]
+                    end_button = end_button - 1
+                del self.info_key_label[-1]
+                del self.info_value_label[-1]
+                del self.req_button[-1]
+
+    def add_lines_command(self, parent, canvas=None, mod=None, required=False):
+
+        def number_line(list_cnt):
+            number = 0
+            i=0
+            for elt in list_cnt:
+                i = list_cnt.index(elt)+1
+                number = number + i*len(elt)
+            if i == 0:
+                autre_num = 2
+            else:
+                autre_num = i + 3
+            return number, autre_num
+
+        if mod:
+            key_label = eval('bids.'+mod+'.keylist')
+            if required:
+                line_num, init_num = number_line(self.modality_required_value)
+            else:
+                line_num, init_num = number_line(self.modality_value)
+            required_key = {}
+            required_value = {}
+            for elt in key_label:
+                if elt not in bids.BidsJSON.get_list_subclasses_names() + bids.BidsTSV.get_list_subclasses_names() + bids.BidsBrick.required_keys + ['fileLoc']:
+                    if elt == 'modality':
+                        mod_list = eval('bids.'+mod+'.allowed_modalities')
+                        if required:
+                            required_value[elt] = mod_list
+                            required_key[elt] = ''
+                    else:
+                        required_value[elt] = StringVar()
+                        required_key[elt] = ''
+            if required:
+                required_value['amount'] = StringVar()
+                required_key['amount'] = ''
+
+            lab = Label(parent, text=mod+':')
+            lab.grid(row=line_num+init_num)
+            for cnt, key in enumerate(required_value.keys()):
+                required_key[key] = Label(parent, text=key)
+                required_key[key].grid(row=line_num + cnt + init_num+1, sticky=W)
+                if key == 'modality':
+                    l = Listbox(parent, exportselection=0, selectmode=MULTIPLE, height=3)
+                    for item in required_value[key]:
+                        l.insert(END, item)
+                    required_value[key] = l
+                else:
+                    l = Entry(parent, textvariable=required_value[key])
+                l.grid(row=line_num + cnt + init_num+1, column=1)
+                if required:
+                    self.modality_required_button.append(l)
+                else:
+                    self.modality_button.append(l)
+            if required:
+                self.modality_required_value.append(required_value)
+                self.modality_required_key.append(required_key)
+                self.modality_required_name.append(mod)
+                self.modality_required_label.append(lab)
+            else:
+                self.modality_value.append(required_value)
+                self.modality_key.append(required_key)
+                self.modality_name.append(mod)
+                self.modality_label.append(lab)
+        else:
+            self.subject_info_button(parent)
+        parent.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+    def ok(self):
+        self.error_str = ''
+        if not self.elec_name or 'AnyWave' not in os.path.basename(self.elec_name):
+            self.error_str += 'Bids Manager requires AnyWave to convert electrophy. data. '
+            pass
+        if not self.imag_name or 'dcm2niix' not in os.path.basename(self.imag_name):
+            self.error_str += 'Bids Manager requires dcm2niix to convert imagery data. '
+            pass
+
+        if self.import_req.get():
+            if not self.req_name:
+                self.error_str = 'Bids Manager requires a requirements.json file to be operational. '
+            else:
+                req_dict = bids.Requirements(self.req_name)
+        elif self.create_req.get():
+            req_dict = bids.Requirements()
+            keys = {}
+            required_keys = []
+            for i, elt in enumerate(self.info_key_label):
+                value = self.info_value_label[i].get()
+                key = elt.get()
+                if not key:
+                    self.error_str = 'Subject"s information are missing'
+                    break
+                else:
+                    if ' ' in key:
+                        key = key.replace(' ', '_')
+
+                if ',' not in value:
+                    keys[key] = value
+                else:
+                    list_val = value.split(', ')
+                    keys[key] = [val for val in list_val]
+                if self.req_button[i].get():
+                    required_keys.append(key)
+            else:
+                req_dict['Requirements']['Subject']['keys'] = keys
+                req_dict['Requirements']['Subject']['required_keys'] = required_keys
+            if not self.error_str:
+                #to get the required modality for the database
+                for i, mod in enumerate(self.modality_required_key):
+                    if self.modality_required_name[i] not in req_dict['Requirements']['Subject'].keys():
+                        req_dict['Requirements']['Subject'][self.modality_required_name[i]] = []
+                    mod_dict = {}
+                    type_list = []
+                    type_dict = {}
+                    for key in mod:
+                        if isinstance(self.modality_required_value[i][key], StringVar):
+                            value = self.modality_required_value[i][key].get()
+                        elif isinstance(self.modality_required_value[i][key], Listbox):
+                            value = [self.modality_required_value[i][key].get(ind_sel) for ind_sel in self.modality_required_value[i][key].curselection()]
+                        if key == 'amount' and value:
+                            mod_dict['amount'] = int(value)
+                        elif value and isinstance(value, list):
+                            for val in value:
+                                type_dict[key] = val
+                                type_list.append(deepcopy(type_dict))
+                        elif value:
+                            type_dict[key] = value
+                    if len(type_list) > 1:
+                        mod_dict['type'] = type_list
+                    else:
+                        mod_dict['type'] = type_dict
+                    req_dict['Requirements']['Subject'][self.modality_required_name[i]].append(mod_dict)
+                #To get the possible keys in modality
+                for i, mod in enumerate(self.modality_name):
+                    if mod not in req_dict['Requirements'].keys():
+                        req_dict['Requirements'][mod] = {}
+                        key_dict = {}
+                    else:
+                        key_dict = req_dict['Requirements'][mod]['keys']
+                    for key in self.modality_key[i]:
+                        value = self.modality_value[i][key].get()
+                        if value:
+                            if key not in key_dict.keys():
+                                key_dict[key] = []
+                            if ',' not in value:
+                                key_dict[key].append(value)
+                            else:
+                                list_val = value.split(', ')
+                                for val in list_val:
+                                    key_dict[key].append(val)
+                            key_dict[key] = list(set(key_dict[key]))
+                    req_dict['Requirements'][mod]['keys'] = key_dict
+        else:
+            self.error_str += 'Bids Manager requires a requirements.json file to be operational. '
+            pass
+
+        if self.error_str:
+            messagebox.showerror('Error', self.error_str)
+        else:
+            bids.BidsDataset.converters['Imagery']['path'] = self.imag_name
+            req_dict['Converters']['Imagery']['path'] = self.imag_name
+            req_dict['Converters']['Imagery']['ext'] = ['.nii']
+            bids.BidsDataset.converters['Electrophy']['path'] = self.elec_name
+            req_dict['Converters']['Electrophy']['path'] = self.elec_name
+            req_dict['Converters']['Electrophy']['ext'] = ['.vhdr', '.vmrk', '.eeg']
+            bids.BidsDataset.dirname = self.bids_dir
+            req_dict.save_as_json()
+            self.destroy()
+
+
+class VerticalScrollbarFrame(Frame):
+
+    def __init__(self, parent):
+        self.Frame_to_scrollbar = Frame(parent, relief=GROOVE, borderwidth=2)
+        self.Frame_to_scrollbar.pack(side=LEFT, fill=BOTH, expand=True)
+        self.vsb = Scrollbar(self.Frame_to_scrollbar, orient="vertical")
+        self.vsb.pack(side=RIGHT, fill=Y)
+        self.canvas = Canvas(self.Frame_to_scrollbar, yscrollcommand=self.vsb.set)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        self.frame = Frame(self.canvas)#, relief=GROOVE, borderwidth=2)
+        self.frame.pack()
+
+    def update_scrollbar(self):
+        def myfunction(canvas):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        self.canvas.create_window(0, 0, scrollregion=self.canvas.bbox("all"), window=self.frame, anchor='nw')
+        self.canvas.pack()
+        self.frame.update_idletasks()
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+        self.vsb.configure(command=self.canvas.yview)
+        self.frame.bind('<Configure>', myfunction(self.canvas))
+
+
+class CheckbuttonList(Frame):
+    variable_list = None
+
+    def __init__(self, parent, variable_list, row_list, col_list):
+        self.frame_button = None
+        self.hidden = False
+        self.test_frame = None
+        self.parent = parent
+        self.variable_list = variable_list
+        self.frame = Frame(parent, width=150, height=25, bg='white')
+        self.frame.grid(row=row_list, column=col_list)
+        self.combo_entry = Entry(self.frame)
+        self.combo_entry.pack(side=LEFT)
+        self.create_checkbutton_list()
+        self.list_button = Button(parent, text='v', command=lambda: self.call_checkbutton_list())
+        self.list_button.grid(row=row_list, column=col_list+1)
+
+    def create_checkbutton_list(self):
+        self.combo_entry.toplevel = Toplevel()
+        self.combo_entry.toplevel.overrideredirect(1)
+        self.combo_entry.toplevel.transient()
+        self.return_button = Button(self.combo_entry.toplevel, text='v', command=lambda: self.call_checkbutton_list())
+        self.return_button.pack(side=TOP, anchor='ne')
+        self.frame_button = VerticalScrollbarFrame(self.combo_entry.toplevel)
+        self.frame_button.update_scrollbar()
+
+        idx_var = 0
+        while idx_var < len(self.variable_list):
+            temp = self.variable_list[idx_var]
+            self.variable_list[idx_var] = IntVar()
+            self.variable_list[idx_var]._name = temp
+            l = Checkbutton(self.frame_button.frame, text=temp, variable=self.variable_list[idx_var])
+            l.grid(row=idx_var, sticky=W + E)
+            idx_var += 1
+        self.frame_button.frame.update_idletasks()
+        self.frame_button.canvas.config(scrollregion=self.frame_button.canvas.bbox("all"))
+        self.combo_entry.toplevel.withdraw()
+
+    def call_checkbutton_list(self):
+        but_width = self.return_button.winfo_reqwidth()
+        self.combo_entry.toplevel.geometry("%dx%d+%d+%d" % (self.combo_entry.winfo_reqwidth()+but_width, 125, self.combo_entry.winfo_rootx(),
+                             self.combo_entry.winfo_rooty()))
+        if not self.hidden:
+            self.hidden =True
+            self.combo_entry.toplevel.deiconify()
+            self.combo_entry.toplevel.grab_set()
+        else:
+            self.hidden = False
+            self.combo_entry.toplevel.withdraw()
+            self.parent.master.master.grab_set()
 
 
 def make_splash():
