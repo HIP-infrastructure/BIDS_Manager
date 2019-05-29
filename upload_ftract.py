@@ -491,11 +491,13 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
     ###Go throught all folders to find ieeg and anat data###
     subject_list = list()
     subject_tab = list()
+    sub_code_list = list()
     clinical_list = raw_data.requirements['Requirements']['Subject']['keys']
 
     #Get the clinical information for each subject
     for sub_elt in sujets:
         hashed_sub = hash_object(sub_elt)
+        sub_code_list.append(hashed_sub)
         subject_present, index_subject = check_subject_in_list(subject_list, hashed_sub)
         sub = get_sub_attributes(subject_present, index_subject, subject_list, hashed_sub)
 
@@ -656,7 +658,7 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
                     shutil.copy(os.path.join(PathSEEG, Subdir, 'Info', fileInfo), os.path.join('/gin/data/database/temp_bids', fileInfo))
                     iephoto = util.IeegGlobalSidecars(os.path.join('/gin/data/database/temp_bids', fileInfo))
                     iephoto['sub'] = sub['sub']
-                    iephoto['ses'] = 'preimp'+str(num_ses).zfill(2)
+                    iephoto['ses'] = 'postimp'+str(num_ses).zfill(2)
                     iephoto['acq'] = chart+filenb
 
                     sub['IeegGlobalSidecars'] = iephoto
@@ -666,97 +668,6 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
 
             subject_present, index_subject = check_subject_in_list(subject_list, sub['sub'])
             update_subject_list(subject_present, index_subject, subject_list, sub)
-
-    #Take the seizure from 01-uploads
-    #Don't need after the transfer of the files in raw
-    '''PathSeizure = os.path.join(pathTempMIP, '01-uploads')
-    for dircentre in os.listdir(PathSeizure):
-        if dircentre in ftract_site and (flagIeeg or flagProc):
-            PathCentre = os.path.join(PathSeizure, dircentre, 'uploads')
-            for Subdir in os.listdir(PathCentre):
-                if Subdir in sujets:
-                    PathSujet = os.path.join(PathCentre, Subdir, 'SEEG', 'CRA')
-                    hashed_sub = hash_object(Subdir)
-                    subject_present, index_subject = check_subject_in_list(subject_list, hashed_sub)
-                    if not subject_present:
-                        sub = util.Subject()
-                        sub['sub'] = hashed_sub
-                    else:
-                        sub = subject_list[index_subject]
-                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, hashed_sub)
-                    if not sub_tab_pres:
-                        sub_tab = TabRecap()
-                        sub_tab['sub'] = hashed_sub
-                    else:
-                        sub_tab = subject_tab[sub_tab_index]
-                    seizure_list = []
-                    for seizure in os.listdir(PathSujet):
-                        if seizure.lower().startswith('seizure'):
-                    #import pdb; pdb.set_trace()
-                            if os.path.isdir(os.path.join(PathSujet, seizure)):
-                                seiz = seizure.split('_')
-                            elif os.path.isfile(os.path.join(PathSujet, seizure)):
-                                name, ext = os.path.splitext(seizure)
-                                seiz = name.split('_')
-                            if len(seiz)>=2:
-                                num_ses = sub_tab.get_the_number('Session', seiz[1])
-                            seizure_list.append(seizure)
-                    sub_tab.order_session()
-                    for seizure in seizure_list:
-                        if os.path.isdir(os.path.join(PathSujet, seizure)):
-                            seiz = seizure.split('_')
-                            if len(seiz)<2:
-                                num_ses = 1
-                            else:
-                                num_ses = sub_tab.get_the_number('Session', seiz[1])
-                            for entry in os.listdir(os.path.join(PathSujet, seizure)):
-                                nameE, ext = os.path.splitext(entry)
-                                label_run = nameE.split('_')[1]
-                                num_run = sub_tab.get_the_number('SeizureRun', label_run, num_ses)
-                                if flagIeeg:
-                                    iedict = util.Ieeg()
-                                    iedict['sub'] = sub['sub']
-                                    iedict['task'] = 'seizure'
-                                    iedict['ses'] = 'postimp' + str(num_ses).zfill(2)
-                                    iedict['modality'] = 'ieeg'
-                                    iedict['run'] = str(num_run).zfill(2)
-                                    iedict['fileLoc'] = os.path.join(PathSujet, seizure, entry)
-
-                                    sub['Ieeg'] = iedict
-                        else:
-                            nameE, ext = os.path.splitext(seizure)
-                            label_run = nameE.split('_')
-                            if len(label_run)==2:
-                                num_ses = sub_tab.get_the_number('Session', label_run[1])
-                                num_run = 1
-                            elif len(label_run)>2:
-                                num_ses = sub_tab.get_the_number('Session', label_run[1])
-                                num_run = sub_tab.get_the_number('SeizureRun', label_run, num_ses)
-                            else:
-                                num_run = 1
-                                num_ses = 1
-
-                            if flagIeeg:
-                                iedict = util.Ieeg()
-                                iedict['sub'] = sub['sub']
-                                iedict['task'] = 'seizure'
-                                iedict['ses'] = 'postimp' + str(num_ses).zfill(2)
-                                iedict['modality'] = 'ieeg'
-                                iedict['run'] = str(num_run).zfill(2)
-                                iedict['fileLoc'] = os.path.join(PathSujet, seizure)
-
-                                sub['Ieeg'] = iedict              
-
-                    subject_present, index_subject = check_subject_in_list(subject_list, sub['sub'])
-                    if not subject_present:
-                        subject_list.append(sub)
-                    else:
-                        subject_list[index_subject].update(sub.get_attributes())
-                    sub_tab_pres, sub_tab_index = check_subject_in_list(subject_tab, sub['sub'])
-                    if not sub_tab_pres:
-                        subject_tab.append(sub_tab)
-                    else:
-                        subject_tab[sub_tab_index].update(sub_tab.get_attributes())'''
 
 
     #Take the processed data
@@ -1190,6 +1101,7 @@ def read_ftract_folders(pathTempMIP, RequirementFile=None, centres=None, sujets=
     raw_data['DatasetDescJSON'] = remove_unused_keys(DataName)
     raw_data.save_as_json(savedir=os.path.join(pathTempMIP, 'temp_bids'))
     print('The data2import has been created')
+    return sub_code_list
 
 
 if __name__ == '__main__':
@@ -1198,6 +1110,6 @@ if __name__ == '__main__':
     RequirementFile = r'/home/audeciment/Documents/requirements.json'
     centre_select = ['GRE']
     #subject_selected=['0001GRE', '0002GRE', '0003GRE', '0004GRE', '0005GRE', '0006GRE', '0010GRE', '0011GRE', '0015GRE', '0016GRE', '0026GRE', '0030GRE', '0031GRE']
-    subject_selected=['0009GRE']#, '0018GRE', '0024GRE']#, 
-    read_ftract_folders(PathToImport, RequirementFile, centres=centre_select, sujets=subject_selected, flagIeeg=True, flagAnat=True, flagProc=True)
+    subject_selected=['0034GRE']#, '0018GRE', '0024GRE']#, 
+    sub_list = read_ftract_folders(PathToImport, RequirementFile, centres=centre_select, sujets=subject_selected, flagIeeg=True, flagAnat=True, flagProc=True)
 
