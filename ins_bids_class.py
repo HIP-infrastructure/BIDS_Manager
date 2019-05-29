@@ -301,7 +301,6 @@ class BidsBrick(dict):
         def find_sidecar_file(sidecar_dict, fname, drname, direct_search):
             if isinstance(sidecar_dict, IeegChannelsTSV):
                 tmp_sidecar = sidecar_dict[:]
-            #import pdb; pdb.set_trace()
             piece_fname = fname.split('_')
             if sidecar_dict.inheritance and not direct_search:
                 while os.path.dirname(drname) != BidsDataset.dirname:
@@ -652,7 +651,6 @@ class BidsBrick(dict):
                         for sub in sub_list:
                             self.is_subject_present(sub)
                             sub_index = self.curr_subject['index']
-                            #import pdb; pdb.set_trace()
                             curr_sub_mod = self['Subject'][sub_index][bidsbrick_key[0]]
                             for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
                                 flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
@@ -813,7 +811,6 @@ class BidsBrick(dict):
             name, ext = os.path.splitext(self['fileLoc'])
             #Aude: To modify
             if ext=='.pial':
-                #import pdb; pdb.set_trace()
                 conv_ext = ['.pial', '.surf.gii']
                 old_name = os.path.join(Data2Import.dirname, self['fileLoc'])
                 new_path = os.path.join(Data2Import.dirname, 'temp_bids')
@@ -1027,10 +1024,9 @@ class BidsSidecar(object):
                     len(self.required_fields):
                 self.header = sidecar_elmt[0]
                 #Add to take into account the header for the first													   
-                #if isinstance(self, ParticipantsTSV):
-                self[:] = []
+                if not isinstance(self, IeegChannelsTSV):
+                    self[:] = []
                 for line in sidecar_elmt[1:]:
-                    #import pdb; pdb.set_trace()
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
         elif isinstance(self, BidsFreeFile):
             if not isinstance(sidecar_elmt, list):
@@ -1632,7 +1628,6 @@ class Scans(BidsBrick):
     keylist = BidsBrick.keylist + ['ses', 'fileLoc', 'ScansTSV']
 
     def add_modality(self, mod_dict, mod_type, bids_dir):
-        #import pdb; pdb.set_trace()
         scan_name = os.path.join(mod_type.lower(), os.path.basename(mod_dict['fileLoc']))
         if not self['ScansTSV']:
             self['ScansTSV'] = ScansTSV()
@@ -2376,7 +2371,6 @@ class BidsDataset(MetaBrick):
         if bln:
             ses_list = []
             sub = self['Subject'+str][sub_index]
-            #import pdb; pdb.set_trace()
             for mod_type in sub:
                 if mod_type in ModalityType.get_list_subclasses_names():
                     mod_list = sub[mod_type]
@@ -2444,7 +2438,6 @@ class BidsDataset(MetaBrick):
                 dest_deriv = bids_dst.dirname
             else:
                 sub = bids_dst.curr_subject['Subject']
-            #import pdb; pdb.set_trace()
             fnames_list = mod_dict2import.convert(dest_deriv)
             tmp_attr = mod_dict2import.get_attributes()
             tmp_attr['fileLoc'] = os.path.join(bids_dst.dirname, dirname, fnames_list[0])
@@ -2658,7 +2651,6 @@ class BidsDataset(MetaBrick):
                             sub_index = self.curr_subject['index']
 
                             if sub_present:
-                                #import pdb; pdb.set_trace()
                                 nb_ses, bids_ses = self.get_number_of_session4subject(sub['sub'])
                                 if modality['ses'] and bids_ses:
                                     """ if subject is present, have to check if ses in the data2import matches
@@ -2768,7 +2760,6 @@ class BidsDataset(MetaBrick):
                         self.is_pipeline_present(pip)
                     pipDataset.dirname = os.path.join(BidsDataset.dirname, 'derivatives', pip['name'])
                     #BidsDataset.dirname = os.path.join(self.dirname, 'Derivatives', pip['name'])
-                    #import pdb; pdb.set_trace()
                     for sub in pip['SubjectProcess']:
                         import_sub_idx = pip['SubjectProcess'].index(sub)
 
