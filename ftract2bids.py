@@ -192,7 +192,6 @@ class BidsImportation(Frame):
             messagebox.showerror('Error:', 'The directory selects as Bids directory is not a directory')
         else:
             root.destroy()
-            import pdb; pdb.set_trace()
             print('Everything has been set, we are ready to import the data')
             with os.scandir(os.path.join(self.PathImportData, 'temp_bids')) as it:
                 for entry in it:
