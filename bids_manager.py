@@ -36,7 +36,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.2.0'
+    version = '0.1.13'
     if bids.BidsBrick.curr_user == 'roehri':
         bids_startfile = r'\\dynaserv\SPREAD\SPREAD'
         import_startfile = r'\\dynaserv\SPREAD\uploaded_data'
@@ -44,7 +44,6 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_startfile = r'D:\Data\Test_Ftract_Import'
         import_startfile = r'D:\Data\Test_Ftract_Import\Original_deriv'
         folder_software = r'D:\ProjectPython\SoftwarePipeline'
-
 
     def __init__(self):
         super().__init__()
@@ -1359,9 +1358,10 @@ class BidsBrickDialog(FormDialog):
         cnt_tot = len(self.input_dict)
         # remember input_dict corresponds only to the attributes
         for cnt, key in enumerate(self.key_button_lbl.keys()):
-            if key not in bids.BidsSidecar.get_list_subclasses_names() and not self.main_brick[key]:
-                # only show none empty BidsBricks but let the JSON and TSV in case you want to add more
-                continue
+            if not self.meta_brick == 'Data2Import':
+                if key not in bids.BidsSidecar.get_list_subclasses_names() and not self.main_brick[key]:
+                    # only show none empty BidsBricks but let the JSON and TSV in case you want to add more
+                    continue
 
             setting_list = {"row": cnt + cnt_tot, "column": 1, "columnspan": 2, "sticky": W + E,
                             "padx": self.default_pad[0],

@@ -940,7 +940,9 @@ class BidsSidecar(object):
                             issue_str = 'Header of ' + os.path.basename(filename) +\
                                         ' does not contain the required fields.'
                             print(issue_str)
-                        self.header = tsv_header
+                        #to get into account the header that need to be add at the end of the participantsTSV
+                        temp_header = [elt for elt in self.required_fields if elt not in tsv_header]
+                        self.header = tsv_header + temp_header
                         self[:] = []  # not sure if useful
                         for line in file:
                             self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
@@ -976,6 +978,7 @@ class BidsSidecar(object):
             if sidecar_elmt and len([word for word in sidecar_elmt[0] if word in self.required_fields]) >= \
                     len(self.required_fields):
                 self.header = sidecar_elmt[0]
+                #self[:] =[]
                 for line in sidecar_elmt[1:]:
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
         elif isinstance(self, BidsFreeFile):
@@ -2173,6 +2176,7 @@ class MetaBrick(BidsBrick):
                     if key == 'keys':
                         ParticipantsTSV.header += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
                                                    if elmt not in ParticipantsTSV.header]
+                        #should not be here because depend on required_keys
                         ParticipantsTSV.required_fields += [elmt for elmt in
                                                             self.requirements['Requirements']['Subject']['keys'] if
                                                             elmt not in ParticipantsTSV.required_fields]
@@ -2191,10 +2195,10 @@ class MetaBrick(BidsBrick):
                                 not in ParticipantsTSV.header:
                             ParticipantsTSV.header.append(key + self.requirements.keywords[1])
                             ParticipantsTSV.required_fields.append(key + self.requirements.keywords[1])
-
-                if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
-                    ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
-                    ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
+            #move from one tab <-
+            if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
+                ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
+                ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
         elif isinstance(self, Data2Import):
             self.requirements = Requirements(full_filename)
             if 'Requirements' in self.requirements.keys() and 'Subject' in self.requirements['Requirements'].keys():
@@ -2455,6 +2459,12 @@ class BidsDataset(MetaBrick):
         self['DatasetDescJSON'].read_file()
         self['ParticipantsTSV'] = ParticipantsTSV()
         self['ParticipantsTSV'].read_file()
+        if not self.requirements['Requirements']:
+            # create and save the requirements
+            keylist = [key for key in self['ParticipantsTSV'].header if key not in self['ParticipantsTSV'].required_fields]
+            self.requirements['Requirements']['Subject'] = dict()
+            self.requirements['Requirements']['Subject']['keys'] = {key: '' for key in keylist}
+            self.requirements.save_as_json()
 
         parse_bids_dir(self, self.dirname)
         self.check_requirements()
