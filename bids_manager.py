@@ -4,8 +4,9 @@
     This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
     (with minor changes by Aude Jegou <aude.jegou@univ-amu.fr)
     This module is GUI to explore bids dataset.
-    v0.1.10 March 2019
-""" 
+    v0.2.0 March 2019
+"""
+
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -17,7 +18,6 @@ from builtins import dict
 from builtins import str
 from builtins import object
 from future import standard_library
-from copy import deepcopy
 import ins_bids_class as bids
 import pipeline_analysis as pip
 import os
@@ -36,10 +36,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.1.10'
-    bids_startfile = r'D:\Data\Test_Ftract_Import'
-    import_startfile = r'D:\Data\Test_Ftract_Import\Original_deriv'
-    folder_software = r'D:\ProjectPython\SoftwarePipeline'
+    version = '0.2.0'
+    if bids.BidsBrick.curr_user == 'roehri':
+        bids_startfile = r'\\dynaserv\SPREAD\SPREAD'
+        import_startfile = r'\\dynaserv\SPREAD\uploaded_data'
+    else:
+        bids_startfile = r'D:\Data\Test_Ftract_Import'
+        import_startfile = r'D:\Data\Test_Ftract_Import\Original_deriv'
+        folder_software = r'D:\ProjectPython\SoftwarePipeline'
+
 
     def __init__(self):
         super().__init__()
@@ -122,8 +127,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         # self.update_text('\n'.join(make_splash()))
 
     def launch_pipeline(self, idx):
-        self.pipeline_settings.propose_param(self.curr_bids, idx)
-        self.curr_bids.write_log('Launching: ' + self.pipeline_settings['Settings'][idx]['label'] + '(to be set!!!!!)')
+        pass
+        # self.pipeline_settings.propose_param(self.curr_bids, idx)
+        # self.curr_bids.write_log('Launching: ' + self.pipeline_settings['Settings'][idx]['label']
+        #  + '(to be set!!!!!)')
 
     def pack_element(self, element, side=None, remove_previous=True):
 
@@ -416,11 +423,12 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         issue_list = self.main_frame['double_list'].elements['list1']
         action_list = self.main_frame['double_list'].elements['list2']
         action_list.delete(list_idx)
-        if iss_ict['Action']:
+        if info['IsAction']:
             action_list.insert(list_idx, iss_ict['Action'][-1].formatting())
+            issue_list.itemconfig(list_idx, foreground='green')
         else:
             action_list.insert(list_idx, '')
-        issue_list.itemconfig(list_idx, foreground='green')
+            issue_list.itemconfig(list_idx, foreground='black')
         self.curr_bids.issues.save_as_json()
 
     def remove_file(self, list_idx, info):
@@ -433,6 +441,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             cmd = 'remove="' + fname + ext + '", in_bids=True'
             curr_dict.add_action(desc='Remove element ' + str(info['Element'].get_attributes('fileLoc')) +
                                       ' from data to import.', command=cmd)
+            info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
     def remove_issue(self, iss_key, list_idx, info):
@@ -442,6 +451,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             curr_dict = self.curr_bids.issues[iss_key][idx]
             cmd = 'remove_issue=True'
             curr_dict.add_action(desc='Remove issue from the list.', command=cmd)
+            info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
     def do_not_import(self, iss_key, list_idx, info):
@@ -450,74 +460,22 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         if flag:
             idx = info['index']
             curr_dict = self.curr_bids.issues[iss_key][idx]
-            cmd = 'pop=True, in_bids=False'
-            curr_dict.add_action(desc='Remove from element to import.', command=cmd)
+            make_cmd4pop(curr_dict)
+            info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
     def modify_attributes(self, iss_key, list_idx, info, in_bids=False):
-        if isinstance(info['Element'], bids.DatasetDescJSON):
-            bids_dict = type(info['Element'])()
-            bids_dict.copy_values(self.curr_bids['DatasetDescJSON'])
-            imp_dict = info['Element']
-        elif isinstance(info['Element'], bids.BidsBrick):
-            self.curr_bids.is_subject_present(info['Element']['sub'])
-            if isinstance(info['Element'], bids.Subject):
-                bids_dict = self.curr_bids.curr_subject['Subject'].get_attributes(['alias', 'upload_date'])
-            else:
-                fname, dirn, ext = info['Element'].create_filename_from_attributes()
-                bids_obj = self.curr_bids.get_object_from_filename(os.path.join(dirn, fname+ext))
-                if bids_obj:
-                    bids_dict = bids_obj.get_attributes('fileLoc')
-                else:
-                    bids_dict = dict()
-
-                if 'run' in bids_dict.keys():
-                    tmp_brick = type(info['Element'])()
-                    tmp_brick.copy_values(bids_dict)
-                    _, highest = self.curr_bids.get_number_of_runs(tmp_brick)
-                    if highest:
-                        bids_dict['run'] = highest + 1
-                if 'ses' in bids_dict.keys():
-                    _, ses_list = self.curr_bids.get_number_of_session4subject(bids_dict['sub'])
-                    bids_dict['ses'] = ses_list
-                if 'modality' in bids_dict:
-                    bids_dict['modality'] = info['Element'].allowed_modalities
-            imp_dict = info['Element'].get_attributes(['alias', 'upload_date', 'fileLoc'])
-        else:
+        elmt_brick = info['Element']
+        input_dict, option_dict = prepare_chg_attr(elmt_brick, self.curr_bids, in_bids)
+        if input_dict is None:
             return
-
-        if in_bids:
-            input_dict = bids_dict
-            option_dict = imp_dict
-        else:
-            input_dict = imp_dict
-            option_dict = bids_dict
         output_dict = FormDialog(self, input_dict, options=option_dict,
-                                 required_keys=info['Element'].required_keys).apply()
+                                 required_keys=elmt_brick.required_keys).apply()
         if output_dict and not output_dict == input_dict:
             idx = info['index']
             curr_dict = self.curr_bids.issues[iss_key][idx]
-            if isinstance(info['Element'], bids.DatasetDescJSON) and 'Authors' in output_dict:
-                # tkinter modifies the author list ['NR' , 'FB', 'CGB'] into a string '{NR} {FB} {CGB}'
-                tmp_str = output_dict['Authors'].replace('} {', ', ')
-                tmp_str = tmp_str.replace('{', '').replace('}', '')
-                output_dict['Authors'] = tmp_str
-
-            if in_bids:
-                dir_str = ' in BIDS dir'
-            else:
-                dir_str = ' in import dir'
-            if isinstance(info['Element'], bids.GlobalSidecars):
-                input_brick = type(info['Element'])(info['Element']['fileLoc'])
-                output_brick = type(info['Element'])(info['Element']['fileLoc'])
-            else:
-                input_brick = type(info['Element'])()
-                output_brick = type(info['Element'])()
-            input_brick.copy_values(input_dict)
-
-            output_brick.copy_values(output_dict)
-            cmd = input_brick.write_command(output_brick, {'in_bids': in_bids})
-            curr_dict.add_action(desc='Modify attrib. into ' + str(output_dict) + dir_str, command=cmd)
+            make_cmd4chg_attr(curr_dict, elmt_brick, input_dict, output_dict, in_bids)
+            info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
     def select_correct_name(self, list_idx, info):
@@ -527,10 +485,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         curr_dict = self.curr_bids.issues['ElectrodeIssue'][idx]
         results = ListDialog(self.master, curr_dict['RefElectrodes'], 'Rename ' + mismtch_elec + ' as :').apply()
         if results:
-            str_info = mismtch_elec + ' has to be renamed as ' + results + ' in the files related to ' + \
-                       os.path.basename(curr_dict['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
-            command = 'name="' + results + '"'
-            curr_dict.add_action(str_info, command, elec_name=mismtch_elec)
+            make_cmd4elecnamechg(results, curr_dict, mismtch_elec)
+            info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
     def change_elec_type(self, list_idx, info):
@@ -538,9 +494,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         mismtch_elec = info['Element']
 
         curr_dict = self.curr_bids.issues['ElectrodeIssue'][idx]
-        input_dict = {'type': mism_elec['type'] for mism_elec in curr_dict['MismatchedElectrodes']
-                      if mism_elec['name'] == mismtch_elec}
-        opt_dict = {'type': bids.Electrophy.channel_type}
+        # input_dict = {'type': mism_elec['type'] for mism_elec in curr_dict['MismatchedElectrodes']
+        #               if mism_elec['name'] == mismtch_elec}
+        # opt_dict = {'type': bids.Electrophy.channel_type}
+        input_dict, opt_dict = prepare_chg_eletype(curr_dict, mismtch_elec)
         output_dict = FormDialog(self, input_dict, title='Modify electrode type of ' + mismtch_elec + ' into:',
                                  options=opt_dict, required_keys=input_dict).apply()
         if output_dict and not output_dict['type'] == input_dict['type']:
@@ -551,7 +508,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             # to fancy, used for others
             # command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
             command = 'type="' + output_dict['type'] + '"'
-            curr_dict.add_action(str_info, command, elec_name=mismtch_elec,)
+            curr_dict.add_action(str_info, command, elec_name=mismtch_elec)
+            make_cmd4electypechg(output_dict, input_dict, curr_dict, mismtch_elec)
+            info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
     def get_entry(self, issue_key, list_idx, info):
@@ -577,9 +536,11 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             for action in curr_dict['Action']:
                 if action['name'] == mismtch_elec:
                     curr_dict['Action'].pop(curr_dict['Action'].index(action))
+                    info['IsAction'] = False
                     break  # there is only one action per channel so break when found
-        elif issue_key == 'ImportIssue' and curr_dict['Action']:
+        elif curr_dict['Action']:
             curr_dict['Action'].pop(-1)
+            info['IsAction'] = False
         self.update_issue_list(curr_dict, list_idx, info)
 
     def open_file(self, issue_key, list_idx, info):
@@ -595,6 +556,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         str_info = os.path.basename(info['Element']['fileLoc']) + ' will be marked as ' + state_str + '.'
         command = 'state="' + state_str + '"'
         curr_dict.add_action(str_info, command)
+        info['IsAction'] = True
         self.update_issue_list(curr_dict, list_idx, info)
 
     def solve_issues(self, issue_key):
@@ -730,6 +692,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
         self.populate_list(dlb_list.elements['list1'], issue_list2write)
 
+        # set the colors according to the previously saved but not applied actions in issues.json
         for cnt, mapping in enumerate(line_mapping):
             if mapping['IsComment']:
                 dlb_list.elements['list1'].itemconfig(cnt, bg='yellow')
@@ -1475,7 +1438,7 @@ class BidsBrickDialog(FormDialog):
         curr_idx = self.key_listw[key].curselection()[0]
         if key == 'Subject' or key == 'SubjectProcess':
             sub = self.main_brick[key][curr_idx]
-            if 'Subject' in self.key_disabled:
+            if key in self.key_disabled:
                 disabl = sub.keylist
             else:
                 disabl = None
@@ -1645,6 +1608,104 @@ class BidsBrickDialog(FormDialog):
                     self.main_brick[key] = self.key_entries[key].get()
 
 
+def make_cmd4pop(curr_issue):
+    cmd = 'pop=True, in_bids=False'
+    curr_issue.add_action(desc='Remove from element to import.', command=cmd)
+
+
+def prepare_chg_attr(elmt_brick, curr_bids, in_bids_flg):
+    if isinstance(elmt_brick, bids.DatasetDescJSON):
+        bids_dict = type(elmt_brick)()
+        bids_dict.copy_values(curr_bids['DatasetDescJSON'])
+        imp_dict = elmt_brick
+    elif isinstance(elmt_brick, bids.BidsBrick):
+        curr_bids.is_subject_present(elmt_brick['sub'])
+        if isinstance(elmt_brick, bids.Subject):
+            bids_dict = curr_bids.curr_subject['Subject'].get_attributes(['alias', 'upload_date'])
+        else:
+            fname, dirn, ext = elmt_brick.create_filename_from_attributes()
+            bids_obj = curr_bids.get_object_from_filename(os.path.join(dirn, fname + ext))
+            if bids_obj:
+                bids_dict = bids_obj.get_attributes('fileLoc')
+                if 'run' in bids_dict.keys():
+                    tmp_brick = type(elmt_brick)()
+                    tmp_brick.copy_values(bids_dict)
+                    _, highest = curr_bids.get_number_of_runs(tmp_brick)
+                    if highest:
+                        bids_dict['run'] = highest + 1
+                if 'ses' in bids_dict.keys():
+                    _, ses_list = curr_bids.get_number_of_session4subject(bids_dict['sub'])
+                    bids_dict['ses'] = ses_list
+                if 'modality' in bids_dict:
+                    bids_dict['modality'] = elmt_brick.allowed_modalities
+            else:
+                bids_dict = curr_bids.requirements.make_option_dict(elmt_brick.classname())
+        imp_dict = elmt_brick.get_attributes(['alias', 'upload_date', 'fileLoc'])
+    else:
+        return None, None
+
+    if in_bids_flg:
+        input_dict = bids_dict
+        option_dict = imp_dict
+    else:
+        input_dict = imp_dict
+        option_dict = bids_dict
+
+    return input_dict, option_dict
+
+
+def make_cmd4chg_attr(curr_issue, elmt_brick, input_dict, modif_brick, in_bids_flg):
+
+    if isinstance(elmt_brick, bids.DatasetDescJSON) and 'Authors' in modif_brick and \
+            not isinstance(modif_brick['Authors'], list):
+        # tkinter modifies the author list ['NR' , 'FB', 'CGB'] into a string '{NR} {FB} {CGB}'
+        tmp_str = modif_brick['Authors'].replace('} {', ', ')
+        tmp_str = tmp_str.replace('{', '').replace('}', '')
+        modif_brick['Authors'] = tmp_str
+
+    if in_bids_flg:
+        dir_str = ' in BIDS dir'
+    else:
+        dir_str = ' in import dir'
+    if isinstance(elmt_brick, bids.GlobalSidecars):
+        input_brick = type(elmt_brick)(elmt_brick['fileLoc'])
+        output_brick = type(elmt_brick)(elmt_brick['fileLoc'])
+    else:
+        input_brick = type(elmt_brick)()
+        output_brick = type(elmt_brick)()
+    input_brick.copy_values(input_dict)
+
+    output_brick.copy_values(modif_brick)
+    cmd = input_brick.write_command(output_brick, {'in_bids': in_bids_flg})
+    curr_issue.add_action(desc='Modify attrib. into ' + str(modif_brick) + dir_str, command=cmd)
+
+
+def prepare_chg_eletype(curr_iss, mismtch_elec):
+    input_dict = {'type': mism_elec['type'] for mism_elec in curr_iss['MismatchedElectrodes']
+                  if mism_elec['name'] == mismtch_elec}
+    opt_dict = {'type': bids.Electrophy.channel_type}
+
+    return input_dict, opt_dict
+
+
+def make_cmd4electypechg(output_dict, input_dict, curr_iss, mismtch_elec):
+    str_info = 'Change electrode type of ' + mismtch_elec + ' from ' + input_dict['type'] + ' to ' + \
+               output_dict['type'] + ' in the electrode file related to ' + \
+               os.path.basename(curr_iss['fileLoc']) + '.\n'
+    # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
+    # to fancy, used for others
+    # command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
+    command = 'type="' + output_dict['type'] + '"'
+    curr_iss.add_action(str_info, command, elec_name=mismtch_elec)
+
+
+def make_cmd4elecnamechg(new_name, curr_iss, mismtch_elec):
+    str_info = mismtch_elec + ' has to be renamed as ' + new_name + ' in the files related to ' + \
+                       os.path.basename(curr_iss['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
+    command = 'name="' + new_name + '"'
+    curr_iss.add_action(str_info, command, elec_name=mismtch_elec)
+
+
 class BidsSelectDialog(TemplateDialog):
     bidsdataset = None
     select_subject = None
@@ -1653,7 +1714,7 @@ class BidsSelectDialog(TemplateDialog):
     def __init__(self, parent, input_dict, analysis_dict=None):
         self.vars = {}
         if isinstance(input_dict, bids.BidsDataset):
-            BidsSelectDialog.bidsdataset = input_dict
+            self.bidsdataset = input_dict
         elif analysis_dict and not isinstance(analysis_dict, pip.Analysis):
             raise TypeError('Third input should be a pipeline analysis')
         else:
@@ -1677,11 +1738,11 @@ class BidsSelectDialog(TemplateDialog):
         task_type = list(set(task_type))
         self.required_criteria = {'ses': ses_type, 'task': task_type}
 
-        self.participants = BidsSelectDialog.bidsdataset['ParticipantsTSV']
+        self.participants = self.bidsdataset['ParticipantsTSV']
         self.display_dict, self.vars = self.select_criteria(self.participants)
 
         self.subject_dict['Subject'] = []
-        for sub in BidsSelectDialog.bidsdataset['Subject']:
+        for sub in self.bidsdataset['Subject']:
             self.subject_dict['Subject'].append(sub['sub'])
         self.key_label = {key: '' for key in self.display_dict.keys()}
         self.req_label = {key: '' for key in self.required_criteria.keys()}
@@ -1795,6 +1856,8 @@ class BidsSelectDialog(TemplateDialog):
 
         #Criteria to select subjects
         max_crit, cntC = self.create_button(Frame_criteria, self.key_label,  self.vars)
+        if cntC == 0:
+            cntC = 1
 
         #Required criteria for all option
         max_req, cntR = self.create_button(Frame_req_criteria, self.req_label, self.vars_req)
@@ -1957,6 +2020,10 @@ class BidsSelectDialog(TemplateDialog):
                             l.grid(row=cnt + 1, column=max_col, sticky=W + E)
                     elif isn_type[0] == 'Variable':
                         CheckbuttonList(frame, var_d[clef], row_list=cnt+1, col_list=max_col)
+                    elif isn_type[0] == 'Listbox':
+                        l = ttk.Combobox(frame, values=var_d[clef])
+                        l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+                        var_d[clef] = l.current()
                     elif isn_type[0] == 'askopenfile':
                         pass
                     elif isn_type[0] == 'Bool':
@@ -2269,6 +2336,10 @@ class RequirementsDialog(TemplateDialog):
                 req_dict = bids.Requirements(self.req_name)
         elif self.create_req.get():
             req_dict = bids.Requirements()
+            req_dict['Requirements']['Subject'] = dict()
+            req_dict['Converters'] = dict()
+            req_dict['Converters']['Imagery'] = dict()
+            req_dict['Converters']['Electrophy'] = dict()
             keys = {}
             required_keys = []
             for i, elt in enumerate(self.info_key_label):
@@ -2306,10 +2377,16 @@ class RequirementsDialog(TemplateDialog):
                             value = [self.modality_required_value[i][key].get(ind_sel) for ind_sel in self.modality_required_value[i][key].curselection()]
                         if key == 'amount' and value:
                             mod_dict['amount'] = int(value)
+                        elif key == 'run' and value:
+                            if value.isdigit() or value is '_':
+                                type_dict[key] = value
+                            else:
+                                self.error_str = 'Run should be numerical value or "_"'
+                                break
                         elif value and isinstance(value, list):
-                            for val in value:
-                                type_dict[key] = val
-                                type_list.append(deepcopy(type_dict))
+                            for v, val in enumerate(value):
+                                type_list.append({clef: type_dict[clef] for clef in type_dict})
+                                type_list[v][key] = val
                         elif value:
                             type_dict[key] = value
                     if len(type_list) > 1:
@@ -2432,7 +2509,7 @@ class CheckbuttonList(Frame):
 
 
 def make_splash():
-    if bids.BidsBrick.curr_user == 'Ponz':
+    if bids.BidsBrick.curr_user in ['Ponz', 'ponz']:
         splash = [r" _______  .-./`)  ______        .-'''-.",
                   r"\  ____  \\ .-.')|    _ `''.   / _     \ ",
                   r"| |    \ |/ `-' \| _ | ) _  \ (`' )/`--' ",
@@ -2465,7 +2542,7 @@ def make_splash():
                   r"|_|  |_|\__,_|_| |_|\__,_|\__, |\___|_|",
                   r"                          |___/"]
 
-    return splash
+    return splash + ['Version ' + BidsManager.version]
 
 
 if __name__ == '__main__':
