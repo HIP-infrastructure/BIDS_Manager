@@ -762,11 +762,11 @@ class BidsBrick(dict):
             attr_dict = self.get_attributes(['fileLoc', 'modality'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
-            cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
-                       os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
-                       name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
-            #cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + os.path.join(Data2Import.dirname, self['fileLoc']) +\
-            #           '" ' + ' --output_dir "' + os.path.join(Data2Import.dirname, 'temp_bids') + '" ' + name_cmd + ' --bids_format vhdr"'
+            #cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
+            #           os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
+            #           name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
+            cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + os.path.join(Data2Import.dirname, self['fileLoc']) +\
+                       '" ' + ' --output_dir "' + os.path.join(Data2Import.dirname, 'temp_bids') + '" ' + name_cmd + ' --bids_format vhdr"'
             os.system(cmd_line)
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
@@ -941,8 +941,8 @@ class BidsSidecar(object):
                                         ' does not contain the required fields.'
                             print(issue_str)
                         #to get into account the header that need to be add at the end of the participantsTSV
-                        temp_header = [elt for elt in self.required_fields if elt not in tsv_header]
-                        self.header = tsv_header + temp_header
+                        temp_header = [elt for elt in tsv_header if elt not in self.required_fields]
+                        self.header = self.required_fields + temp_header
                         self[:] = []  # not sure if useful
                         for line in file:
                             self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
@@ -978,7 +978,8 @@ class BidsSidecar(object):
             if sidecar_elmt and len([word for word in sidecar_elmt[0] if word in self.required_fields]) >= \
                     len(self.required_fields):
                 self.header = sidecar_elmt[0]
-                #self[:] =[]
+                #check if it doesn't erase a precedent dict
+                #self[:] = []
                 for line in sidecar_elmt[1:]:
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
         elif isinstance(self, BidsFreeFile):

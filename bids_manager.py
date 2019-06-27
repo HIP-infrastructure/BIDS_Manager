@@ -19,7 +19,7 @@ from builtins import str
 from builtins import object
 from future import standard_library
 import ins_bids_class as bids
-import pipeline_analysis as pip
+import pipeline_class as pip
 import os
 import platform
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
@@ -752,15 +752,16 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.update()  # may not be necessary if at the end of method but is needed otherwise...
 
     def run_analysis(self, nameS):
-        if not self.curr_bids:
-            error_str = 'Bids directory should be selected'
-            raise TypeError(error_str)
-        soft_analyse = pip.Analysis(nameS, self.curr_bids)
+        try:
+            soft_analyse = pip.PipelineSetting(self.curr_bids, nameS)
+        except (EOFError, KeyError) as err:
+            self.update_text(err)
+            #self.ask4bidsdir(isnew_dir=False)
         output_dict = BidsSelectDialog(self, self.curr_bids, soft_analyse)
         #add the parameters
-        self.update_text('Subjects selected \n' + '\n'.join(output_dict.results['sub']) + '\nThe analysis is ready to be run')
-        soft_analyse.run_analysis()
-        self.update_text('The analysis is done')
+        self.update_text('Subjects selected \n' + '\n'.join(output_dict.subject_selected['sub']) + '\nThe analysis is ready to be run')
+        log_analysis = soft_analyse.set_everything_for_analysis(output_dict.analysis_param, output_dict.subject_selected)
+        self.update_text(log_analysis)
 
     @staticmethod
     def make_table(table):
@@ -1709,112 +1710,51 @@ def make_cmd4elecnamechg(new_name, curr_iss, mismtch_elec):
 class BidsSelectDialog(TemplateDialog):
     bidsdataset = None
     select_subject = None
-    subject_list = {'SubjectToAnalyse': []}
+    #subject_list = {'SubjectToAnalyse': []}
 
     def __init__(self, parent, input_dict, analysis_dict=None):
-        self.vars = {}
+
         if isinstance(input_dict, bids.BidsDataset):
-            self.bidsdataset = input_dict
-        elif analysis_dict and not isinstance(analysis_dict, pip.Analysis):
+            BidsSelectDialog.bidsdataset = input_dict
+        elif analysis_dict and not isinstance(analysis_dict, pip.PipelineSetting):
             raise TypeError('Third input should be a pipeline analysis')
         else:
             raise TypeError('Second input should be a bids dataset')
-        ses_type = []
-        task_type = []
+
+        #init variable
+        self.vars = {}
+        self.vars_req = {}
         self.subject_dict =dict()
-        #self.param_dict =dict()
+
         for sub in BidsSelectDialog.bidsdataset['Subject']:
             for mod in sub:
                 if mod and mod in bids.ModalityType.get_list_subclasses_names():
                     for elt in sub[mod]:
-                        try:
-                            if elt['ses'] and not elt['ses'] == '':
-                                ses_type.append(elt['ses'])
-                            if elt['task'] and not elt['task'] == '':
-                                task_type.append(elt['task'])
-                        except:
-                            pass
-        ses_type = list(set(ses_type))
-        task_type = list(set(task_type))
-        self.required_criteria = {'ses': ses_type, 'task': task_type}
+                        if elt not in bids.BidsSidecar.get_list_subclasses_names():
+                            for key in elt.keys():
+                                if key in pip.SubjectToAnalyse.keylist and not key == 'sub':
+                                    if elt[key]:
+                                        if not key in self.vars_req:
+                                            self.vars_req[key] = {}
+                                            self.vars_req[key]['attribut'] = 'IntVar'
+                                            self.vars_req[key]['value'] = []
+                                        self.vars_req[key]['value'].append(elt[key])
+                                        self.vars_req[key]['value'] = sorted(list(set(self.vars_req[key]['value'])))
+                                        if len(self.vars_req[key]['value']) > 3:
+                                            self.vars_req[key]['attribut'] = 'Variable'
 
-        self.participants = self.bidsdataset['ParticipantsTSV']
-        self.display_dict, self.vars = self.select_criteria(self.participants)
+        self.participants = BidsSelectDialog.bidsdataset['ParticipantsTSV']
+        self.vars = self.select_criteria(self.participants)
 
         self.subject_dict['Subject'] = []
-        for sub in self.bidsdataset['Subject']:
+        for sub in BidsSelectDialog.bidsdataset['Subject']:
             self.subject_dict['Subject'].append(sub['sub'])
-        self.key_label = {key: '' for key in self.display_dict.keys()}
-        self.req_label = {key: '' for key in self.required_criteria.keys()}
-
-        #self.vars = [value for key, value in self.display_dict.items()]
-        self.vars_req = {'IntVar_'+key: value for key, value in self.required_criteria.items()}
 
         if analysis_dict:
             self.software = analysis_dict
-            self.param_dict, self.param_vars = self.software.select_parameter_analysis()
+            self.param_vars = self.software.create_parameter_to_inform()
 
         super().__init__(parent)
-
-    def select_criteria(self, participant_dict):
-
-        def check_numerical_value(element):
-            is_numerical = False
-            punctuation = ',.?!:'
-            temp = element.translate(str.maketrans('', '', punctuation))
-            temp = temp.strip('YymM ')
-            if temp.isnumeric():
-                is_numerical = True
-            return is_numerical
-
-        display_dict = dict()
-        req_keys = self.bidsdataset.requirements['Requirements']['Subject']['keys']
-        for key, value in req_keys.items():
-            if value:
-                display_dict[key] = value
-            elif 'age' in key:
-                display_dict[key] = value
-            elif 'duration' in key:
-                display_dict[key] = value
-        criteria = participant_dict.header
-        key_list = display_dict.keys()
-
-        var_dict = dict()
-        key_to_remove = []
-
-        for key in key_list:
-            idx = criteria.index(key)
-            is_string = False
-            display_value = []
-            for val_part in participant_dict[1::]:
-                is_number = check_numerical_value(val_part[idx])
-                if is_number and display_dict[key]:
-                    display_value.append(val_part[idx])
-                elif is_number:
-                    display_value.append('min_' + key)
-                    display_value.append('max_' + key)
-                    is_string = True
-                else:
-                    l_elt = val_part[idx].split(', ')
-                    for l in l_elt:
-                        display_value.append(l)
-            display_value = list(set(display_value))
-            if is_string:
-                display_value = sorted(display_value, reverse=True)
-                var_dict['StringVar_' + key] = [value for value in display_value]
-            elif display_value:
-                display_value = list(set(display_value).intersection(set(display_dict[key])))
-                if len(display_value) == 1 and not 'n/a' in display_value:
-                    var_dict['Label_'+key] = [value for value in display_value]
-                elif len(display_value) > 1:
-                    var_dict['Variable_' + key] = [value for value in display_value]
-                else:
-                    key_to_remove.append(key)
-
-        for key in key_to_remove:
-            del display_dict[key]
-
-        return display_dict, var_dict
 
     def body(self, parent):
         def enable(frame, state):
@@ -1851,38 +1791,164 @@ class BidsSelectDialog(TemplateDialog):
         self.subject = Label(Frame_list, text='Subject')
         self.subject.grid(row=0, sticky=W)
         list_choice = Variable(Frame_list, self.subject_dict['Subject'])
-        self.select_subject = Listbox(Frame_list, listvariable=list_choice, selectmode=MULTIPLE)
+        self.select_subject = Listbox(Frame_list, exportselection=0, listvariable=list_choice, selectmode=MULTIPLE)
         self.select_subject.grid(row=1, column=1, sticky=W + E)
 
         #Criteria to select subjects
-        max_crit, cntC = self.create_button(Frame_criteria, self.key_label,  self.vars)
-        if cntC == 0:
-            cntC = 1
+        max_crit, cntC = self.create_button(Frame_criteria, self.vars)
 
         #Required criteria for all option
-        max_req, cntR = self.create_button(Frame_req_criteria, self.req_label, self.vars_req)
+        max_req, cntR = self.create_button(Frame_req_criteria, self.vars_req)
 
         #place the frame
+        if cntC < 1:
+            cntC = 1
+        if cntR < 1:
+            cntR = 1
         Frame_req_criteria.grid(row=1, column=1, rowspan=cntR, columnspan=max_req)
         Frame_list.grid(row=1, column=0, columnspan=1, rowspan=cntR + cntC)
         enable(Frame_list, 'disabled')
-        Frame_criteria.grid(row=2, column=1, rowspan=cntC, columnspan=max_crit)
+        Frame_criteria.grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
         enable(Frame_criteria, 'disabled')
+        row_okcancel = max(cntR, cntC)
 
-        if self.param_dict:
+        if self.param_vars:
             Frame_analysis = Frame(parent, relief=GROOVE, borderwidth=2)
             Label(Frame_analysis, text='Select analysis parameters:').grid(row=0)
-            max_param, cntP = self.create_button(Frame_analysis, self.param_dict, self.param_vars)
+            max_param, cntP = self.create_button(Frame_analysis, self.param_vars)
             col_p = max(max_crit, max_req)
             length = max(cntC, cntP+cntR)
             Frame_analysis.grid(row=0, column=col_p+1, rowspan=length, columnspan=max_param)
+            row_okcancel = max(length, cntR, cntC)
 
-        self.ok_cancel_button(parent, row=cntR+cntC+1)
+        self.ok_cancel_button(parent, row=row_okcancel)
 
     def ok(self):
-        self.results, self.sub_criteria = self.get_the_subject_id()
-        self.software.get_analysis_value(self.param_vars, self.results)
+        self.subject_selected, self.sub_criteria = self.get_the_subject_id()
+        self.analysis_param = self.get_parameter_from_gui('parameter')
         self.destroy()
+        self.vars = {}
+        self.vars_req = {}
+        self.param_vars = {}
+
+    def select_criteria(self, participant_dict):
+
+        def check_numerical_value(element):
+            is_numerical = False
+            punctuation = ',.?!:'
+            temp = element.translate(str.maketrans('', '', punctuation))
+            temp = temp.strip('YymM ')
+            if temp.isnumeric():
+                is_numerical = True
+            return is_numerical
+
+        display_dict = dict()
+        req_keys = self.bidsdataset.requirements['Requirements']['Subject']['keys']
+        for key, value in req_keys.items():
+            if value:
+                display_dict[key] = value
+            elif 'age' in key:
+                display_dict[key] = value
+            elif 'duration' in key:
+                display_dict[key] = value
+        criteria = participant_dict.header
+        key_list = display_dict.keys()
+
+        var_dict = dict()
+        for key in key_list:
+            idx = criteria.index(key)
+            is_string = False
+            display_value = []
+            for val_part in participant_dict[1::]:
+                is_number = check_numerical_value(val_part[idx])
+                if is_number and display_dict[key]:
+                    display_value.append(val_part[idx])
+                elif is_number:
+                    display_value.append('min_' + key)
+                    display_value.append('max_' + key)
+                    is_string = True
+                else:
+                    l_elt = val_part[idx].split(', ')
+                    for l in l_elt:
+                        display_value.append(l)
+            display_value = list(set(display_value))
+            if is_string:
+                var_dict[key] = {}
+                display_value = sorted(display_value, reverse=True)
+                var_dict[key]['attribut'] = 'StringVar'
+                var_dict[key]['value'] = [value for value in display_value]
+            elif display_value:
+                display_value = list(set(display_value).intersection(set(display_dict[key])))
+                if len(display_value) == 1 and not 'n/a' in display_value:
+                    var_dict[key] = {}
+                    var_dict[key]['attribut'] = 'Label'
+                    var_dict[key]['value'] = [value for value in display_value]
+                elif len(display_value) > 1:
+                    var_dict[key] = {}
+                    var_dict[key]['attribut'] = 'Variable'
+                    var_dict[key]['value'] = [value for value in display_value]
+
+        return var_dict
+
+    def get_parameter_from_gui(self, flag):
+        res_dict = dict()
+        if flag == 'required':
+            var_dict = self.vars_req
+        elif flag == 'criteria':
+            var_dict = self.vars
+        elif flag == 'parameter':
+            var_dict = self.param_vars
+        for key in var_dict:
+            att_type = var_dict[key]['attribut']
+            val_temp = var_dict[key]['value']
+            if att_type == 'Variable':
+                for id_var in val_temp:
+                    if id_var.get():
+                        try:
+                            res_dict[key].append(id_var._name)
+                        except:
+                            res_dict[key] = []
+                            res_dict[key].append(id_var._name)
+            elif att_type == 'StringVar':
+                num_value = False
+                if isinstance(val_temp, list):
+                    for id_var in val_temp:
+                        if id_var.get().isalnum():
+                            if id_var._name.startswith('min'):
+                                minA = int(id_var.get())
+                                num_value = True
+                            elif id_var._name.startswith('max'):
+                                maxA = int(id_var.get())
+                                num_value = True
+                            else:
+                                res_dict[key] = id_var.get()
+                    if num_value:
+                        res_dict[key] = range(minA, maxA)
+                else:
+                    res_dict[key] = val_temp.get()
+            elif att_type == 'IntVar':
+                if isinstance(val_temp, list):
+                    for id_var in val_temp:
+                        if id_var.get():
+                            try:
+                                res_dict[key].append(id_var._name)
+                            except:
+                                res_dict[key] = []
+                                res_dict[key].append(id_var._name)
+                else:
+                    if val_temp.get():
+                        res_dict[key] = val_temp._name
+            elif att_type == 'Listbox':
+                res_dict[key] = val_temp.get()
+            elif att_type == 'Bool':
+                if val_temp.get() == True:
+                    res_dict[key] = True
+            elif att_type == 'Label':
+                res_dict[key] = val_temp
+            elif att_type == 'File':
+                res_dict[key] = val_temp
+
+        return res_dict
 
     def get_the_subject_id(self):
 
@@ -1912,130 +1978,90 @@ class BidsSelectDialog(TemplateDialog):
                     subject_list.append(elt[0])
 
         subject_list = []
-        res_dict = dict()
+        res_dict = {}
         if self.All_sub.get():
             subject_list = self.subject_dict['Subject']
         elif self.Id_sub.get():
             for index in self.select_subject.curselection():
                 subject_list.append(self.select_subject.get(index))
         elif self.Crit_sub.get():
-            for var in self.vars.keys():
-                isntype = var.split('_')
-                clef_size = len(isntype[0]) + 1
-                key = var[clef_size::]
-                if isntype[0] == 'Variable':
-                    for id_var in self.vars[var]:
-                        if id_var.get():
-                            try:
-                                res_dict[key].append(id_var._name)
-                            except:
-                                res_dict[key] = []
-                                res_dict[key].append(id_var._name)
-                elif isntype[0] == 'StringVar':
-                    num_value = False
-                    for id_var in self.vars[var]:
-                        if id_var.get().isalnum():
-                            if id_var._name.startswith('min'):
-                                minA = int(id_var.get())
-                            elif id_var._name.startswith('max'):
-                                maxA = int(id_var.get())
-                            num_value = True
-                    if num_value:
-                        res_dict[key] = range(minA, maxA)
-                elif isntype[0] == 'IntVar':
-                    for id_var in self.vars[var]:
-                        if id_var.get():
-                            try:
-                                res_dict[key].append(id_var._name)
-                            except:
-                                res_dict[key] = []
-                                res_dict[key].append(id_var._name)
+            res_dict = self.get_parameter_from_gui('criteria')
             get_subject_list_from_criteria(self, res_dict, subject_list)
 
-        ses_list = []
-        task_list = []
-        for var in self.vars_req:
-            isntype = var.split('_')
-            clef_size = len(isntype[0]) + 1
-            key = var[clef_size::]
-            if isntype[0] == 'IntVar':
-                for id_var in self.vars_req[var]:
-                    if id_var.get() and key == 'ses':
-                        ses_list.append(id_var._name)
-                    elif id_var.get() and key == 'task':
-                        task_list.append(id_var._name)
+        resultats = self.get_parameter_from_gui('required')
 
-        resultats = {'sub': subject_list, 'ses': ses_list, 'task': task_list}
+        resultats['sub'] = subject_list
 
         return resultats, res_dict
 
-    def create_button(self, frame, label_d, var_d):
+    def create_button(self, frame, var_dict):
         max_col = 1
-        for cnt, key in enumerate(label_d):
-            label_d[key] = Label(frame, text=key)
-            label_d[key].grid(row=cnt+1, sticky=W)
-            for clef in var_d.keys():
-                isn_type = clef.split('_')
-                taille = len(isn_type[0]) +1
-                if clef[taille::] == key:
-                    if isn_type[0] == 'IntVar':
-                        if isinstance(var_d[clef], list):
-                            idx_var = 0
-                            while idx_var < len(var_d[clef]):
-                                temp = var_d[clef][idx_var]
-                                var_d[clef][idx_var] = IntVar()
-                                var_d[clef][idx_var]._name = temp
-                                l = Checkbutton(frame, text=temp, variable=var_d[clef][idx_var])
-                                l.grid(row=cnt + 1, column=idx_var + 1, sticky=W + E)
-                                idx_var += 1
-                            max_col = max(max_col, idx_var)
-                        elif isinstance(var_d[clef], str):
-                            temp = var_d[clef]
-                            var_d[clef] = IntVar()
-                            var_d[clef]._name = temp
-                            l = Checkbutton(frame, text=temp, variable=var_d[clef])
-                            l.insert(END, var_d[clef]._name)
-                            l.grid(row=cnt + 1, column=max_col, sticky=W + E)
-                    elif isn_type[0] == 'StringVar':
-                        if isinstance(var_d[clef], list):
-                            idx_var = 0
-                            while idx_var < len(var_d[clef]):
-                                temp = var_d[clef][idx_var]
-                                var_d[clef][idx_var] = StringVar()
-                                var_d[clef][idx_var]._name = temp
-                                l = Entry(frame, textvariable=temp)
-                                l.insert(END, temp)
-                                l.grid(row=cnt + 1, column=idx_var+1, sticky=W + E)
-                                idx_var += 1
-                            max_col = max(max_col, idx_var)
-                        elif isinstance(var_d[clef], str):
-                            temp = var_d[clef]
-                            var_d[clef] = StringVar()
-                            if len(temp.split('_')) > 1:
-                                var_d[clef]._name = temp.split('_')[1]
-                            else:
-                                var_d[clef]._name = temp
-                            l = Entry(frame, textvariable=var_d[clef]._name)
-                            l.insert(END, var_d[clef]._name)
-                            l.grid(row=cnt + 1, column=max_col, sticky=W + E)
-                    elif isn_type[0] == 'Variable':
-                        CheckbuttonList(frame, var_d[clef], row_list=cnt+1, col_list=max_col)
-                    elif isn_type[0] == 'Listbox':
-                        l = ttk.Combobox(frame, values=var_d[clef])
-                        l.grid(row=cnt + 1, column=max_col, sticky=W + E)
-                        var_d[clef] = l.current()
-                    elif isn_type[0] == 'askopenfile':
-                        pass
-                    elif isn_type[0] == 'Bool':
-                        var_d[clef] = BooleanVar()
-                        var_d[clef].set(False)
-                        l = Checkbutton(frame, text='True', variable=var_d[clef])
-                        l.grid(row=cnt + 1, column=max_col, sticky=W + E)
-                    elif isn_type[0] == 'Label':
-                        l = Label(frame, text=var_d[clef])
-                        l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+        label_dict = {clef: '' for clef in var_dict.keys()}
+        for cnt, key in enumerate(var_dict):
+            label_dict[key] = Label(frame, text=key)
+            label_dict[key].grid(row=cnt + 1, sticky=W)
+            att_type = var_dict[key]['attribut']
+            val_temp = var_dict[key]['value']
+            if att_type == 'StringVar':
+                if isinstance(val_temp, str):
+                    var_dict[key]['value'] = StringVar()
+                    var_dict[key]['value']._name = val_temp
+                    l = Entry(frame, textvariable=val_temp)
+                    l.insert(END, val_temp)
+                    l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+                elif isinstance(val_temp, list):
+                    idx_var =0
+                    while idx_var < len(val_temp):
+                        temp = val_temp[idx_var]
+                        var_dict[key]['value'][idx_var] = StringVar()
+                        var_dict[key]['value'][idx_var]._name = temp
+                        l = Entry(frame, textvariable=temp)
+                        l.insert(END, temp)
+                        l.grid(row=cnt + 1, column=idx_var + 1, sticky=W + E)
+                        idx_var += 1
+                    max_col = max(max_col, idx_var)
+            elif att_type == 'Listbox': #A revoir
+                l = ttk.Combobox(frame, values=val_temp)
+                l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+                var_dict[key]['value'] = l
+            elif att_type == 'Variable':
+                CheckbuttonList(frame, val_temp, row_list=cnt + 1, col_list=max_col)
+            elif att_type == 'IntVar':
+                if isinstance(val_temp, list):
+                    idx_var = 0
+                    while idx_var < len(val_temp):
+                        temp = var_dict[key]['value'][idx_var]
+                        var_dict[key]['value'][idx_var] = IntVar()
+                        var_dict[key]['value'][idx_var]._name = temp
+                        l = Checkbutton(frame, text=temp, variable=var_dict[key]['value'][idx_var])
+                        l.grid(row=cnt + 1, column=idx_var + 1, sticky=W + E)
+                        idx_var += 1
+                    max_col = max(max_col, idx_var)
+                elif isinstance(val_temp, str):
+                    var_dict[key]['value'] = IntVar()
+                    l = Checkbutton(frame, text=val_temp, variable=var_dict[key]['value'])
+                    l.insert(END, val_temp)
+                    l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+            elif att_type == 'Bool':
+                if val_temp:
+                    val = True
+                else:
+                    val = False
+                var_dict[key]['value'] = BooleanVar()
+                var_dict[key]['value'].set(val)
+                l = Checkbutton(frame, text=str(val), variable=var_dict[key]['value'])
+                l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+            elif att_type == 'Label':
+                l = Label(frame, text=val_temp)
+                l.grid(row=cnt + 1, column=max_col, sticky=W + E)
+            elif att_type == 'File':
+                l = Button(frame, text='Browse', command=lambda: self.ask4file(var_dict[key]['value']))
+                l.grid(row=cnt + 1, column=max_col, sticky=W + E)
 
         return max_col, cnt
+
+    def ask4file(self, file):
+        file = filedialog.askopenfilename(title='Select file', initialdir=self.bidsdataset.cwdir)
 
 
 class RequirementsDialog(TemplateDialog):
@@ -2488,7 +2514,7 @@ class CheckbuttonList(Frame):
             self.variable_list[idx_var] = IntVar()
             self.variable_list[idx_var]._name = temp
             l = Checkbutton(self.frame_button.frame, text=temp, variable=self.variable_list[idx_var])
-            l.grid(row=idx_var, sticky=W + E)
+            l.grid(row=idx_var, sticky='nsw')
             idx_var += 1
         self.frame_button.frame.update_idletasks()
         self.frame_button.canvas.config(scrollregion=self.frame_button.canvas.bbox("all"))
