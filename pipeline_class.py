@@ -101,6 +101,7 @@ class DerivativesSetting(object):
                             subinfo[mod_dir + 'Process'] = eval('bids.' + mod_dir + 'Process()')
                             subinfo[mod_dir + 'Process'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'Process'][-1].get_attributes_from_filename()
+                            subinfo[mod_dir + 'Process'][-1]['modality'] = mod_dir
                             subinfo[mod_dir + 'Process'][-1].get_sidecar_files()
                         # elif mod_dir + 'GlobalSidecars' in bids.BidsBrick.get_list_subclasses_names() and ext.lower() \
                         #         in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
@@ -257,6 +258,34 @@ class PipelineSetting(dict):
         #check the validity of the json ??
 
     def create_parameter_to_inform(self):
+        def read_file(file, elements, param):
+            name, ext = os.path.splitext(file)
+            if ext == '.csv':
+                split_value = ', '
+            else:
+                split_value = '\t'
+            f = open(file, 'r')
+            f_cont = f.readlines()
+            if elements == 'header':
+                header = f_cont[0].split(split_value)
+                for val in header:
+                    param.append(val)
+                f.close()
+                return
+            elif elements.isnumeric():
+                idx= int(elements)
+            elif elements:
+                line = f_cont[0].split('\n')[0]
+                header = line.split(split_value)
+                idx = header.index(elements)
+            else:
+                idx = 0
+            for line in f_cont[1::]:
+                line = line.split('\n')[0]
+                trial_type = line.split(split_value)
+                param.append(trial_type[idx])
+            f.close()
+
         param_vars = {}
         self['Parameters'].create_parameter_to_inform(param_vars)
         for key in param_vars:
@@ -264,52 +293,57 @@ class PipelineSetting(dict):
                 pass
             elif not param_vars[key]['value']:
                 pass
-            elif 'str_type' in param_vars[key]['value']:
-                param = []
+            elif 'file' in param_vars[key]['value']:
+                reading_file = param_vars[key]['value']['file']
+                elements = param_vars[key]['value']['elements']
                 mark_to_remove = ['?', '***', '*']
-                subcl_list = param_vars[key]['value']['subcl_list']
-                str_type = param_vars[key]['value']['str_type']
-                if subcl_list:
-                    for sub in self.curr_bids['Subject']:
-                        for mod in sub:
-                            if mod in bids.ModalityType.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
-                                for elt in sub[mod]:
-                                    for clef in elt.keys():
-                                        if clef in subcl_list and elt[clef]:
-                                            idx = elt[clef].header.index(str_type)
-                                            for elt_val in elt[clef][1::]:
-                                                if elt_val[idx] not in mark_to_remove:
-                                                    param.append(elt_val[idx])
-                else:
-                    for subject in os.listdir(self.curr_bids.cwdir):
-                        if subject.startswith('sub') and os.path.isdir(os.path.join(self.curr_bids.cwdir, subject)):
-                            for session in os.listdir(os.path.join(self.curr_bids.cwdir, subject)):
-                                if os.path.isdir(os.path.join(self.curr_bids.cwdir, subject, session)):
-                                    for mod in os.listdir(os.path.join(self.curr_bids.cwdir, subject, session)):
-                                        if os.path.isdir(os.path.join(self.curr_bids.cwdir, subject, session, mod)):
-                                            with os.scandir(os.path.join(self.curr_bids.cwdir, subject, session, mod)) as it:
-                                                for entry in it:
-                                                    if entry.name.endswith(str_type):
-                                                        f = open(entry.path, 'r')
-                                                        f_cont = f.readlines()
-                                                        for line in f_cont:
-                                                            trial_type = line.split('\t')
-                                                            param.append(trial_type[0])
-                                                        f.close()
-                                        elif os.path.isfile(os.path.join(self.curr_bids.cwdir, subject, session, mod)) and mod.endswith(str_type):
-                                            f = open(os.path.join(self.curr_bids.cwdir, subject, session, mod), 'r')
-                                            f_cont = f.readlines()
-                                            for line in f_cont[1:]:
-                                                trial_type = line.split('\t')
-                                                param.append(trial_type[0])
-                                            f.close()
-
+                param = []
+                for subject in os.listdir(self.curr_bids.cwdir):
+                    if subject.endswith(reading_file) and os.path.isfile(os.path.join(self.curr_bids.cwdir, subject)):
+                        read_file(os.path.join(self.curr_bids.cwdir, subject), elements, param)
+                        break
+                    elif subject.startswith('sub') and os.path.isdir(os.path.join(self.curr_bids.cwdir, subject)):
+                        for session in os.listdir(os.path.join(self.curr_bids.cwdir, subject)):
+                            if os.path.isdir(os.path.join(self.curr_bids.cwdir, subject, session)):
+                                for mod in os.listdir(os.path.join(self.curr_bids.cwdir, subject, session)):
+                                    if os.path.isdir(os.path.join(self.curr_bids.cwdir, subject, session, mod)):
+                                        with os.scandir(os.path.join(self.curr_bids.cwdir, subject, session, mod)) as it:
+                                            for entry in it:
+                                                if entry.name.endswith(reading_file):
+                                                    read_file(entry.path, elements, param)
+                                    elif os.path.isfile(os.path.join(self.curr_bids.cwdir, subject, session, mod)) and mod.endswith(reading_file):
+                                        read_file(os.path.join(self.curr_bids.cwdir, subject, session, mod), elements, param)
                 param = list(set(param))
                 param.sort()
-                param_vars[key]['value'] = param
+
+                param_vars[key]['value'] = [par for par in param if not par in mark_to_remove]
+
         return param_vars
 
     def set_everything_for_analysis(self, param_vars, subject_list):
+        def check_length_input_output(inout_list):
+            taille = [len(elt) for elt in inout_list if isinstance(elt, list)]
+            taille = list(set(taille))
+            if not taille:
+                taille = 1
+                return taille
+            elif len(taille) > 1:
+                return 'ERROR: the number of inputs and outputs is differents'
+            else:
+                return taille[0]
+
+        def list_for_str_format(order, idx):
+            use_list = []
+            for elt in order:
+                if isinstance(elt, list):
+                    if isinstance(elt[idx], list):
+                        use_list.append(', '.join(elt[idx]))
+                    else:
+                        use_list.append(elt[idx])
+                else:
+                    use_list.append(elt)
+            return use_list
+
         #save the param_vars in json file for next analysis
         try:
             dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
@@ -324,33 +358,33 @@ class PipelineSetting(dict):
             #write the analysis caracteristics
 
             #Get the value for the command_line
-            cmd_arg, cmd_line, input_dict, output_dict = self.create_command_to_run_analysis(output_directory, subject_to_analyse)
+            cmd_arg, cmd_line, order = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
         except (EOFError, TypeError, ValueError) as er:
-            self.log_error += er
+            self.log_error += str(er)
             self.write_error_system()
             return self.log_error
 
-        if not input_dict:
+        if not order:
             proc = subprocess.Popen(cmd_line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             #proc.wait()
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
-            self.write_json_associated(input_dict, output_directory, cmd_arg)
-        elif isinstance(input_dict, InputArguments):
-            input_list = list(input_dict.values())[0]
-            output_list = list(output_dict.values())[0]
-            nbr_run = len(input_list)
+            self.write_json_associated(order, output_directory, cmd_arg)
+        elif order:#isinstance(input_dict, InputArguments):
+            taille = check_length_input_output(order)
+            if isinstance(taille, str):
+                self.log_error += taille
+                self.write_error_system()
+                return self.log_error
             idx = 0
-            while idx < nbr_run:
-                cmd = cmd_line.format(input_list[idx], output_list[idx])
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                proc.wait()
+            while idx < taille:
+                use_list = list_for_str_format(order, idx)
+                cmd = cmd_line.format(*use_list)
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                 error_proc = proc.communicate()
-                self.log_error += cmd_arg.verify_log_for_errors(input_list[idx], error_proc)
-                self.write_json_associated(input_list[idx], output_list[idx], cmd_arg)
+                self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
+                self.write_json_associated(use_list, output_directory, cmd_arg)
                 idx = idx + 1
-        elif isinstance(input_dict, Input):
-            pass
         else:
             self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs. \n'.format(self['Name'])
             return self.log_error
@@ -365,7 +399,7 @@ class PipelineSetting(dict):
         interm = self['Parameters']['Intermediate']
         cmd_line_set = self['Parameters']['command_line_base']
         callname = self['Parameters']['Callname']
-        mode = self['Parameters']['Mode']
+        mode = self['Parameters']['Mode'][-1]
 
         if interm:
             cmd_arg = eval(interm + '(bids_directory=self.cwdir, curr_path=self.curr_path, dev_path=output_directory, callname=callname)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
@@ -389,16 +423,20 @@ class PipelineSetting(dict):
                 in_type = input_p[-1]['type']
             elif isinstance(input_dict, Input):
                 pass
-            output_dict = output_p.command_arg(output_directory, self['Name'], subject_to_analyse, in_type, input_list) # output_dir, soft_name, subject_list, input_type, input_file_list=None
+            # output_dir, soft_name, subject_list, input_type, input_file_list=None
         except NameError:
             input_dict = None
+
+        try:
+            output_dict = output_p.command_arg(output_directory, self['Name'], subject_to_analyse, in_type, input_list)
+        except NameError:
             output_dict = None
 
-        cmd_line = cmd_arg.command_line_base(cmd_line_set, mode, input_dict, output_dict)
+        cmd_line, order = cmd_arg.command_line_base(cmd_line_set, mode, input_dict, output_dict)
 
-        return cmd_arg, cmd_line, input_dict, output_dict
+        return cmd_arg, cmd_line, order #input_dict, output_dict
 
-    def write_json_associated(self, input_file, output_file, analyse):
+    def write_json_associated(self, inout_file, output_directory, analyse):
         def create_json(input_file, output_json, analyse):
             jsonf = bids.BidsJSON()
             jsonf['Description'] = 'Results of ' + self['Name'] + ' analysis.'
@@ -408,12 +446,17 @@ class PipelineSetting(dict):
             jsonf['Date'] = str(datetime.datetime.now())
             jsonf.write_file(output_json)
 
-        if isinstance(output_file, list):
-            output_fin = output_file[0]
-        else:
-            output_fin = output_file
+        output_fin = None
+        input_file = None
+        for elt in inout_file:
+            if output_directory in elt:
+                output_fin = elt
+            else:
+                input_file = elt
 
-        if os.path.isfile(output_fin):
+        if not output_fin:
+            pass
+        elif os.path.isfile(output_fin):
             filename, ext = os.path.splitext(output_fin)
             output_json = output_fin.replace(ext, bids.BidsJSON.extension)
             if os.path.exists(output_json):
@@ -550,10 +593,10 @@ class Parameters(dict):
 
     def command_arg(self, key, cmd_dict, subject_list):
         if 'value_selected' in self.keys():
-            if isinstance(self['value_selected'], list):
-                cmd_dict[key] = ', '.join(self['value_selected'])
-            else:
-                cmd_dict[key] = self['value_selected']
+            # if isinstance(self['value_selected'], list):
+            #     cmd_dict[key] = ', '.join(self['value_selected'])
+            # else:
+            cmd_dict[key] = self['value_selected']
         # elif 'default' in self.keys():
         #     if self['default']:
         #         cmd_dict[key] = self['default']
@@ -565,20 +608,21 @@ class Parameters(dict):
 
     def command_line_base(self, cmd_line_set, mode, input_p, output_p):
         if not cmd_line_set:
-            cmd_base = self.curr_path + ' ' + self.callname
+            cmd_base = self.curr_path + ' '
         else:
             cmd_base = self.curr_path + cmd_line_set + ' '
 
-        cmd_line = self.chaine_parameters(input_p, output_p)
+        cmd_line, order = self.chaine_parameters(input_p, output_p)
         cmd = cmd_base + cmd_line
-        return cmd
+        return cmd, order
 
     def chaine_parameters(self, input_dict, output_dict):
-        def determine_input_output_type(input_dict, cnt_tot):
+        def determine_input_output_type(input_dict, cnt_tot, order):
             cmd_line = ''
             for key in input_dict:
                 if not input_dict.multiplesubject:
                     cmd_line += key + ' {' + str(cnt_tot) + '} '
+                    order.append(input_dict[key])
                     cnt_tot += 1
                 else:
                     cmd_line += clef + ' ' + input_dict[clef] + ' '
@@ -586,41 +630,42 @@ class Parameters(dict):
 
         cmd_line =''
         cnt_tot = 0
+        order = []
         for clef in self:
             if clef == 'Input':
                 if isinstance(input_dict, InputArguments):
-                    cmd_line += determine_input_output_type(input_dict, cnt_tot)
+                    cmd_line += determine_input_output_type(input_dict, cnt_tot, order)
+                    #order.append(input_dict)
                 elif isinstance(input_dict, Input):
                     is_ready = input_dict.control_length_of_multiple_input()
                     if is_ready:
                         for elt in input_dict:
-                            cmd_line += determine_input_output_type(elt, cnt_tot)
+                            cmd_line += determine_input_output_type(elt, cnt_tot, order)
+                            #order.append(elt)
                         else:
                             raise TypeError('The two inputs don"t have the same number of entry')
             elif clef == 'Output': #A revoir , aussi l'écriture
-                cmd_line += determine_input_output_type(output_dict, cnt_tot)
+                cmd_line += determine_input_output_type(output_dict, cnt_tot, order)
+                #order.append(output_dict)
             elif isinstance(self[clef], bool):
                 cmd_line += clef + ' '
+            elif isinstance(self[clef], list):
+                cmd_line += clef + ' [' + ', '.join(self[clef]) + '] '
             else:
                 cmd_line += clef + ' ' + self[clef] + ' '
-        return cmd_line
+        return cmd_line, order
 
     def verify_log_for_errors(self, input, x):
         log_error = ''
         if isinstance(x, tuple):
-            if not x[1]:
-                log_error += str(datetime.datetime.now()) + ': ' + input + ': '+ x[0] + '\n'
-            elif not x[0] and not x[1]:
-                log_error += str(datetime.datetime.now()) + ': ' + input + ' has been analyzed with no error\n'
+            if not x[0] and not x[1]:
+                log_error += str(datetime.datetime.now()) + ': ' + ' '.join(input) + ' has been analyzed with no error\n'
+            elif not x[1]:
+                log_error += str(datetime.datetime.now()) + ': ' + ' '.join(input) + ': '+ x[0] + '\n'
             else:
-                log_error += str(datetime.datetime.now()) + ': ' + input + ': ' + x[1] + '\n'
+                log_error += str(datetime.datetime.now()) + ': ' + ' '.join(input)+ ': ' + x[1] + '\n'
 
         return log_error
-        #Old version with x
-        # if x == 0:
-        #     self.log_error += str(datetime.datetime.now()) + ': ' + input + ' has been analyzed with no error\n'
-        # elif x == -1:
-        #     self.log_error += str(datetime.datetime.now()) + ': ' + input + ' has not been completed\n'
 
     #Fonction wrote by Nicolas Roehri
     @classmethod
@@ -647,43 +692,42 @@ class AnyWave(Parameters):
             cmd_line_set = ' --run '
         cmd_base = self.curr_path + cmd_line_set + ' '
 
-        cmd_line = self.chaine_parameters(input_p, output_p)
+        cmd_line, order = self.chaine_parameters(input_p, output_p)
         cmd = cmd_base + cmd_line
-        return cmd
+        return cmd, order
 
     def chaine_parameters(self, input, output):
         jsonfilename = os.path.join(self.derivatives_directory, self['plugin'] + '_parameters' + '.json')
 
-        for key, value in self.items():
-            if ', ' in value:
-                self[key] = value.split(', ')
-            elif key in ['Input', 'Output']:
-                pass
         del self['Input']
         del self['Output']
         with open(jsonfilename, 'w') as json_file:
             json.dump(self, json_file)
         cmd_line = ' "' + jsonfilename + '" '
 
+        order = []
         #Handle the input and output
         cnt_tot = 0
         if isinstance(input, InputArguments):
             for key in input:
                 cmd_line += key + ' {' + str(cnt_tot) + '} '
+                order.append(input[key])
                 cnt_tot +=1
         elif isinstance(input, Input):
             is_ready = input.control_length_of_multiple_input()
             if is_ready:
                 self['Input'] = []
                 for elt in input:
-                    for key in input:
+                    for key in elt:
                         cmd_line += key + ' {' + str(cnt_tot) + '} '
+                        order.append(elt[key])
                     cnt_tot +=1
         for key in output:
             cmd_line += key + ' {' + str(cnt_tot) + '} '
+            order.append(output[key])
             cnt_tot +=1
 
-        return cmd_line
+        return cmd_line, order
 
     def verify_log_for_errors(self, input, x=None):
         log_error = ''
@@ -713,32 +757,34 @@ class AnyWave(Parameters):
 class Docker(Parameters):
 
     def command_line_base(self, cmd_line_set, mode, input_p, output_p):
-        cmd_end = ''
         os.system('docker pull ' + self.callname)
         if not cmd_line_set:
             cmd_line_set = 'docker run -ti --rm'
         #should change outputs in derivatives normally
         cmd_base = cmd_line_set + ' -v ' + self.bids_directory + ':/bids_dataset:ro -v ' + self.derivatives_directory + ':/outputs ' + self.callname + ' /bids_dataset /outputs '
 
-        cmd_line = self.chaine_parameters(input_p, output_p)
+        cmd_line, order = self.chaine_parameters(input_p, output_p)
         cmd = cmd_base + cmd_line
-        return cmd
+        return cmd, order
 
     def chaine_parameters(self, input_dict, output_dict):
         cmd_line =''
         cnt_tot = 0
+        order = []
         for clef in self:
             if clef == 'Input':
                 if isinstance(input_dict, InputArguments):
                     for key in input_dict:
                         cmd_line += key + ' {' + str(cnt_tot) + '} '
+                        order.append(input_dict[key])
                         cnt_tot += 1
                 elif isinstance(input_dict, Input):
                     is_ready = input_dict.control_length_of_multiple_input()
                     if is_ready:
                         for elt in input_dict:
-                            for key in input_dict:
+                            for key in elt:
                                 cmd_line += key + ' {' + str(cnt_tot) + '} '
+                                order.append(elt[key])
                             cnt_tot +=1
                         else:
                             raise TypeError('The two inputs don"t have the same number of entry')
@@ -753,7 +799,7 @@ class Docker(Parameters):
                     cmd_line += clef + ' ' + value + ' '
             else:
                 cmd_line += clef + ' ' + self[clef] + ' '
-        return cmd_line
+        return cmd_line, order
 
 
 class Matlab(Parameters):
@@ -762,16 +808,48 @@ class Matlab(Parameters):
         cmd_end = ''
         if mode == 'automatic':
             if not cmd_line_set:
-                cmd_line_set = "-nodisplay -nosplash -nodesktop -r \"cd('" + self.curr_path + "'); "
-            cmd_end = '; exit'
+                cmd_line_set = "matlab -nodisplay -nosplash -nodesktop -r \"cd('" + self.curr_path + "'); "
+            cmd_end = '; exit\"'
         elif mode == 'manual':
             if not cmd_line_set:
-                cmd_line_set = "-nosplash -nodesktop -r \"cd('" + self.curr_path + "'); "
-        cmd_base = self.curr_path + cmd_line_set + self.callname + ' '
+                cmd_line_set = "matlab -nosplash -nodesktop -r \"cd('" + self.curr_path + "'); "
+        cmd_base = cmd_line_set + self.callname
 
-        cmd_line = self.chaine_parameters(input_p, output_p)
-        cmd = cmd_base + cmd_line
-        return cmd
+        cmd_line, order = self.chaine_parameters(input_p, output_p)
+        cmd = cmd_base + cmd_line + cmd_end
+        return cmd, order
+
+    def chaine_parameters(self, input_dict, output_dict):
+        cmd_line = []
+        cnt_tot = 0
+        order = []
+        for clef in self:
+            if clef == 'Input':
+                if isinstance(input_dict, InputArguments):
+                    for key in input_dict:
+                        cmd_line.append("'{" + str(cnt_tot) + "}'")
+                        order.append(input_dict[key])
+                        cnt_tot += 1
+                elif isinstance(input_dict, Input):
+                    is_ready = input_dict.control_length_of_multiple_input()
+                    if is_ready:
+                        for elt in input_dict:
+                            for key in elt:
+                                cmd_line.append("'{" + str(cnt_tot) + "}'")
+                                order.append(elt[key])
+                            cnt_tot +=1
+                        else:
+                            raise TypeError('The two inputs don"t have the same number of entry')
+            elif clef == 'Output':
+                for key in output_dict:
+                    cmd_line.append("'{" + str(cnt_tot) + "}'")
+                    order.append(output_dict[key])
+                    cnt_tot += 1
+            else:
+                cmd_line.append("'"+self[clef]+"'")
+        cmd_line = '(' + ', '.join(cmd_line) + ')'
+
+        return cmd_line, order
 
 
 class ParametersSide(list):
@@ -797,7 +875,7 @@ class Mode(ParametersSide):
         if len(self) > 1:
             param_vars[key]['attribut'] = 'Listbox'
             param_vars[key]['value'] = self
-        else:
+        elif len(self) == 1:
             param_vars[key]['attribut'] = 'Label'
             param_vars[key]['value'] = self[-1]
 
@@ -830,7 +908,6 @@ class Input(ParametersSide):
         size = len(self)
         if size == 1:
             input_file = self[0].command_arg(subject_list, curr_bids)
-            #input_file.copy_values(f_list, flag_process=True)
         else:
             input_file = Input()
             for elt in self:
@@ -864,8 +941,8 @@ class InputArguments(Parameters):
             param_vars[key]['attribut'] = 'Listbox'
             param_vars[key]['value'] = self['modality']
         elif not self['modality']:
-            param_vars[key]['attribut'] = None
-            param_vars[key]['value'] = None
+            param_vars[key]['attribut'] = 'Label'
+            param_vars[key]['value'] = 'directory'
         else:
             param_vars[key]['value'] = self['modality'][-1]
             param_vars[key]['attribut'] = 'Label'
@@ -892,6 +969,8 @@ class InputArguments(Parameters):
             f_list = self.get_subject_files(modality, subject_list, curr_bids)
         elif self['type'] == 'sub':
             f_list = subject_list['sub']
+        elif self['type'] == 'dir':
+            f_list = curr_bids.cwdir
         else:
             raise ValueError('The selected type is not conform')
         input_to_return = InputArguments()
@@ -944,10 +1023,17 @@ class Output(Parameters):
             out_file = []
             soft_name = soft_name.lower()
             dirname, filename = os.path.split(filename)
-            trash, dirname = dirname.split(bids_directory)
+            trash, dirname = dirname.split(bids_directory + '\\')
             file_elt = filename.split('_')
-            for ext in extension:
-                file_elt[-1] = soft_name + '.' + ext
+            if isinstance(extension, list):
+                for ext in extension:
+                    file_elt[-1] = soft_name + '.' + ext
+                    filename = '_'.join(file_elt)
+                    output = os.path.join(output_dir, dirname, filename)
+                    os.makedirs(os.path.dirname(output), exist_ok=True)
+                    out_file.append(output)
+            else:
+                file_elt[-1] = soft_name + '.' + extension
                 filename = '_'.join(file_elt)
                 output = os.path.join(output_dir, dirname, filename)
                 os.makedirs(os.path.dirname(output), exist_ok=True)
@@ -1001,7 +1087,7 @@ class Output(Parameters):
 
 class Arguments(Parameters):
     unit_value = ['default', 'unit']
-    read_value = ['read', 'multipleselection']
+    read_value = ['read', 'elementstoread', 'multipleselection']
     list_value = ['possible_value', 'multipleselection']
     file_value = ['fileLoc', 'extension'] #To modify
     bool_value = ['default']
@@ -1041,28 +1127,7 @@ class Arguments(Parameters):
                 st_type = 'Listbox'
             param_vars[key]['attribut'] = st_type
             reading_type = self['read'].strip('*')
-            name, ext = os.path.splitext(reading_type)
-            bids_cls_list = bids.BidsSidecar.get_list_subclasses_names()
-            if 'DatasetDescPipeline' in bids_cls_list:
-                bids_cls_list.remove('DatasetDescPipeline')
-            subcl_list = []
-            str_type = ''
-            for cl in bids_cls_list:
-                if eval('bids.' + cl + '.extension') == ext:
-                    for subcl in eval('bids.' + cl + '.get_list_subclasses_names()'):
-                        if eval('bids.' + subcl + '.modality_field') == name:
-                            if name == 'events':
-                                str_type = 'trial_type'
-                            elif name == 'channels':
-                                str_type = 'name'
-                            else:
-                                str_type = 'name'
-                            subcl_list.append(subcl)
-
-            if not str_type and not subcl_list:
-                str_type = reading_type
-
-            param_vars[key]['value'] = {'str_type': str_type, 'subcl_list': subcl_list}
+            param_vars[key]['value'] = {'file': reading_type, 'elements': self['elementstoread']}
 
     def update_values(self, input_dict):
         if not input_dict:
