@@ -5,7 +5,7 @@
     This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
     (with changes by Aude Jegou <aude.jegou@univ-amu.fr)
     This module is concerned by managing BIDS directory.
-    v0.1.10 March 2019
+    v0.1.11 June 2019
 """
 
 from __future__ import print_function
@@ -31,6 +31,13 @@ import shutil
 import random as rnd
 import getpass
 standard_library.install_aliases()
+
+try:
+    # Python 2
+    from __builtin__ import str as builtin_str
+except ImportError:
+    # Python 3
+    from builtins import str as builtin_str
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
 sidecars, BidsTSV: to handle the tsv sidecars. '''
@@ -759,18 +766,21 @@ class BidsBrick(dict):
         elif isinstance(self, Electrophy):
             converter_path = BidsDataset.converters['Electrophy']['path']
             conv_ext = BidsDataset.converters['Electrophy']['ext']
-            attr_dict = self.get_attributes(['fileLoc', 'modality'])
+            attr_dict = self.get_attributes(['fileLoc'])
             name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
-            #cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
-            #           os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
-            #           name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
-            cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + os.path.join(Data2Import.dirname, self['fileLoc']) +\
-                       '" ' + ' --output_dir "' + os.path.join(Data2Import.dirname, 'temp_bids') + '" ' + name_cmd + ' --bids_format vhdr"'
+            # cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
+            #            os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
+            #            name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
+            cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + \
+                       os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
+                       Data2Import.dirname + '" ' + name_cmd + ' --bids_format vhdr"'
+
             os.system(cmd_line)
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
-            os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
+            if not os.path.exists(os.path.join(BidsDataset.dirname, dirname)):
+                os.makedirs(os.path.join(BidsDataset.dirname, dirname))
             try:
                 shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
                     BidsDataset.dirname, dirname, fname))
@@ -781,7 +791,8 @@ class BidsBrick(dict):
         elif isinstance(self, Process):
             name, ext = os.path.splitext(self['fileLoc'])
             fname = filename + ext
-            os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
+            if not os.path.exists(os.path.join(dest_change, dirname)):
+                os.makedirs(os.path.join(dest_change, dirname))
             shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(dest_change, dirname, fname))
             return [fname]
         else:
@@ -803,8 +814,8 @@ class BidsBrick(dict):
             # additional info)
             if tmp_mod[key]:
                 self[key] = tmp_mod[key]
-
-        os.makedirs(os.path.join(BidsDataset.dirname, dirname), exist_ok=True)
+        if not os.path.exists(os.path.join(BidsDataset.dirname, dirname)):
+            os.makedirs(os.path.join(BidsDataset.dirname, dirname))
         for fname in list_filename:
             if os.path.exists(os.path.join(Data2Import.dirname, fname)):
                 shutil.move(os.path.join(Data2Import.dirname, fname),
@@ -978,8 +989,7 @@ class BidsSidecar(object):
             if sidecar_elmt and len([word for word in sidecar_elmt[0] if word in self.required_fields]) >= \
                     len(self.required_fields):
                 self.header = sidecar_elmt[0]
-                #check if it doesn't erase a precedent dict
-                #self[:] = []
+                self[:] = []
                 for line in sidecar_elmt[1:]:
                     self.append({sidecar_elmt[0][cnt]: val for cnt, val in enumerate(line)})
         elif isinstance(self, BidsFreeFile):
@@ -1165,6 +1175,7 @@ class BidsTSV(BidsSidecar, list):
 
     extension = '.tsv'
     modality_field = ''
+    required_fields = []
     header = []
 
     def __init__(self, header=None, required_fields=None, modality_field=None):
@@ -1289,8 +1300,8 @@ class BidsTSV(BidsSidecar, list):
 
 class EventsTSV(BidsTSV):
 
-    header = ['onset', 'duration', 'trial_type', 'response_time', 'stim_file', 'HED']
     required_fields = ['onset', 'duration']
+    header = required_fields + ['sample', 'trial_type', 'response_time', 'stim_file', 'value', 'HED']
     modality_field = 'events'
 
 
@@ -1374,7 +1385,6 @@ class Requirements(BidsBrick):
         else:
             self['Requirements'] = dict()
 
-
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
 
@@ -1406,23 +1416,11 @@ class Requirements(BidsBrick):
         options['modality'] = new_brick.allowed_modalities
         return options
 
-    def fill_requirements_file(self, dict_keys, dict_req_modality, dict_modality):
-        pass
-
-
 
 ''' The different modality bricks, subclasses of BidsBrick. '''
 
 """ iEEG brick with its file-specific (IeegJSON, IeegChannelsTSV) and global sidecar 
 (IeegCoordSysJSON, IeegElecTSV or IeegPhoto) files. """
-
-'''class IeegAnalyzed(Process):
-
-    allowed_file_formats = ['.tsv', '.txt']
-
-    def __init__(self):
-        super().__init__()
-        self['modality'] ='ieeg'''
 
 
 class Ieeg(Electrophy):
@@ -1444,19 +1442,20 @@ class IeegJSON(ElectrophyJSON):
     keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
                'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
                'ECOGChannelCount', 'SEEGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
-               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDate', 'RecordingDuration', 'RecordingType',
-               'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'iEEGPlacementScheme',
-               'iEEGReferenceScheme', 'ElectricalStimulation', 'ElectricalStimulationParameters', 'Medication', 'iEEGReference', 'SamplingFrequency', 'SoftwareFilters']
-    required_keys = ['TaskName', 'PowerLineFrequency', 'SoftwareFilters','iEEGReference', 'SamplingFrequency']
+               'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDate', 'RecordingDuration',
+               'RecordingType', 'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription',
+               'iEEGPlacementScheme', 'iEEGReferenceScheme', 'ElectricalStimulation', 'ElectricalStimulationParameters',
+               'Medication', 'iEEGReference', 'SamplingFrequency', 'SoftwareFilters']
+    required_keys = ['TaskName', 'PowerLineFrequency', 'SoftwareFilters', 'iEEGReference', 'SamplingFrequency']
 
 
 class IeegChannelsTSV(ChannelsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
     frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
 
-    header = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff', 'reference', 'group', 'sampling_frequency',
-              'description', 'notch', 'status', 'status_description', 'software_filters']
-    required_fields = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff']#, 'sampling_frequency', 'notch', 'reference']
+    required_fields = ['name', 'type', 'units', 'low_cutoff', 'high_cutoff']
+    header = required_fields + ['reference', 'group', 'sampling_frequency', 'description', 'notch', 'status',
+                                'status_description']
     modality_field = 'channels'
 
 
@@ -1466,18 +1465,16 @@ class IeegEventsTSV(EventsTSV):
 
 
 class IeegElecTSV(BidsTSV):
-    header = ['name', 'x', 'y', 'z', 'size', 'type', 'material', 'tissue', 'manufacturer', 'grid_size', 'group',
-              'hemisphere']
     required_fields = ['name', 'x', 'y', 'z', 'size']
+    header = required_fields + ['material', 'manufacturer', 'group', 'hemisphere'] + ['type', 'impedance', 'dimension']
     modality_field = 'electrodes'
 
 
 class IeegCoordSysJSON(BidsJSON):
-    keylist = ['iEEGCoordinateSystem', 'iEEGCoordinateUnits', 'iEEGCoordinateProcessingDescription', 'IntendedFor',
-               'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
-               'AssociatedImageCoordinateSystemDescription', 'iEEGCoordinateProcessingReference']
-    required_keys = ['iEEGCoordinateSystem', 'iEEGCoordinateUnits', 'iEEGCoordinateProcessingDescription',
-                     'IntendedFor'] #'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
+    required_keys = ['iEEGCoordinateSystem', 'iEEGCoordinateUnits']
+    keylist = required_keys + ['iEEGCoordinateSystemDescription', 'iEEGCoordinateProcessingDescription',
+                               'iEEGCoordinateProcessingReference', 'IntendedFor']
+
     modality_field = 'coordsystem'
 
 
@@ -1638,7 +1635,7 @@ class FmapJSON(ImageryJSON):
 
 class Dwi(Imagery):
 
-    keylist = BidsBrick.keylist + ['ses', 'acq', 'run', 'modality', 'fileLoc', 'DwiJSON', 'Bval', "Bvec"]
+    keylist = BidsBrick.keylist + ['ses', 'acq', 'dir', 'run', 'modality', 'fileLoc', 'DwiJSON', 'Bval', "Bvec"]
     required_keys = Imagery.required_keys + ['modality']
     allowed_modalities = ['dwi']
     allowed_file_formats = ['.nii']
@@ -1679,6 +1676,7 @@ class Meg(Electrophy):
         super().__init__()
         self['modality'] = 'meg'
 
+
 class MegJSON(BidsJSON):
     keylist = ['TaskName', 'InstitutionName', 'InstitutionAddress', 'Manufacturer', 'ManufacturersModelName', 'SoftwareVersions',
                'TaskDescription', 'Instructions', 'CogAtlasID', 'CogPOID',  'DeviceSerialNumber', 'PowerLineFrequency',
@@ -1690,11 +1688,13 @@ class MegJSON(BidsJSON):
                'CapManufacturersModelName', 'EEGReference']
     required_keys = ['TaskName', 'PowerLineFrequency', 'SoftwareFilters', 'SamplingFrequency', 'DewarPosition', 'DigitizedLandmarks', 'DigitizedHeadPoints']
 
+
 class MegChannelsTSV(ChannelsTSV):
     header = ['name', 'type', 'units', 'description', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'software_filters',
                'status', 'status_description']
     required_fields = ['name', 'type', 'units']
     modality_field = 'channels'
+
 
 class MegCoordSysJSON(BidsJSON):
     keylist = ['MEGCoordinateSystem', 'MEGCoordinateUnits', 'MEGCoordinateSystemDescription', 'IntendedFor',
@@ -1705,6 +1705,7 @@ class MegCoordSysJSON(BidsJSON):
                'AnatomicalLandmarkCoordinateSystem', 'AnatomicalLandmarkCoordinateUnits', 'AnatomicalLandmarkCoordinateSystemDescription', 'FiducialsDescription']
     required_keys = ['MEGCoordinateSystem', 'MEGCoordinateUnits']
     modality_field = 'coordsystem'
+
 
 class MegEventsTSV(EventsTSV):
     """Store the info of the #_events.tsv."""
@@ -1932,7 +1933,7 @@ class DatasetDescJSON(BidsJSON):
                'ReferencesAndLinks', 'DatasetDOI']
     required_keys = ['Name', 'BIDSVersion']
     filename = 'dataset_description.json'
-    bids_version = '1.0.1'
+    bids_version = '1.2.0'
 
     def __init__(self):
         super().__init__()
@@ -2040,7 +2041,25 @@ class ParticipantsTSV(BidsTSV):
     def read_file(self, tsv_full_filename=None):
         if not tsv_full_filename:
             tsv_full_filename = os.path.join(BidsDataset.dirname, ParticipantsTSV.filename)
-        super().read_file(tsv_full_filename)
+        if not os.path.isfile(tsv_full_filename):
+            return
+        if os.path.splitext(tsv_full_filename)[1] == '.tsv':
+            with open(os.path.join(tsv_full_filename), 'r') as file:
+                tsv_header_line = file.readline()
+                tsv_header = tsv_header_line.strip().split("\t")
+                if len([word for word in tsv_header if word in self.required_fields]) < \
+                        len(self.required_fields):
+                    issue_str = 'Header of ' + os.path.basename(tsv_full_filename) + \
+                                ' does not contain the required fields.'
+                    print(issue_str)
+                # to get into account the header that need to be add at the end of the participantsTSV
+                temp_header = [elt for elt in tsv_header if elt not in self.required_fields]
+                self.header = [self.required_fields[0]] + temp_header + self.required_fields[1:]
+                self[:] = []  # not sure if useful
+                for line in file:
+                    self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
+        else:
+            raise TypeError('File is not ".tsv".')
 
     def is_subject_present(self, sub_id):
         participant_idx = self.header.index('participant_id')
@@ -2064,6 +2083,14 @@ class ParticipantsTSV(BidsTSV):
                 if 'alias' in self.header and 'alias' in tmp_dict:
                     tmp_dict['alias'] = self.createalias(sub_dict['sub'])
                 self.append(tmp_dict)
+
+    def update_subject(self, sub_name, update_dict):
+        for cnt, elt in enumerate(self):
+            if elt[0] == sub_name:
+                idx_sub = cnt
+        for key, value in update_dict.items():
+            idx = self.header.index(key)
+            self[idx_sub][idx] = value
 
 
 class MetaBrick(BidsBrick):
@@ -2167,7 +2194,8 @@ class MetaBrick(BidsBrick):
             self.requirements = Requirements(full_filename)
             BidsDataset.requirements = self.requirements
             if 'Requirements' not in self.requirements.keys() or not self.requirements['Requirements']:
-                self.write_log('/!\\ WARNING /!\\ No requirements set! Default requirements from BIDS 1.0.1 applied')
+                self.write_log('/!\\ WARNING /!\\ No requirements set! Default requirements from BIDS ' +
+                               DatasetDescJSON.bids_version + ' applied')
 
             if self.requirements and self.requirements['Requirements'] and \
                     'Subject' in self.requirements['Requirements'].keys():
@@ -2177,7 +2205,6 @@ class MetaBrick(BidsBrick):
                     if key == 'keys':
                         ParticipantsTSV.header += [elmt for elmt in self.requirements['Requirements']['Subject']['keys']
                                                    if elmt not in ParticipantsTSV.header]
-                        #should not be here because depend on required_keys
                         ParticipantsTSV.required_fields += [elmt for elmt in
                                                             self.requirements['Requirements']['Subject']['keys'] if
                                                             elmt not in ParticipantsTSV.required_fields]
@@ -2196,7 +2223,7 @@ class MetaBrick(BidsBrick):
                                 not in ParticipantsTSV.header:
                             ParticipantsTSV.header.append(key + self.requirements.keywords[1])
                             ParticipantsTSV.required_fields.append(key + self.requirements.keywords[1])
-            #move from one tab <-
+
             if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
                 ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
                 ParticipantsTSV.required_fields.append('Subject' + self.requirements.keywords[0])
@@ -2443,9 +2470,13 @@ class BidsDataset(MetaBrick):
                         bids_brick['Pipeline'][-1]['DatasetDescJSON'] = DatasetDescJSON()
                         bids_brick['Pipeline'][-1]['DatasetDescJSON'].read_file(
                             jsonfilename=os.path.join(entry.path, DatasetDescJSON.filename))
-                        bids_brick['Pipeline'][-1]['ParticipantsTSV'] = ParticipantsTSV()
-                        bids_brick['Pipeline'][-1]['ParticipantsTSV'].read_file(
-                            tsv_full_filename=os.path.join(entry.path, ParticipantsTSV.filename))
+                        if os.path.exists(os.path.join(entry.path, ParticipantsTSV.filename)):
+                            bids_brick['Pipeline'][-1]['ParticipantsTSV'] = ParticipantsTSV()
+                            # only need the "participants_id" not all the other info from the main participants.tsv
+                            bids_brick['Pipeline'][-1]['ParticipantsTSV'].required_fields = \
+                                [bids_brick['Pipeline'][-1]['ParticipantsTSV'].required_fields[0]]
+                            bids_brick['Pipeline'][-1]['ParticipantsTSV'].read_file(
+                                tsv_full_filename=os.path.join(entry.path, ParticipantsTSV.filename))
                         parse_bids_dir(bids_brick['Pipeline'][-1], entry.path, flag_process=True)
 
         BidsBrick.access_time = datetime.now()
@@ -2460,12 +2491,36 @@ class BidsDataset(MetaBrick):
         self['DatasetDescJSON'].read_file()
         self['ParticipantsTSV'] = ParticipantsTSV()
         self['ParticipantsTSV'].read_file()
-        if not self.requirements['Requirements']:
-            # create and save the requirements
-            keylist = [key for key in self['ParticipantsTSV'].header if key not in self['ParticipantsTSV'].required_fields]
+
+        #verify the datasetdescription
+        self['DatasetDescJSON'].has_all_req_attributes()
+        if not self['DatasetDescJSON'].is_complete and \
+                self['DatasetDescJSON']['Name'] == DatasetDescJSON.bids_default_unknown:
+            raise NameError(DatasetDescJSON.filename + ' needs at least these elements: ' + \
+                         str(DatasetDescJSON.required_keys) + 'to be filled.\n Please modify your dataset_description.json.')
+
+        if not self.requirements['Requirements'] or 'Subject' in self.requirements['Requirements'] and \
+                not self.requirements['Requirements']['Subject']:
+            # create and save the requirements if either requirements does not exist or subject requirement is empty
+            keylist = [key for key in self['ParticipantsTSV'].header
+                       if key not in self['ParticipantsTSV'].required_fields]
+            # put the _ready elements at the end of the file
+            ParticipantsTSV.header = [self['ParticipantsTSV'].required_fields[0]] + keylist + \
+                                     self['ParticipantsTSV'].required_fields[1:]
             self.requirements['Requirements']['Subject'] = dict()
             self.requirements['Requirements']['Subject']['keys'] = {key: '' for key in keylist}
             self.requirements.save_as_json()
+            self.get_requirements()
+        else:
+            # modify also for incomplete requirements !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # check whether the number of keys in Subject keys matches the number of elements in participants.tsv
+            sub_keys = self.requirements['Requirements']['Subject']['keys']
+            keylist = [key for key in self['ParticipantsTSV'].header
+                       if key not in self['ParticipantsTSV'].required_fields and key not in sub_keys]
+            if keylist:
+                for key in keylist:
+                    self.requirements['Requirements']['Subject']['keys'][key] = ''
+                self.requirements.save_as_json()
 
         parse_bids_dir(self, self.dirname)
         self.check_requirements()
@@ -2571,9 +2626,10 @@ class BidsDataset(MetaBrick):
                             if mod_input_attr == mod_attr and idx_run:
                                 if nb_runs is None:
                                     nb_runs = 0
+                                    highest_run = 0
                                 idx_run = int(idx_run)
                                 nb_runs += 1
-                                highest_run = max(nb_runs, idx_run)
+                                highest_run = max(highest_run, idx_run)
         return nb_runs, highest_run
 
     def import_data(self, data2import, keep_sourcedata=True, keep_file_trace=True):
@@ -2605,7 +2661,8 @@ class BidsDataset(MetaBrick):
 
             if keep_srcdata and not isinstance(mod_dict2import, GlobalSidecars):
                 scr_data_dirname = os.path.join(BidsDataset.dirname, 'sourcedata', dirname)
-                os.makedirs(scr_data_dirname, exist_ok=True)
+                if not os.path.exists(scr_data_dirname):
+                    os.makedirs(scr_data_dirname)
                 path_src = os.path.join(Data2Import.dirname, mod_dict2import['fileLoc'])
                 path_dst = os.path.join(scr_data_dirname, os.path.basename(mod_dict2import['fileLoc']))
                 if os.path.isdir(path_src):
@@ -2791,6 +2848,7 @@ class BidsDataset(MetaBrick):
                 # test whether the subject to be imported has the same attributes as the one already inside the
                 # bids dataset
                 not_req_keys = [elmt for elmt in Subject.keylist if elmt not in Subject.required_keys]
+                req_keys_and_clin = [elmt for elmt in Subject.keylist if elmt in Subject.required_keys or elmt in BidsBrick.get_list_subclasses_names()]
                 if sub_present and not self.curr_subject['Subject'].get_attributes(not_req_keys) == \
                                        sub.get_attributes(not_req_keys):
                     error_str = 'The subject to be imported (' + data2import.dirname + \
@@ -2800,6 +2858,13 @@ class BidsDataset(MetaBrick):
                     self.issues.add_issue('ImportIssue', brick=sub, description=error_str)
                     self.write_log(error_str)
                     continue
+                elif sub_present:
+                    clin_to_update = sub.get_attributes(req_keys_and_clin)
+                    key_to_remove = [key for key in clin_to_update if not clin_to_update[key] or clin_to_update[key] == BidsSidecar.bids_default_unknown]
+                    for key in key_to_remove:
+                        del clin_to_update[key]
+                    self['Subject'][sub_index].copy_values(clin_to_update)
+                    self['ParticipantsTSV'].update_subject(sub['sub'], clin_to_update)
 
                 for modality_type in sub.keys():
                     if modality_type in BidsBrick.get_list_subclasses_names():
@@ -3098,6 +3163,10 @@ class BidsDataset(MetaBrick):
                     element2remove in self.curr_subject['Subject'][element2remove.classname()]:
                 elmt_idx = self.curr_subject['Subject'][element2remove.classname()].index(element2remove)
                 dirname, fname, ext = element2remove.fileparts()
+                comp_ext = ''
+                if ext.lower() == '.gz':
+                    comp_ext = ext
+                    fname, ext = os.path.splitext(fname)
                 if self['SourceData']:
                     # remove file in sourcedata folder and in source_data_trace.tsv
                     self['SourceData'][-1].is_subject_present(element2remove['sub'])
@@ -3143,6 +3212,21 @@ class BidsDataset(MetaBrick):
                             self.write_log(element2remove['fileLoc'] + ' has no source folder, it was probably manually'
                                                                        ' remove please refresh the bids dataset.')
 
+                if self.curr_subject['Subject']['Scans']:
+                    # remove the line contained in scans.tsv relative to this file
+                    for elmt in self.curr_subject['Subject']['Scans']:
+                        if elmt['ses'] == element2remove['ses']:
+                            # strip the subject folder from the full filename
+                            subrel_fname = os.path.join(element2remove.classname().lower(), fname + ext + comp_ext)
+                            line = elmt['ScansTSV'].find_lines_which('filename', subrel_fname)
+                            if line:
+                                idx_line = elmt['ScansTSV'].index(line[0])
+                                elmt['ScansTSV'].pop(idx_line)
+                                tsv_fname, dname, ext = elmt.create_filename_from_attributes()
+                                tsv_fullname = os.path.join(self.dirname, dname, tsv_fname + ext)
+                                elmt['ScansTSV'].write_file(tsv_fullname)
+                                break  # go out since there is only one scans.tsv containing this file
+
                 # remove file in raw folder and its first level sidecar files (higher level may characterize
                 # remaining files)
                 sdcar_dict = element2remove.get_modality_sidecars()
@@ -3165,8 +3249,8 @@ class BidsDataset(MetaBrick):
                     ext = self.converters['Imagery']['ext']
                 ext.reverse()
                 for ex in ext:
-                    if os.path.join(self.dirname, dirname, fname+ex):
-                        os.remove(os.path.join(self.dirname, dirname, fname+ex))
+                    if os.path.exists(os.path.join(self.dirname, dirname, fname+ex+comp_ext)):
+                        os.remove(os.path.join(self.dirname, dirname, fname+ex+comp_ext))
                 self.curr_subject['Subject'][element2remove.classname()].pop(elmt_idx)
                 self.write_log(element2remove['fileLoc'] +
                                ' and its sidecar files were removed from Bids dataset ' +
@@ -3188,7 +3272,8 @@ class BidsDataset(MetaBrick):
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
         save_parsing_path = os.path.join(self.dirname, 'derivatives', 'parsing')
-        os.makedirs(save_parsing_path, exist_ok=True)
+        if not os.path.exists(save_parsing_path):
+            os.makedirs(save_parsing_path)
         super().save_as_json(savedir=save_parsing_path, file_start='parsing', write_date=True, compress=True)
         self.issues.save_as_json()
 
@@ -3473,14 +3558,14 @@ class BidsDataset(MetaBrick):
                     self['Derivatives'][0]['Pipeline'] = new_pip
                     self.is_pipeline_present(k)
                     if not os.path.exists(dname):
-                        os.makedirs(dname, exist_ok=True)
+                        os.makedirs(dname)
 
                 if not os.path.exists(os.path.join(dname, DatasetDescJSON.filename)):
                     new_pip = self.curr_pipeline['Pipeline']
                     new_pip['DatasetDescJSON'] = DatasetDescJSON()
                     new_pip['DatasetDescJSON'].update({'Name': k, 'Description': functionning_pip[k]})
                     new_pip['DatasetDescJSON'].write_file(os.path.join(dname, DatasetDescJSON.filename))
-            self.save_as_json()
+                    self.save_as_json()
 
     @classmethod
     def _assign_bids_dir(cls, bids_dir):
@@ -4010,7 +4095,7 @@ def create_subclass_instance(name, superclasse):
 
 # create all modality processes
 for elmt in SubjectProcess.keyprocess:
-    newclass = type(elmt, (Process,), {})  # To add a base key.capitalize()
+    newclass = type(builtin_str(elmt), (Process,), {})  # To add a base key.capitalize()
     newclass.__module__ = Process.__module__
     setattr(modules[__name__], newclass.__name__, newclass)
 

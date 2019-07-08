@@ -36,13 +36,13 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.1.13'
-    if bids.BidsBrick.curr_user == 'roehri':
+    version = '0.2.0'
+    if bids.BidsBrick.curr_user.lower() == 'roehri':
         bids_startfile = r'\\dynaserv\SPREAD\SPREAD'
         import_startfile = r'\\dynaserv\SPREAD\uploaded_data'
     else:
-        bids_startfile = r'D:\Data\Test_Ftract_Import'
-        import_startfile = r'D:\Data\Test_Ftract_Import\Original_deriv'
+        bids_startfile = r'D:\Data'
+        import_startfile = r'D:\Data'
         folder_software = r'D:\ProjectPython\SoftwarePipeline'
 
     def __init__(self):
@@ -80,6 +80,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_menu.add_command(label='Show dataset_description.json', state=DISABLED)
         bids_menu.add_command(label='Explore Bids dataset', state=DISABLED)
         # fill up the upload/import menu
+        uploader_menu.add_command(label='Import data with Generic Uploader', command=self.ask4uploader_import, state=DISABLED)
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
         uploader_menu.add_command(label='Add elements to import', command=self.add_elmt2data2import, state=DISABLED)
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
@@ -295,6 +296,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 return error_str
             # Select type of requirements
             error_str = RequirementsDialog(parent, bids_dir).error_str
+            datasetdesc.write_file()
 
             return error_str
 
@@ -337,7 +339,14 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
                 self.banner_label._default = 'Current BIDS directory: ' + bids_dir
                 self.make_idle('Parsing BIDS directory.')
-                self.curr_bids = bids.BidsDataset(bids_dir, update_text=self.update_text)
+                try:
+                    self.curr_bids = bids.BidsDataset(bids_dir, update_text=self.update_text)
+                except NameError as error_str:
+                    messagebox.showerror('Error', error_str)
+                    self.change_menu_state(self.uploader_menu, state=DISABLED)
+                    self.change_menu_state(self.issue_menu, state=DISABLED)
+                    self.make_available()
+                    return
                 access = check_access()
                 if access:
                     messagebox.showerror('Error', access.display())
@@ -361,7 +370,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.bids_menu.entryconfigure(5, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
         self.bids_menu.entryconfigure(6, command=self.explore_bids_dataset)
         # enable selection of upload directory
-        self.change_menu_state(self.uploader_menu, end_idx=0)
+        self.change_menu_state(self.uploader_menu, end_idx=1)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
         # enalbe all pipelines
@@ -717,7 +726,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.update_text(self.curr_bids.curr_log + str(err))
         self.curr_data2import = None
         self.upload_dir = None
-        self.change_menu_state(self.uploader_menu, start_idx=1, state=DISABLED)
+        self.change_menu_state(self.uploader_menu, start_idx=2, state=DISABLED)
         self.make_available()
 
     def close_window(self):
@@ -750,6 +759,48 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.banner.configure(bg="blue")
         self.banner_label.set(self.banner_label._default)
         self.update()  # may not be necessary if at the end of method but is needed otherwise...
+
+    def ask4uploader_import(self):
+        self.make_idle('Generic Uploader is running')
+        cmd = os.path.join(os.getcwd(), 'generic_uploader.exe') + ' "' + self.curr_bids.dirname + '" '
+        x = os.system(cmd)
+        if x != 0:
+            self.update_text('Generic uploader crashed')
+            self.make_available()
+            return
+        self.make_idle('Data are ready to be imported')
+        dirname = os.path.dirname(self.curr_bids.dirname)
+        self.upload_dir = os.path.join(dirname, 'TempFolder4Upload')
+        if not os.listdir(self.upload_dir):
+            self.update_text('There is nothing to import')
+        elif os.path.isfile(os.path.join(self.upload_dir, bids.Data2Import.filename)):
+            is_ready = self.verify_data2import(self.upload_dir)
+            if is_ready:
+                self.curr_bids.import_data(self.curr_data2import)
+                self.curr_data2import = None
+        else:
+            with os.scandir(self.upload_dir) as it:
+                for entry in it:
+                    if entry.is_dir():
+                        if os.path.isfile(os.path.join(entry.path, bids.Data2Import.filename)):
+                            is_ready = self.verify_data2import(entry.path)
+                            if is_ready:
+                                self.curr_bids.import_data(self.curr_data2import)
+                                self.curr_data2import = None
+        self.make_available()
+
+    def verify_data2import(self, upload_dir):
+        is_ready = False
+        req_path = os.path.join(self.curr_bids.dirname, 'code', 'requirements.json')
+        self.curr_data2import = bids.Data2Import(upload_dir, req_path)
+        if self.curr_data2import.is_empty():
+            self.update_text('There is no file to import in ' + upload_dir)
+            self.upload_dir = None
+            self.curr_data2import = None
+        else:
+            self.curr_bids.make_upload_issues(self.curr_data2import, force_verif=True)
+            is_ready = True
+        return is_ready
 
     def run_analysis(self, nameS):
         try:
@@ -1117,6 +1168,17 @@ class BidsTSVDialog(TemplateDialog):
                 if isinstance(self.main_brick, bids.ChannelsTSV) and self.main_brick.header[clmn] == 'status':
                     self.key_labels[line][-1].bind('<Double-Button-1>',
                                                    lambda event, l=line, c=clmn: self.switch_chan_status(l, c, event))
+                if isinstance(self.main_brick, bids.ParticipantsTSV):
+                    self.key_labels[line][0].bind('<Double-Button-1>', lambda event, l=line: self.modify_participants_tsv(l, event))
+
+    def modify_participants_tsv(self, lin, ev=None):
+        #line = line.num
+        req_keys_idx = [self.main_brick[0].index(key) for key in self.main_brick[0] if key in bids.Subject.required_keys or key.endswith('_integrity') or key.endswith('_ready')]
+        modification = ModifDialog(self, self.table2show[lin], req_keys_idx)
+        if modification.results:
+            self.parent.parent.curr_bids['ParticipantsTSV'].update_subject(modification.sub, modification.results)
+            self.main_brick.update_subject(modification.sub, modification.results)
+            self.parent.parent.curr_bids['ParticipantsTSV'].write_file()
 
     def switch_chan_status(self, lin, col, ev=None):
         lbl_orig = self.key_labels[lin][col]['text']
@@ -1227,6 +1289,40 @@ class BidsTSVDialog(TemplateDialog):
                 if self.prev_col_btn:
                     self.key_labels[line][clmn].config(fg='black', bg=self.prev_col_btn.cget("bg"))
             # self.key_labels[line] = []
+
+
+class ModifDialog(TemplateDialog):
+
+    def __init__(self, parent, tableline, required_idx):
+        self.line = tableline
+        self.required = [0] + required_idx
+        self.line_modification = {}
+        self.sub = tableline[0]
+        self.header = parent.main_brick.header
+        self.requirements = parent.parent.parent.curr_bids.requirements['Requirements']['Subject']['keys']
+        super().__init__(parent)
+
+    def body(self, parent):
+        for cnt, elt in enumerate(self.line):
+            key = self.header[cnt]
+            if cnt in self.required:
+                self.line_modification[key] = Label(parent, text=elt)
+            elif isinstance(self.requirements[key], list):
+                val_temp = self.requirements[key]
+                self.line_modification[key] = ttk.Combobox(parent, values=val_temp)
+            else:
+                self.line_modification[key] = Entry(parent, textvariable=key)
+                self.line_modification[key].insert(END, elt)
+            self.line_modification[key].grid(row=1, column=cnt)
+        self.ok_cancel_button(parent, row=2)
+
+    def ok(self):
+        self.results = dict()
+        for cnt, elt in enumerate(self.line_modification):
+            if not cnt in self.required:
+                if self.line_modification[elt].get():
+                    self.results[elt] = self.line_modification[elt].get()
+        self.destroy()
 
 
 class FormDialog(TemplateDialog):
@@ -1701,10 +1797,10 @@ def make_cmd4electypechg(output_dict, input_dict, curr_iss, mismtch_elec):
 
 
 def make_cmd4elecnamechg(new_name, curr_iss, mismtch_elec):
-    str_info = mismtch_elec + ' has to be renamed as ' + new_name + ' in the files related to ' + \
+            str_info = mismtch_elec + ' has to be renamed as ' + new_name + ' in the files related to ' + \
                        os.path.basename(curr_iss['fileLoc']) + ' (channels.tsv, events.tsv, .vmrk and .vhdr).\n'
-    command = 'name="' + new_name + '"'
-    curr_iss.add_action(str_info, command, elec_name=mismtch_elec)
+            command = 'name="' + new_name + '"'
+            curr_iss.add_action(str_info, command, elec_name=mismtch_elec)
 
 
 class BidsSelectDialog(TemplateDialog):
@@ -2073,6 +2169,7 @@ class RequirementsDialog(TemplateDialog):
         self.req_button = []
         self.import_req = IntVar()
         self.create_req = IntVar()
+        self.load_add = IntVar()
         self.info_button = []
         self.modality_required_key = []
         self.modality_required_value = []
@@ -2108,7 +2205,7 @@ class RequirementsDialog(TemplateDialog):
                 display.delete(0, END)
                 display.insert(END, self.elec_name)
         elif file_type == 'imag':
-            self.imag_name = filedialog.askopenfilename(title='Select converter for imagery data type (dcm2niix)')
+            self.imag_name = filedialog.askopenfilename(title='Select converter for imagery data type (dicm2nii)')
             if display:
                 display.delete(0, END)
                 display.insert(END, self.imag_name)
@@ -2149,8 +2246,19 @@ class RequirementsDialog(TemplateDialog):
         entry_path.pack(side=LEFT)
         toolbar.pack(side=LEFT)
         placement.pack(side=TOP)
+        loadbar = Frame(parent)
+        addbar = Frame(loadbar)
+        load_req_button = Checkbutton(loadbar, text='Load your Requirements to add modifications', variable=self.load_add, command=lambda: enable_frames([addbar, frame_subject_info.frame, frame_required.frame, frame_modality.frame], self.load_add))
+        load_req_button.pack(side=LEFT)
+        entry_load = Entry(addbar, state=DISABLED)
+        req_load = Button(addbar, text='Filename path', command=lambda: self.ask4path(file_type='req', display=entry_load), state=DISABLED)
+        req_load.pack(side=LEFT)
+        entry_load.pack(side=LEFT)
+        addbar.pack(side=LEFT)
+        loadbar.pack(side=TOP)
         create_req_button = Checkbutton(parent, text='Create your Requirements', variable=self.create_req, command=lambda: enable_frames([frame_subject_info.frame, frame_required.frame, frame_modality.frame], self.create_req))
         create_req_button.pack(side=TOP)
+
 
         Frame_path = Frame(parent)
         Frame_path .pack(side=LEFT, fill=BOTH)
@@ -2293,7 +2401,16 @@ class RequirementsDialog(TemplateDialog):
             return number, autre_num
 
         if mod:
-            key_label = eval('bids.'+mod+'.keylist')
+            if mod in bids.GlobalSidecars.get_list_subclasses_names():
+                key_label = eval('bids.'+mod+'.keylist')
+                key_photo = [lab for lab in bids.Photo.keylist if not lab in key_label]
+                if 'modality' in key_label:
+                    idx = key_label.index('modality')
+                    for elt in key_photo:
+                        key_label.insert(idx, elt)
+                        idx +=1
+            else:
+                key_label = eval('bids.'+mod+'.keylist')
             if required:
                 line_num, init_num = number_line(self.modality_required_value)
             else:
@@ -2351,7 +2468,7 @@ class RequirementsDialog(TemplateDialog):
         if not self.elec_name or 'AnyWave' not in os.path.basename(self.elec_name):
             self.error_str += 'Bids Manager requires AnyWave to convert electrophy. data. '
             pass
-        if not self.imag_name or 'dcm2niix' not in os.path.basename(self.imag_name):
+        if not self.imag_name or 'dicm2nii' not in os.path.basename(self.imag_name):
             self.error_str += 'Bids Manager requires dcm2niix to convert imagery data. '
             pass
 
@@ -2360,14 +2477,20 @@ class RequirementsDialog(TemplateDialog):
                 self.error_str = 'Bids Manager requires a requirements.json file to be operational. '
             else:
                 req_dict = bids.Requirements(self.req_name)
-        elif self.create_req.get():
-            req_dict = bids.Requirements()
-            req_dict['Requirements']['Subject'] = dict()
-            req_dict['Converters'] = dict()
-            req_dict['Converters']['Imagery'] = dict()
-            req_dict['Converters']['Electrophy'] = dict()
-            keys = {}
-            required_keys = []
+        elif self.create_req.get() or self.load_add.get():
+            if self.create_req.get():
+                req_dict = bids.Requirements()
+                req_dict['Requirements']['Subject'] = dict()
+                req_dict['Converters'] = dict()
+                req_dict['Converters']['Imagery'] = dict()
+                req_dict['Converters']['Electrophy'] = dict()
+                keys = {}
+                required_keys = []
+            elif self.load_add.get():
+                req_dict = bids.Requirements(self.req_name)
+                keys = req_dict['Requirements']['Subject']['keys']
+                required_keys = req_dict['Requirements']['Subject']['required_keys']
+
             for i, elt in enumerate(self.info_key_label):
                 value = self.info_value_label[i].get()
                 key = elt.get()
@@ -2375,7 +2498,7 @@ class RequirementsDialog(TemplateDialog):
                     self.error_str = 'Subject"s information are missing'
                     break
                 else:
-                    if ' ' in key:
+                    if ' ' in key and not key.endswith(' '):
                         key = key.replace(' ', '_')
 
                 if ',' not in value:
@@ -2385,9 +2508,9 @@ class RequirementsDialog(TemplateDialog):
                     keys[key] = [val for val in list_val]
                 if self.req_button[i].get():
                     required_keys.append(key)
-            else:
-                req_dict['Requirements']['Subject']['keys'] = keys
-                req_dict['Requirements']['Subject']['required_keys'] = required_keys
+
+            req_dict['Requirements']['Subject']['keys'] = keys
+            req_dict['Requirements']['Subject']['required_keys'] = required_keys
             if not self.error_str:
                 #to get the required modality for the database
                 for i, mod in enumerate(self.modality_required_key):
@@ -2418,7 +2541,15 @@ class RequirementsDialog(TemplateDialog):
                     if len(type_list) > 1:
                         mod_dict['type'] = type_list
                     else:
-                        mod_dict['type'] = type_dict
+                        mod_dict['type'] = type_list[0]
+                    if self.modality_required_name[i] in bids.GlobalSidecars.get_list_subclasses_names():
+                        if isinstance(mod_dict['type'], dict):
+                            if 'space' and 'acq' in mod_dict['type'].keys():
+                                self.error_str += 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
+                        elif isinstance(mod_dict['type'], list):
+                            for elt in mod_dict['type']:
+                                if 'space' and 'acq' in elt.keys():
+                                    self.error_str += 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
                     req_dict['Requirements']['Subject'][self.modality_required_name[i]].append(mod_dict)
                 #To get the possible keys in modality
                 for i, mod in enumerate(self.modality_name):
