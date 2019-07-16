@@ -1430,7 +1430,7 @@ class Ieeg(Electrophy):
     required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['ieeg']
     allowed_file_formats = ['.edf', '.gdf', '.fif', '.vhdr']
-    readable_file_formats = allowed_file_formats + ['.eeg', '.trc', '.ades']
+    readable_file_formats = allowed_file_formats + ['.eeg', '.trc', '.ades', '.mat']
     channel_type = ['SEEG', 'ECOG']
 
     def __init__(self):
@@ -1783,12 +1783,15 @@ class Scans(BidsBrick):
         self['fileLoc'] = os.path.join(dname, file_ses)
 
     def compare_scanstsv(self, tmp_scn):
+        is_same = False
         ls = [x[0] for x in self['ScansTSV']]
         ltemp = [y[0] for y in tmp_scn]
         index_list = [[ls.index(elt), ltemp.index(elt)] for elt in ls if elt in ltemp]
         for i in index_list:
             if not tmp_scn[i[1]][1] == 'acq_time':
                 self['ScansTSV'][i[0]][1] = tmp_scn[i[1]][1]
+                is_same = True
+        return is_same
 
 
 class ScansTSV(BidsTSV):
@@ -2399,7 +2402,9 @@ class BidsDataset(MetaBrick):
                         tmp_scantsv = ScansTSV()
                         tmp_scantsv.read_file(file)
                         for scan in subinfo['Scans']:
-                            scan.compare_scanstsv(tmp_scantsv)
+                            is_same = scan.compare_scanstsv(tmp_scantsv)
+                            if is_same:
+                                scan['fileLoc'] = file.path
                     elif mod_dir and file.is_file():
                         filename, ext = os.path.splitext(file)
                         if ext.lower() == '.gz':

@@ -3,6 +3,8 @@ import json
 import os
 import datetime
 import getpass
+import getopt
+import sys
 import subprocess
 import shutil
 from tkinter import messagebox, filedialog
@@ -129,7 +131,7 @@ class DerivativesSetting(object):
                     dirname.append(w[0]+'-'+w[1])
             modality = fname_pieces[-1]
             if not modality.capitalize() in bids.ModalityType.get_list_subclasses_names():
-                modality = 'anat'
+                modality = ''
             dirname.append(modality)
             directory = '/'.join(dirname)
             directory = os.path.join(directory_path, directory)
@@ -344,18 +346,30 @@ class PipelineSetting(dict):
                     use_list.append(elt)
             return use_list
 
+        #Check if the param are dict or file
+        if isinstance(param_vars, str):
+            file, ext = os.path.splitext(param_vars)
+            if not ext=='.json':
+                self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The parameters file format is not correct. Format should be json. \n'
+                return self.log_error
+            else:
+                with open(param_vars, 'r') as file:
+                    param_vars = json.load(file)
+
         #save the param_vars in json file for next analysis
         try:
             dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
             output_directory, output_name = dev.create_pipeline_directory(self['Name'])
             dataset_desc = DatasetDescPipeline(param_vars, subject_list)
             dataset_desc['Name'] = self['Name']
-            dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
 
             #update the parameters and get the subjects
             self['Parameters'].update_values(param_vars)
+            self['Parameters'].write_file(output_directory)
             subject_to_analyse = SubjectToAnalyse(subject_list)
-            #write the analysis caracteristics
+
+            dataset_desc['PipelineDescription']['fileLoc'] = os.path.join(output_directory, Parameters.filename)
+            dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
 
             #Get the value for the command_line
             cmd_arg, cmd_line, order = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
@@ -519,6 +533,7 @@ class Parameters(dict):
     bids_directory = None
     callname = None
     curr_path = None
+    filename = 'parameters_file.json'
 
     def __init__(self, bids_directory=None, curr_path=None, dev_path=None, callname=None):
         if bids_directory:
@@ -571,7 +586,7 @@ class Parameters(dict):
         def select_pipeline_path(name):
             messagebox.showerror('PathError', 'The current pipeline path is not valid')
             filename = filedialog.askopenfilename(title='Please select ' + name + ' file',
-                                                  filetypes=[('exe files', '.exe')])
+                                                  filetypes=[('exe files', '.exe'), ('m files', '.m'), ('py files', '.py')])
             if not name in filename:
                 messagebox.showerror('PathError', 'The selected file is not the good one for this pipeline')
                 select_pipeline_path(name)
@@ -625,7 +640,7 @@ class Parameters(dict):
                     order.append(input_dict[key])
                     cnt_tot += 1
                 else:
-                    cmd_line += clef + ' ' + input_dict[clef] + ' '
+                    cmd_line += key + ' ' + input_dict[key] + ' '
             return cmd_line
 
         cmd_line =''
@@ -650,7 +665,7 @@ class Parameters(dict):
             elif isinstance(self[clef], bool):
                 cmd_line += clef + ' '
             elif isinstance(self[clef], list):
-                cmd_line += clef + ' [' + ', '.join(self[clef]) + '] '
+                cmd_line += clef + ' "' + ', '.join(self[clef]) + '" '
             else:
                 cmd_line += clef + ' ' + self[clef] + ' '
         return cmd_line, order
@@ -666,6 +681,12 @@ class Parameters(dict):
                 log_error += str(datetime.datetime.now()) + ': ' + ' '.join(input)+ ': ' + x[1] + '\n'
 
         return log_error
+
+    def write_file(self, output_directory):
+        filename = os.path.join(output_directory, self.filename)
+        with open(filename, 'w+') as f:
+            json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+            f.write(json_str)
 
     #Fonction wrote by Nicolas Roehri
     @classmethod
@@ -808,11 +829,11 @@ class Matlab(Parameters):
         cmd_end = ''
         if mode == 'automatic':
             if not cmd_line_set:
-                cmd_line_set = "matlab -nodisplay -nosplash -nodesktop -r \"cd('" + self.curr_path + "'); "
+                cmd_line_set = "matlab -nodisplay -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); "
             cmd_end = '; exit\"'
         elif mode == 'manual':
             if not cmd_line_set:
-                cmd_line_set = "matlab -nosplash -nodesktop -r \"cd('" + self.curr_path + "'); "
+                cmd_line_set = "matlab -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); "
         cmd_base = cmd_line_set + self.callname
 
         cmd_line, order = self.chaine_parameters(input_p, output_p)
@@ -1113,7 +1134,7 @@ class Arguments(Parameters):
             param_vars[key]['value'] = self['possible_value']
         elif keys == self.file_value: #A revoir
             param_vars[key]['attribut'] = 'File'
-            param_vars[key]['value'] = ''
+            param_vars[key]['value'] = []
         elif keys == self.bool_value:
             param_vars[key]['attribut'] = 'Bool'
             param_vars[key]['value'] = self['default']
@@ -1166,3 +1187,55 @@ class SubjectToAnalyse(Parameters):
     def copy_values(self, input_dict):
         for key in input_dict:
             self[key] = input_dict[key]
+
+    def write_file(self, output_directory):
+        filename = os.path.join(output_directory, 'subjects_selected_file.json')
+        with open(filename, 'w+') as f:
+            json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+            f.write(json_str)
+
+def main(argv):
+    bidsdirectory = None
+    analysisname = ''
+    parameters = {}
+    subjectlist = {}
+
+    try:
+        opts, args = getopt.getopt(argv, "hb:a:p:s:", ["bidsdirectory=", "analysisname=", "parameters=", "subjectlist="])
+    except getopt.GetoptError:
+        print('pipeline_class.py -b <bidsdirectory> -a <analysisname> -p <parameters> -s <subjectlist>')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print('pipeline_class.py -b <bidsdirectory> -a <analysisname> -p <parameters> -s <subjectlist>')
+            sys.exit()
+        elif opt in ('-b', '--bidsdirectory'):
+            bidsdirectory = arg
+        elif opt in ('-a', '--analysisname'):
+            analysisname = arg
+        elif opt in ('-p', '--parameters'):
+            if os.path.exists(arg):
+                parameters = arg
+            else:
+                parameters = eval(arg)
+                if not isinstance(parameters, dict):
+                    print('ERROR: Parameters should be a dictionnary or filename.\n')
+                    sys.exit(-1)
+        elif opt in ('-s', '--subjectlist'):
+            subjectlist = eval(arg)
+            if not isinstance(subjectlist, dict):
+                print('ERROR: Subject should be a dictionnary with at least sub as key.\n')
+                sys.exit(-1)
+
+    if not bidsdirectory or not analysisname or not parameters or not subjectlist:
+        print('ERROR: All arguments are required.\n')
+        sys.exit(-1)
+
+    return bidsdirectory, analysisname, parameters, subjectlist
+
+
+if __name__ == '__main__':
+    bidsdirectory, analysisname, parameters, subjectlist = main(sys.argv[1:])
+    soft_analyse = PipelineSetting(bidsdirectory, analysisname)
+    log_analyse = soft_analyse.set_everything_for_analysis(parameters, subjectlist)
+    print(log_analyse)

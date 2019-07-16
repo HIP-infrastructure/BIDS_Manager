@@ -296,7 +296,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 return error_str
             # Select type of requirements
             error_str = RequirementsDialog(parent, bids_dir).error_str
-            datasetdesc.write_file()
+            if not error_str:
+                datasetdesc.write_file()
 
             return error_str
 
@@ -920,6 +921,8 @@ class TemplateDialog(Toplevel, object):
             win.update_idletasks()
             width = win.winfo_width()
             height = win.winfo_height()
+            if width > 1800:
+                width = 1800
             x = (win.winfo_screenwidth() // 2) - (width // 2)
             y = (win.winfo_screenheight() // 2) - (height // 2)
             win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
@@ -1849,42 +1852,36 @@ class BidsSelectDialog(TemplateDialog):
         if analysis_dict:
             self.software = analysis_dict
             self.param_vars = self.software.create_parameter_to_inform()
+            self.param_script = IntVar()
+            self.param_gui = IntVar()
+            self.param_file = []
 
         super().__init__(parent)
 
     def body(self, parent):
-        def enable(frame, state):
-            for child in frame.winfo_children():
-                try:
-                    child.configure(state=state)
-                except:
-                    pass
-
-        def enable_frame(frame, button):
-            button_value = button.get()
-            if button_value == 1:
-                enable(frame, 'normal')
-            elif button_value == 0:
-                enable(frame, 'disabled')
 
         self.title('Select Subjects and parameters')
         self.All_sub = IntVar()
         self.Id_sub = IntVar()
         self.Crit_sub = IntVar()
-        All_sub_butt = Checkbutton(parent, text='All subjects', variable=self.All_sub)
-        All_sub_butt.grid(row=0, column=0, sticky=W+E)
-        Id_sub_butt = Checkbutton(parent, text='Select subject(s) Id(s)', variable=self.Id_sub, command=lambda: enable_frame(Frame_list, self.Id_sub))
-        Id_sub_butt.grid(row=0, column=1, sticky=W+E)
-        Crit_sub_butt = Checkbutton(parent, text='Select subjects by criteria', variable=self.Crit_sub, command=lambda: enable_frame(Frame_criteria, self.Crit_sub))
-        Crit_sub_butt.grid(row=0, column=2, sticky=W+E)
-        Frame_list = Frame(parent, relief=GROOVE, borderwidth=2)
-        Frame_req_criteria = Frame(parent, relief=GROOVE, borderwidth=2)
-        Label(Frame_req_criteria, text='Select required criteria:').grid(row=0)
-        Frame_criteria = Frame(parent, relief=GROOVE, borderwidth=2)
-        Label(Frame_criteria, text='Select criteria for multiple subjects analysis:').grid(row=0)
+        frame_subject = Frame(parent,  relief=GROOVE, borderwidth=2)
+        Label(frame_subject, text='Select subjects for analysis', font='bold', fg='#1F618D').pack(side=TOP)
+        frame_subject.pack(side=LEFT)
+        frame_sub_check = Frame(frame_subject)
+        All_sub_butt = Checkbutton(frame_sub_check, text='All subjects', variable=self.All_sub)
+        All_sub_butt.pack(side=LEFT)
+        Id_sub_butt = Checkbutton(frame_sub_check, text='Select subject(s) Id(s)', variable=self.Id_sub, command=lambda: enable_frames(Frame_list, self.Id_sub))
+        Id_sub_butt.pack(side=LEFT)
+        Crit_sub_butt = Checkbutton(frame_sub_check, text='Select subjects by criteria', variable=self.Crit_sub, command=lambda: enable_frames(Frame_criteria, self.Crit_sub))
+        Crit_sub_butt.pack(side=LEFT)
+        Frame_list = Frame(frame_subject)
+        Frame_req_criteria = Frame(frame_subject)
+        Label(Frame_req_criteria, text='Select required criteria:', font='bold', fg='#1F618D').grid(row=0)
+        Frame_criteria = Frame(frame_subject)
+        Label(Frame_criteria, text='Select criteria for multiple subjects analysis:', font='bold', fg='#1F618D').grid(row=0)
 
         #Subject list
-        self.subject = Label(Frame_list, text='Subject')
+        self.subject = Label(Frame_list, text='Subject', font='bold', fg='#1F618D')
         self.subject.grid(row=0, sticky=W)
         list_choice = Variable(Frame_list, self.subject_dict['Subject'])
         self.select_subject = Listbox(Frame_list, exportselection=0, listvariable=list_choice, selectmode=MULTIPLE)
@@ -1901,23 +1898,38 @@ class BidsSelectDialog(TemplateDialog):
             cntC = 1
         if cntR < 1:
             cntR = 1
-        Frame_req_criteria.grid(row=1, column=1, rowspan=cntR, columnspan=max_req)
-        Frame_list.grid(row=1, column=0, columnspan=1, rowspan=cntR + cntC)
+        frame_sub_check.pack(side=TOP)
+        Frame_req_criteria.pack(side=TOP)#.grid(row=1, column=1, rowspan=cntR, columnspan=max_req)
+        Frame_list.pack(side=LEFT)#.grid(row=1, column=0, columnspan=1, rowspan=cntR + cntC)
         enable(Frame_list, 'disabled')
-        Frame_criteria.grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
+        Frame_criteria.pack(side=LEFT)#.grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
         enable(Frame_criteria, 'disabled')
+        frame_subject.pack(side=LEFT)
         row_okcancel = max(cntR, cntC)
 
         if self.param_vars:
-            Frame_analysis = Frame(parent, relief=GROOVE, borderwidth=2)
-            Label(Frame_analysis, text='Select analysis parameters:').grid(row=0)
-            max_param, cntP = self.create_button(Frame_analysis, self.param_vars)
-            col_p = max(max_crit, max_req)
-            length = max(cntC, cntP+cntR)
-            Frame_analysis.grid(row=0, column=col_p+1, rowspan=length, columnspan=max_param)
-            row_okcancel = max(length, cntR, cntC)
+            frame_parameters = Frame(parent, relief=GROOVE, borderwidth=2)
+            Label(frame_parameters, text='Select subjects for analysis', font='bold', fg='#1F618D').pack(side=TOP)
+            frame_param_check = Frame(frame_parameters)
+            frame_param_check.pack(side=TOP)
+            frame_param_select = Frame(frame_parameters)
+            frame_param_select.pack(side=TOP)
+            param_file = Button(frame_param_check, text='Filename path', command=lambda: self.ask4file(self.param_file))
+            import_param_button = Checkbutton(frame_param_check, text='Select your script with parameters values', variable=self.param_script, command=lambda: param_file.configure(state='active'))
+            import_param_button.pack(side=LEFT)
+            param_file.pack(side=LEFT)
+            param_file.configure(state='disabled')
+            select_param_button = Checkbutton(frame_param_check, text='Use the GUI to determine analysis parameters', variable=self.param_gui, command=lambda: enable_frames(frame_param_select, self.param_gui))
+            select_param_button.pack(side=LEFT)
+            max_param, cntP = self.create_button(frame_param_select, self.param_vars)
 
-        self.ok_cancel_button(parent, row=row_okcancel)
+            enable(frame_param_select, 'disabled')
+            frame_parameters.pack(side=LEFT)
+
+            #row_okcancel = max(length, cntR, cntC)+1
+        frame_okcancel = Frame(parent)
+        frame_okcancel.pack(side=BOTTOM)
+        self.ok_cancel_button(frame_okcancel)
 
     def ok(self):
         self.subject_selected, self.sub_criteria = self.get_the_subject_id()
@@ -1993,18 +2005,25 @@ class BidsSelectDialog(TemplateDialog):
         elif flag == 'criteria':
             var_dict = self.vars
         elif flag == 'parameter':
-            var_dict = self.param_vars
+            if self.param_script.get():
+                res_dict = ''
+                res_dict = self.param_file[0]
+                return res_dict
+            elif self.param_gui.get():
+                var_dict = self.param_vars
+
         for key in var_dict:
             att_type = var_dict[key]['attribut']
             val_temp = var_dict[key]['value']
             if att_type == 'Variable':
-                for id_var in val_temp:
-                    if id_var.get():
+                for val in var_dict[key]['results']:
+                    if val.get():
+                        idx = var_dict[key]['results'].index(val)
                         try:
-                            res_dict[key].append(id_var._name)
+                            res_dict[key].append(val_temp[idx])
                         except:
                             res_dict[key] = []
-                            res_dict[key].append(id_var._name)
+                            res_dict[key].append(val_temp[idx])
             elif att_type == 'StringVar':
                 num_value = False
                 if isinstance(val_temp, list):
@@ -2042,7 +2061,7 @@ class BidsSelectDialog(TemplateDialog):
             elif att_type == 'Label':
                 res_dict[key] = val_temp
             elif att_type == 'File':
-                res_dict[key] = val_temp
+                res_dict[key] = val_temp[0]
 
         return res_dict
 
@@ -2121,7 +2140,7 @@ class BidsSelectDialog(TemplateDialog):
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
                 var_dict[key]['value'] = l
             elif att_type == 'Variable':
-                CheckbuttonList(frame, val_temp, row_list=cnt + 1, col_list=max_col)
+                var_dict[key]['results'] = CheckbuttonList(frame, val_temp, row_list=cnt + 1, col_list=max_col).variable_list
             elif att_type == 'IntVar':
                 if isinstance(val_temp, list):
                     idx_var = 0
@@ -2157,7 +2176,8 @@ class BidsSelectDialog(TemplateDialog):
         return max_col, cnt
 
     def ask4file(self, file):
-        file = filedialog.askopenfilename(title='Select file', initialdir=self.bidsdataset.cwdir)
+        filename = filedialog.askopenfilename(title='Select file', initialdir=self.bidsdataset.cwdir)
+        file.append(filename)
 
 
 class RequirementsDialog(TemplateDialog):
@@ -2211,27 +2231,6 @@ class RequirementsDialog(TemplateDialog):
                 display.insert(END, self.imag_name)
 
     def body(self, parent):
-        def enable(frame, state):
-            for child in frame.winfo_children():
-                try:
-                    child.configure(state=state)
-                except:
-                    pass
-
-        def enable_frames(frame, button):
-            button_value = button.get()
-            if button_value == 1:
-                if isinstance(frame, list):
-                    for fr in frame:
-                        enable(fr, 'normal')
-                else:
-                    enable(frame, 'normal')
-            elif button_value == 0:
-                if isinstance(frame, list):
-                    for fr in frame:
-                        enable(fr, 'disabled')
-                else:
-                    enable(frame, 'disabled')
 
         self.geometry('1600x800')
         smallfont = font.Font(family="Segoe UI", size=9)
@@ -2588,6 +2587,10 @@ class RequirementsDialog(TemplateDialog):
             req_dict.save_as_json()
             self.destroy()
 
+    def cancel(self, event=None):
+        self.error_str += 'You cancel before to indicate your requirements.json.\n Bids Manager requires a requirements.json file to be operational.'
+        self.destroy()
+
 
 class VerticalScrollbarFrame(Frame):
 
@@ -2621,7 +2624,8 @@ class CheckbuttonList(Frame):
         self.hidden = False
         self.test_frame = None
         self.parent = parent
-        self.variable_list = variable_list
+        self.variable_string = variable_list
+        self.variable_list = []
         self.frame = Frame(parent, width=150, height=25, bg='white')
         self.frame.grid(row=row_list, column=col_list)
         self.combo_entry = Entry(self.frame)
@@ -2640,11 +2644,11 @@ class CheckbuttonList(Frame):
         self.frame_button.update_scrollbar()
 
         idx_var = 0
-        while idx_var < len(self.variable_list):
-            temp = self.variable_list[idx_var]
-            self.variable_list[idx_var] = IntVar()
-            self.variable_list[idx_var]._name = temp
-            l = Checkbutton(self.frame_button.frame, text=temp, variable=self.variable_list[idx_var])
+        while idx_var < len(self.variable_string):
+            temp = self.variable_string[idx_var]
+            self.variable_list.append(IntVar())
+            #self.variable_list[idx_var]._name = temp
+            l = Checkbutton(self.frame_button.frame, text=temp, variable=self.variable_list[-1])
             l.grid(row=idx_var, sticky='nsw')
             idx_var += 1
         self.frame_button.frame.update_idletasks()
@@ -2664,6 +2668,27 @@ class CheckbuttonList(Frame):
             self.combo_entry.toplevel.withdraw()
             self.parent.master.master.grab_set()
 
+def enable(frame, state):
+    for child in frame.winfo_children():
+        try:
+            child.configure(state=state)
+        except:
+            pass
+
+def enable_frames(frame, button):
+    button_value = button.get()
+    if button_value == 1:
+        if isinstance(frame, list):
+            for fr in frame:
+                enable(fr, 'normal')
+        else:
+            enable(frame, 'normal')
+    elif button_value == 0:
+        if isinstance(frame, list):
+            for fr in frame:
+                enable(fr, 'disabled')
+        else:
+            enable(frame, 'disabled')
 
 def make_splash():
     if bids.BidsBrick.curr_user in ['Ponz', 'ponz']:
