@@ -1811,7 +1811,7 @@ class BidsSelectDialog(TemplateDialog):
     select_subject = None
     #subject_list = {'SubjectToAnalyse': []}
 
-    def __init__(self, parent, input_dict, analysis_dict=None):
+    def __init__(self, parent, input_dict, analysis_dict):
 
         if isinstance(input_dict, bids.BidsDataset):
             BidsSelectDialog.bidsdataset = input_dict
@@ -1821,26 +1821,7 @@ class BidsSelectDialog(TemplateDialog):
             raise TypeError('Second input should be a bids dataset')
 
         #init variable
-        self.vars = {}
-        self.vars_req = {}
         self.subject_dict =dict()
-
-        for sub in BidsSelectDialog.bidsdataset['Subject']:
-            for mod in sub:
-                if mod and mod in bids.ModalityType.get_list_subclasses_names():
-                    for elt in sub[mod]:
-                        if elt not in bids.BidsSidecar.get_list_subclasses_names():
-                            for key in elt.keys():
-                                if key in pip.SubjectToAnalyse.keylist and not key == 'sub':
-                                    if elt[key]:
-                                        if not key in self.vars_req:
-                                            self.vars_req[key] = {}
-                                            self.vars_req[key]['attribut'] = 'IntVar'
-                                            self.vars_req[key]['value'] = []
-                                        self.vars_req[key]['value'].append(elt[key])
-                                        self.vars_req[key]['value'] = sorted(list(set(self.vars_req[key]['value'])))
-                                        if len(self.vars_req[key]['value']) > 3:
-                                            self.vars_req[key]['attribut'] = 'Variable'
 
         self.participants = BidsSelectDialog.bidsdataset['ParticipantsTSV']
         self.vars = self.select_criteria(self.participants)
@@ -1849,12 +1830,45 @@ class BidsSelectDialog(TemplateDialog):
         for sub in BidsSelectDialog.bidsdataset['Subject']:
             self.subject_dict['Subject'].append(sub['sub'])
 
-        if analysis_dict:
-            self.software = analysis_dict
-            self.param_vars = self.software.create_parameter_to_inform()
+        self.software = analysis_dict
+        try:
+            self.param_vars, self.input_vars = self.software.create_parameter_to_inform()
             self.param_script = IntVar()
             self.param_gui = IntVar()
             self.param_file = []
+        except EOFError as err:
+            messagebox.showerror('ERROR', err)
+            return
+
+        if self.input_vars:
+            req_keys = [key for key in pip.SubjectToAnalyse.keylist if not key == 'sub']
+            for clef in self.input_vars:
+                if self.input_vars[clef]['modality']['attribut'] == 'Label':
+                    modality = [self.input_vars[clef]['modality']['value']]
+                else:
+                    modality = self.input_vars[clef]['modality']['value']
+                for sub in BidsSelectDialog.bidsdataset['Subject']:
+                    for mod in sub:
+                        if mod and mod in modality:
+                            keys = [elt for elt in req_keys if elt in eval('bids.'+mod+'.keylist')]
+                            if mod in bids.Imagery.get_list_subclasses_names():
+                                keys.append('modality')
+                            for key in keys:
+                                value = [elt[key] for elt in sub[mod]]
+                                value = sorted(list(set(value)))
+                                if value and value[0] is not '':
+                                    if not key in self.input_vars[clef]:
+                                        self.input_vars[clef][key] = {}
+                                        self.input_vars[clef][key]['value'] = value
+                                        self.input_vars[clef][key]['attribut'] = 'IntVar'
+                                    elif key == 'modality' and self.input_vars[clef][key]['attribut'] == 'Label':
+                                        self.input_vars[clef][key]['value'] = value
+                                        self.input_vars[clef][key]['attribut'] = 'IntVar'
+                                    else:
+                                        self.input_vars[clef][key]['value'].extend(value)
+                                    self.input_vars[clef][key]['value'] = sorted(list(set(self.input_vars[clef][key]['value'])))
+                                    if len(self.input_vars[clef][key]['value']) > 1:
+                                        self.input_vars[clef][key]['attribut'] = 'Variable'
 
         super().__init__(parent)
 
@@ -1875,8 +1889,6 @@ class BidsSelectDialog(TemplateDialog):
         Crit_sub_butt = Checkbutton(frame_sub_check, text='Select subjects by criteria', variable=self.Crit_sub, command=lambda: enable_frames(Frame_criteria, self.Crit_sub))
         Crit_sub_butt.pack(side=LEFT)
         Frame_list = Frame(frame_subject)
-        Frame_req_criteria = Frame(frame_subject)
-        Label(Frame_req_criteria, text='Select required criteria:', font='bold', fg='#1F618D').grid(row=0)
         Frame_criteria = Frame(frame_subject)
         Label(Frame_criteria, text='Select criteria for multiple subjects analysis:', font='bold', fg='#1F618D').grid(row=0)
 
@@ -1890,53 +1902,61 @@ class BidsSelectDialog(TemplateDialog):
         #Criteria to select subjects
         max_crit, cntC = self.create_button(Frame_criteria, self.vars)
 
-        #Required criteria for all option
-        max_req, cntR = self.create_button(Frame_req_criteria, self.vars_req)
-
         #place the frame
         if cntC < 1:
             cntC = 1
-        if cntR < 1:
-            cntR = 1
         frame_sub_check.pack(side=TOP)
-        Frame_req_criteria.pack(side=TOP)#.grid(row=1, column=1, rowspan=cntR, columnspan=max_req)
         Frame_list.pack(side=LEFT)#.grid(row=1, column=0, columnspan=1, rowspan=cntR + cntC)
         enable(Frame_list, 'disabled')
         Frame_criteria.pack(side=LEFT)#.grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
         enable(Frame_criteria, 'disabled')
         frame_subject.pack(side=LEFT)
-        row_okcancel = max(cntR, cntC)
 
-        if self.param_vars:
-            frame_parameters = Frame(parent, relief=GROOVE, borderwidth=2)
-            Label(frame_parameters, text='Select subjects for analysis', font='bold', fg='#1F618D').pack(side=TOP)
-            frame_param_check = Frame(frame_parameters)
-            frame_param_check.pack(side=TOP)
-            frame_param_select = Frame(frame_parameters)
-            frame_param_select.pack(side=TOP)
-            param_file = Button(frame_param_check, text='Filename path', command=lambda: self.ask4file(self.param_file))
-            import_param_button = Checkbutton(frame_param_check, text='Select your script with parameters values', variable=self.param_script, command=lambda: param_file.configure(state='active'))
-            import_param_button.pack(side=LEFT)
-            param_file.pack(side=LEFT)
-            param_file.configure(state='disabled')
-            select_param_button = Checkbutton(frame_param_check, text='Use the GUI to determine analysis parameters', variable=self.param_gui, command=lambda: enable_frames(frame_param_select, self.param_gui))
-            select_param_button.pack(side=LEFT)
-            max_param, cntP = self.create_button(frame_param_select, self.param_vars)
+        frame_parameters = Frame(parent, relief=GROOVE, borderwidth=2)
+        if self.input_vars:
+            frame_input_criteria = Frame(frame_parameters)
+            Label(frame_input_criteria, text='Select input criteria:', font='bold', fg='#1F618D').pack()
+            frame_dict= dict()
+            for cnt, key in enumerate(self.input_vars):
+                frame_dict[key] = Frame(frame_input_criteria)
+                Label(frame_dict[key], text='{0}'.format(' '.join(key.split('_')[1:]))).grid(row=0)
+                max_req, cntR = self.create_button(frame_dict[key], self.input_vars[key])
+                frame_dict[key].pack(side=LEFT)
+            frame_input_criteria.pack(side=TOP)
+        Label(frame_parameters, text='Select parameters for analysis', font='bold', fg='#1F618D').pack(side=TOP)
+        frame_param_check = Frame(frame_parameters)
+        frame_param_check.pack(side=TOP)
+        frame_param_select = Frame(frame_parameters)
+        frame_param_select.pack(side=TOP)
+        param_file = Button(frame_param_check, text='Filename path', command=lambda: self.ask4file(self.param_file))
+        import_param_button = Checkbutton(frame_param_check, text='Select your script with parameters values', variable=self.param_script, command=lambda: param_file.configure(state='active'))
+        import_param_button.pack(side=LEFT)
+        param_file.pack(side=LEFT)
+        param_file.configure(state='disabled')
+        select_param_button = Checkbutton(frame_param_check, text='Use the GUI to determine analysis parameters', variable=self.param_gui, command=lambda: enable_frames(frame_param_select, self.param_gui))
+        select_param_button.pack(side=LEFT)
+        max_param, cntP = self.create_button(frame_param_select, self.param_vars)
 
-            enable(frame_param_select, 'disabled')
-            frame_parameters.pack(side=LEFT)
+        enable(frame_param_select, 'disabled')
+        frame_parameters.pack(side=LEFT)
 
-            #row_okcancel = max(length, cntR, cntC)+1
+        #row_okcancel = max(length, cntR, cntC)+1
         frame_okcancel = Frame(parent)
         frame_okcancel.pack(side=BOTTOM)
         self.ok_cancel_button(frame_okcancel)
 
     def ok(self):
-        self.subject_selected, self.sub_criteria = self.get_the_subject_id()
-        self.analysis_param = self.get_parameter_from_gui('parameter')
+        self.subject_selected = self.get_the_subject_id()
+        if self.param_script.get():
+            self.analysis_param = self.param_file[0]
+        else:
+            self.analysis_param = self.get_parameter_from_gui(self.param_vars)
+        self.input_param = {}
+        for inp in self.input_vars:
+            self.input_param[inp[6:]] = self.get_parameter_from_gui(self.input_vars[inp])
         self.destroy()
         self.vars = {}
-        self.vars_req = {}
+        self.input_vars = {}
         self.param_vars = {}
 
     def select_criteria(self, participant_dict):
@@ -1998,20 +2018,8 @@ class BidsSelectDialog(TemplateDialog):
 
         return var_dict
 
-    def get_parameter_from_gui(self, flag):
+    def get_parameter_from_gui(self, var_dict):
         res_dict = dict()
-        if flag == 'required':
-            var_dict = self.vars_req
-        elif flag == 'criteria':
-            var_dict = self.vars
-        elif flag == 'parameter':
-            if self.param_script.get():
-                res_dict = ''
-                res_dict = self.param_file[0]
-                return res_dict
-            elif self.param_gui.get():
-                var_dict = self.param_vars
-
         for key in var_dict:
             att_type = var_dict[key]['attribut']
             val_temp = var_dict[key]['value']
@@ -2061,7 +2069,8 @@ class BidsSelectDialog(TemplateDialog):
             elif att_type == 'Label':
                 res_dict[key] = val_temp
             elif att_type == 'File':
-                res_dict[key] = val_temp[0]
+                if val_temp:
+                    res_dict[key] = val_temp[0]
 
         return res_dict
 
@@ -2100,17 +2109,14 @@ class BidsSelectDialog(TemplateDialog):
             for index in self.select_subject.curselection():
                 subject_list.append(self.select_subject.get(index))
         elif self.Crit_sub.get():
-            res_dict = self.get_parameter_from_gui('criteria')
+            res_dict = self.get_parameter_from_gui(self.vars)
             get_subject_list_from_criteria(self, res_dict, subject_list)
 
-        resultats = self.get_parameter_from_gui('required')
+        return {'sub': subject_list}
 
-        resultats['sub'] = subject_list
-
-        return resultats, res_dict
-
-    def create_button(self, frame, var_dict):
-        max_col = 1
+    def create_button(self, frame, var_dict, max_col=None):
+        if not max_col:
+            max_col = 1
         label_dict = {clef: '' for clef in var_dict.keys()}
         for cnt, key in enumerate(var_dict):
             label_dict[key] = Label(frame, text=key)

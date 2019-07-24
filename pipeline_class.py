@@ -164,7 +164,6 @@ class DerivativesSetting(object):
                     parse_sub_bids_dir(entry.path, pip['SubjectProcess'][-1])
 
 
-
 class DatasetDescPipeline(bids.DatasetDescJSON):
     keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Author', 'Date']
     filename = 'dataset_description.json'
@@ -208,9 +207,14 @@ class PipelineSetting(dict):
         elif isinstance(bids_dir, bids.BidsDataset):
             self.curr_bids = bids_dir
             self.cwdir = self.curr_bids.cwdir
+        Parameters._assign_bids_dir(self.cwdir, self.curr_bids)
         if soft_path and os.path.exists(soft_path):
             self.soft_path = soft_path
-        self.read_json_parameter_file(soft_name)
+        if soft_name + '.json' in os.listdir(self.soft_path):
+            self.read_json_parameter_file(soft_name)
+        else:
+            self.log_error += 'ERROR: The software doesn"t exist'
+            raise EOFError(self.log_error)
         if self.curr_path is not self['Path']:
             self['Path'] = self.curr_path
             self.write_file(os.path.join(self.soft_path, soft_name + '.json'))
@@ -260,7 +264,8 @@ class PipelineSetting(dict):
         #check the validity of the json ??
 
     def create_parameter_to_inform(self):
-        def read_file(file, elements, param):
+        def read_file(file, elements):
+            param = []
             name, ext = os.path.splitext(file)
             if ext == '.csv':
                 split_value = ', '
@@ -273,9 +278,9 @@ class PipelineSetting(dict):
                 for val in header:
                     param.append(val)
                 f.close()
-                return
+                return param
             elif elements.isnumeric():
-                idx= int(elements)
+                idx = int(elements)
             elif elements:
                 line = f_cont[0].split('\n')[0]
                 header = line.split(split_value)
@@ -287,11 +292,32 @@ class PipelineSetting(dict):
                 trial_type = line.split(split_value)
                 param.append(trial_type[idx])
             f.close()
+            return param
 
+        def compare_listes(liste_final, liste_file):
+            is_same = True
+            sX = set(liste_final)
+            sY = set(liste_file)
+            set_common = sX - sY
+            if not set_common == sX:
+                is_same = False
+            for elt in liste_file:
+                if elt not in liste_final:
+                    liste_final.append(elt)
+            return is_same
+
+#Should I give only the value presents in all subjects or indicate that there is not all value for all subjects ???
         param_vars = {}
+        input_vars = {}
+        keys_2_remove =[]
+        error_log = ''
         self['Parameters'].create_parameter_to_inform(param_vars)
         for key in param_vars:
-            if isinstance(param_vars[key]['value'], bool):
+            if key.startswith('Input'):
+                if param_vars[key]:
+                    input_vars[key] = param_vars[key]
+                keys_2_remove.append(key)
+            elif isinstance(param_vars[key]['value'], bool):
                 pass
             elif not param_vars[key]['value']:
                 pass
@@ -300,9 +326,14 @@ class PipelineSetting(dict):
                 elements = param_vars[key]['value']['elements']
                 mark_to_remove = ['?', '***', '*']
                 param = []
+                is_same = True
                 for subject in os.listdir(self.curr_bids.cwdir):
                     if subject.endswith(reading_file) and os.path.isfile(os.path.join(self.curr_bids.cwdir, subject)):
-                        read_file(os.path.join(self.curr_bids.cwdir, subject), elements, param)
+                        file_param = read_file(os.path.join(self.curr_bids.cwdir, subject), elements)
+                        if not param:
+                            param = [elt for elt in file_param]
+                        else:
+                            is_same = compare_listes(param, file_param)
                         break
                     elif subject.startswith('sub') and os.path.isdir(os.path.join(self.curr_bids.cwdir, subject)):
                         for session in os.listdir(os.path.join(self.curr_bids.cwdir, subject)):
@@ -312,17 +343,31 @@ class PipelineSetting(dict):
                                         with os.scandir(os.path.join(self.curr_bids.cwdir, subject, session, mod)) as it:
                                             for entry in it:
                                                 if entry.name.endswith(reading_file):
-                                                    read_file(entry.path, elements, param)
+                                                    file_param = read_file(entry.path, elements)
+                                                    if not param:
+                                                        param = [elt for elt in file_param]
+                                                    else:
+                                                        is_same = compare_listes(param, file_param)
                                     elif os.path.isfile(os.path.join(self.curr_bids.cwdir, subject, session, mod)) and mod.endswith(reading_file):
-                                        read_file(os.path.join(self.curr_bids.cwdir, subject, session, mod), elements, param)
+                                        file_param = read_file(os.path.join(self.curr_bids.cwdir, subject, session, mod), elements)
+                                        if not param:
+                                            param = [elt for elt in file_param]
+                                        else:
+                                            is_same = compare_listes(param, file_param)
                 param = list(set(param))
                 param.sort()
+                if not param:
+                    raise EOFError("All the dataset is not ready for this analysis.\n There is no file format {0} in your Bids database.".format(reading_file))
+                elif not is_same:
+                    messagebox.showwarning('Warning', 'WARNING: Not all files have the same elements')
 
                 param_vars[key]['value'] = [par for par in param if not par in mark_to_remove]
+        for key in keys_2_remove:
+            del param_vars[key]
 
-        return param_vars
+        return param_vars, input_vars
 
-    def set_everything_for_analysis(self, param_vars, subject_list):
+    def set_everything_for_analysis(self, param_vars, subject_list, input_param):
         def check_length_input_output(inout_list):
             taille = [len(elt) for elt in inout_list if isinstance(elt, list)]
             taille = list(set(taille))
@@ -349,7 +394,7 @@ class PipelineSetting(dict):
         #Check if the param are dict or file
         if isinstance(param_vars, str):
             file, ext = os.path.splitext(param_vars)
-            if not ext=='.json':
+            if not ext == '.json':
                 self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The parameters file format is not correct. Format should be json. \n'
                 return self.log_error
             else:
@@ -362,6 +407,7 @@ class PipelineSetting(dict):
             output_directory, output_name = dev.create_pipeline_directory(self['Name'])
             dataset_desc = DatasetDescPipeline(param_vars, subject_list)
             dataset_desc['Name'] = self['Name']
+            participants = bids.ParticipantsTSV()
 
             #update the parameters and get the subjects
             self['Parameters'].update_values(param_vars)
@@ -372,7 +418,7 @@ class PipelineSetting(dict):
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
 
             #Get the value for the command_line
-            cmd_arg, cmd_line, order = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
+            cmd_arg, cmd_line, order, input_dict, output_dict = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
         except (EOFError, TypeError, ValueError) as er:
             self.log_error += str(er)
             self.write_error_system()
@@ -380,28 +426,31 @@ class PipelineSetting(dict):
 
         if not order:
             proc = subprocess.Popen(cmd_line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            #proc.wait()
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
             self.write_json_associated(order, output_directory, cmd_arg)
-        elif order:#isinstance(input_dict, InputArguments):
-            taille = check_length_input_output(order)
-            if isinstance(taille, str):
-                self.log_error += taille
-                self.write_error_system()
-                return self.log_error
-            idx = 0
-            while idx < taille:
-                use_list = list_for_str_format(order, idx)
-                cmd = cmd_line.format(*use_list)
-                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                error_proc = proc.communicate()
-                self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
-                self.write_json_associated(use_list, output_directory, cmd_arg)
-                idx = idx + 1
+            for sub in subject_to_analyse['sub']:
+                participants.append(sub)
+        elif order:
+            for sub in subject_to_analyse['sub']:
+                in_out = ['']*len(order)
+                taille, idx_in = input_dict.get_input_values(input_param, order, sub, in_out)
+                if output_dict:
+                    output_dict.get_output_values(in_out, taille, order, sub, output_directory, idx_in)
+                idx = 0
+                while idx < taille:
+                    use_list = list_for_str_format(in_out, idx)
+                    cmd = cmd_line.format(*use_list)
+                    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                    error_proc = proc.communicate()
+                    self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
+                    self.write_json_associated(use_list, output_directory, cmd_arg)
+                    idx = idx + 1
+                participants.append(sub)
         else:
             self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs. \n'.format(self['Name'])
             return self.log_error
+        participants.write_file(tsv_full_filename=os.path.join(output_directory, 'participants.tsv'))
         self.write_error_system(output_directory)
         dev.parse_pipeline(output_directory, output_name)
         self.curr_bids.save_as_json()
@@ -414,11 +463,13 @@ class PipelineSetting(dict):
         cmd_line_set = self['Parameters']['command_line_base']
         callname = self['Parameters']['Callname']
         mode = self['Parameters']['Mode'][-1]
+        input_p=None
+        output_p=None
 
         if interm:
-            cmd_arg = eval(interm + '(bids_directory=self.cwdir, curr_path=self.curr_path, dev_path=output_directory, callname=callname)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
+            cmd_arg = eval(interm + '(curr_path=self.curr_path, dev_path=output_directory, callname=callname)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
         else:
-            cmd_arg = Parameters(bids_directory=self.cwdir, curr_path=self.curr_path, dev_path=output_directory, callname=callname)
+            cmd_arg = Parameters(curr_path=self.curr_path, dev_path=output_directory, callname=callname)
 
         for key in self['Parameters']:
             if isinstance(self['Parameters'][key], Arguments):
@@ -430,25 +481,10 @@ class PipelineSetting(dict):
                 output_p = self['Parameters'][key]
                 output_p.bids_directory = self.cwdir
                 cmd_arg['Output'] = ''
-        try:
-            input_dict = input_p.command_arg(subject_to_analyse, self.curr_bids)
-            if isinstance(input_dict, InputArguments):
-                input_list = list(input_dict.values())[0]
-                in_type = input_p[-1]['type']
-            elif isinstance(input_dict, Input):
-                pass
-            # output_dir, soft_name, subject_list, input_type, input_file_list=None
-        except NameError:
-            input_dict = None
 
-        try:
-            output_dict = output_p.command_arg(output_directory, self['Name'], subject_to_analyse, in_type, input_list)
-        except NameError:
-            output_dict = None
-
-        cmd_line, order = cmd_arg.command_line_base(cmd_line_set, mode, input_dict, output_dict)
-
-        return cmd_arg, cmd_line, order #input_dict, output_dict
+        cmd_line, order = cmd_arg.command_line_base(cmd_line_set, mode, output_directory, input_p, output_p)#, input_dict, output_dict)
+        #order.multiplesubject = input_p[0]['multiplesubject']
+        return cmd_arg, cmd_line, order, input_p, output_p
 
     def write_json_associated(self, inout_file, output_directory, analyse):
         def create_json(input_file, output_json, analyse):
@@ -533,11 +569,10 @@ class Parameters(dict):
     bids_directory = None
     callname = None
     curr_path = None
+    curr_bids = None
     filename = 'parameters_file.json'
 
     def __init__(self, bids_directory=None, curr_path=None, dev_path=None, callname=None):
-        if bids_directory:
-            self._assign_bids_dir(bids_directory)
         if dev_path:
             self.derivatives_directory = dev_path
         if callname:
@@ -621,46 +656,37 @@ class Parameters(dict):
             if type_value:
                 cmd_dict[key] = type_value
 
-    def command_line_base(self, cmd_line_set, mode, input_p, output_p):
+    def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         if not cmd_line_set:
             cmd_base = self.curr_path + ' '
         else:
             cmd_base = self.curr_path + cmd_line_set + ' '
 
-        cmd_line, order = self.chaine_parameters(input_p, output_p)
+        cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
         cmd = cmd_base + cmd_line
         return cmd, order
 
-    def chaine_parameters(self, input_dict, output_dict):
-        def determine_input_output_type(input_dict, cnt_tot, order):
-            cmd_line = ''
-            for key in input_dict:
-                if not input_dict.multiplesubject:
-                    cmd_line += key + ' {' + str(cnt_tot) + '} '
-                    order.append(input_dict[key])
-                    cnt_tot += 1
-                else:
-                    cmd_line += key + ' ' + input_dict[key] + ' '
-            return cmd_line
-
+    def chaine_parameters(self, output_directory, input_dict, output_dict):
         cmd_line =''
         cnt_tot = 0
-        order = []
+        order = {}
         for clef in self:
             if clef == 'Input':
-                if isinstance(input_dict, InputArguments):
-                    cmd_line += determine_input_output_type(input_dict, cnt_tot, order)
-                    #order.append(input_dict)
-                elif isinstance(input_dict, Input):
-                    is_ready = input_dict.control_length_of_multiple_input()
-                    if is_ready:
-                        for elt in input_dict:
-                            cmd_line += determine_input_output_type(elt, cnt_tot, order)
-                            #order.append(elt)
-                        else:
-                            raise TypeError('The two inputs don"t have the same number of entry')
-            elif clef == 'Output': #A revoir , aussi l'écriture
-                cmd_line += determine_input_output_type(output_dict, cnt_tot, order)
+                for elt in input_dict:
+                    if elt['multiplesubject'] and elt['type'] == 'dir':
+                        cmd_line += elt['tag'] + ' ' + self.bids_directory
+                    else:
+                        order[elt['tag']] = cnt_tot
+                        cmd_line += elt['tag'] + ' {' + str(cnt_tot) + '} '
+                        cnt_tot += 1
+            elif clef == 'Output':
+                if output_dict['multiplesubject'] and output_dict['directory']:
+                    cmd_line += output_dict['tag'] + ' ' + output_directory
+                else:
+                    order[output_dict['tag']] = cnt_tot
+                    cmd_line += output_dict['tag'] + ' {' + str(cnt_tot) + '} '
+                    cnt_tot += 1
+                #cmd_line += determine_input_output_type(output_dict, cnt_tot, order)
                 #order.append(output_dict)
             elif isinstance(self[clef], bool):
                 cmd_line += clef + ' '
@@ -698,26 +724,27 @@ class Parameters(dict):
         return sub_classes_names
 
     @classmethod
-    def _assign_bids_dir(cls, bids_dir):
+    def _assign_bids_dir(cls, bids_dir, curr_bids):
         cls.bids_directory = bids_dir
+        cls.curr_bids = curr_bids
         PipelineSetting.cwdir = bids_dir
 
 
 class AnyWave(Parameters):
     anywave_directory = None
 
-    def command_line_base(self, cmd_line_set, mode, input_p, output_p):
+    def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         self['plugin'] = self.callname
         cmd_end = ''
         if not cmd_line_set:
             cmd_line_set = ' --run '
         cmd_base = self.curr_path + cmd_line_set + ' '
 
-        cmd_line, order = self.chaine_parameters(input_p, output_p)
+        cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
         cmd = cmd_base + cmd_line
         return cmd, order
 
-    def chaine_parameters(self, input, output):
+    def chaine_parameters(self, output_directory, input, output):
         jsonfilename = os.path.join(self.derivatives_directory, self['plugin'] + '_parameters' + '.json')
 
         del self['Input']
@@ -726,27 +753,23 @@ class AnyWave(Parameters):
             json.dump(self, json_file)
         cmd_line = ' "' + jsonfilename + '" '
 
-        order = []
+        order = {}
         #Handle the input and output
         cnt_tot = 0
-        if isinstance(input, InputArguments):
-            for key in input:
-                cmd_line += key + ' {' + str(cnt_tot) + '} '
-                order.append(input[key])
-                cnt_tot +=1
-        elif isinstance(input, Input):
-            is_ready = input.control_length_of_multiple_input()
-            if is_ready:
-                self['Input'] = []
-                for elt in input:
-                    for key in elt:
-                        cmd_line += key + ' {' + str(cnt_tot) + '} '
-                        order.append(elt[key])
-                    cnt_tot +=1
-        for key in output:
-            cmd_line += key + ' {' + str(cnt_tot) + '} '
-            order.append(output[key])
-            cnt_tot +=1
+        for elt in input:
+            if elt['multiplesubject'] and elt['type'] == 'dir':
+                cmd_line += elt['tag'] + ' ' + self.bids_directory
+            else:
+                order[elt['tag']] = cnt_tot
+                cmd_line += elt['tag'] + ' {' + str(cnt_tot) + '} '
+                cnt_tot += 1
+
+        if output['multiplesubject'] and output['directory']:
+            cmd_line += output['tag'] + ' ' + output_directory
+        else:
+            order[output['tag']] = cnt_tot
+            cmd_line += output['tag'] + ' {' + str(cnt_tot) + '} '
+            cnt_tot += 1
 
         return cmd_line, order
 
@@ -777,7 +800,7 @@ class AnyWave(Parameters):
 
 class Docker(Parameters):
 
-    def command_line_base(self, cmd_line_set, mode, input_p, output_p):
+    def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         os.system('docker pull ' + self.callname)
         if not cmd_line_set:
             cmd_line_set = 'docker run -ti --rm'
@@ -791,24 +814,16 @@ class Docker(Parameters):
     def chaine_parameters(self, input_dict, output_dict):
         cmd_line =''
         cnt_tot = 0
-        order = []
+        order = {}
         for clef in self:
             if clef == 'Input':
-                if isinstance(input_dict, InputArguments):
-                    for key in input_dict:
-                        cmd_line += key + ' {' + str(cnt_tot) + '} '
-                        order.append(input_dict[key])
+                for elt in input_dict:
+                    if elt['multiplesubject'] and elt['type'] == 'dir':
+                        cmd_line += elt['tag'] + ' ' + self.bids_directory
+                    else:
+                        order[elt['tag']] = cnt_tot
+                        cmd_line += elt['tag'] + ' {' + str(cnt_tot) + '} '
                         cnt_tot += 1
-                elif isinstance(input_dict, Input):
-                    is_ready = input_dict.control_length_of_multiple_input()
-                    if is_ready:
-                        for elt in input_dict:
-                            for key in elt:
-                                cmd_line += key + ' {' + str(cnt_tot) + '} '
-                                order.append(elt[key])
-                            cnt_tot +=1
-                        else:
-                            raise TypeError('The two inputs don"t have the same number of entry')
             elif isinstance(self[clef], bool):
                 cmd_line += clef + ' '
             elif isinstance(self[clef], list):
@@ -825,7 +840,7 @@ class Docker(Parameters):
 
 class Matlab(Parameters):
 
-    def command_line_base(self, cmd_line_set, mode, input_p, output_p):
+    def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         cmd_end = ''
         if mode == 'automatic':
             if not cmd_line_set:
@@ -836,35 +851,29 @@ class Matlab(Parameters):
                 cmd_line_set = "matlab -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); "
         cmd_base = cmd_line_set + self.callname
 
-        cmd_line, order = self.chaine_parameters(input_p, output_p)
+        cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
         cmd = cmd_base + cmd_line + cmd_end
         return cmd, order
 
-    def chaine_parameters(self, input_dict, output_dict):
+    def chaine_parameters(self, output_directory, input_dict, output_dict):
         cmd_line = []
         cnt_tot = 0
-        order = []
+        order = {}
         for clef in self:
             if clef == 'Input':
-                if isinstance(input_dict, InputArguments):
-                    for key in input_dict:
+                for elt in input_dict:
+                    if elt['multiplesubject'] and elt['type'] == 'dir':
+                        cmd_line.append("'" + self.bids_directory + "' ")
+                    else:
+                        order[elt['tag']] = cnt_tot
                         cmd_line.append("'{" + str(cnt_tot) + "}'")
-                        order.append(input_dict[key])
                         cnt_tot += 1
-                elif isinstance(input_dict, Input):
-                    is_ready = input_dict.control_length_of_multiple_input()
-                    if is_ready:
-                        for elt in input_dict:
-                            for key in elt:
-                                cmd_line.append("'{" + str(cnt_tot) + "}'")
-                                order.append(elt[key])
-                            cnt_tot +=1
-                        else:
-                            raise TypeError('The two inputs don"t have the same number of entry')
             elif clef == 'Output':
-                for key in output_dict:
+                if output_dict['multiplesubject'] and output_dict['directory']:
+                    cmd_line.append("'" + output_directory + "' ")
+                else:
+                    order[output_dict['tag']] = cnt_tot
                     cmd_line.append("'{" + str(cnt_tot) + "}'")
-                    order.append(output_dict[key])
                     cnt_tot += 1
             else:
                 cmd_line.append("'"+self[clef]+"'")
@@ -944,6 +953,21 @@ class Input(ParametersSide):
         else:
             return False
 
+    def get_input_values(self, input_param, order, sub, in_out):
+        same_size = True
+        temp=None
+        idx_in = []
+        for elt in self:
+            idx = order[elt['tag']]
+            in_out[idx] = elt.get_input_values(input_param[elt['tag']], sub)
+            if temp:
+                if temp != len(in_out[idx]):
+                    raise ValueError('The elements in the list don"t have the same size')
+            else:
+                temp=len(in_out[idx])
+            idx_in.append(idx)
+        return temp, idx_in
+
 
 class InputArguments(Parameters):
     keylist = ['tag', 'multiplesubject', 'modality', 'type']
@@ -952,27 +976,39 @@ class InputArguments(Parameters):
     def copy_values(self, input_dict, flag_process=False):
         keys = list(input_dict.keys())
         if not keys == self.keylist and not flag_process:
-            raise KeyError('Your json is not conform')
+            raise KeyError('Your json is not conform.\n')
         else:
             for key in input_dict:
                 self[key] = input_dict[key]
+        if self['multiplesubject'] and self['type'] == 'file':
+            raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
 
     def create_parameter_to_inform(self, param_vars, key=None):
-        if len(self['modality']) > 1:
-            param_vars[key]['attribut'] = 'Listbox'
-            param_vars[key]['value'] = self['modality']
-        elif not self['modality']:
-            param_vars[key]['attribut'] = 'Label'
-            param_vars[key]['value'] = 'directory'
+        if self['modality']:
+            param_vars[key]['modality'] = dict()
+            if len(self['modality']) > 1:
+                param_vars[key]['modality']['attribut'] = 'Listbox'
+                param_vars[key]['modality']['value'] = self['modality']
+            else:
+                param_vars[key]['modality']['value'] = self['modality'][-1]
+                param_vars[key]['modality']['attribut'] = 'Label'
         else:
-            param_vars[key]['value'] = self['modality'][-1]
-            param_vars[key]['attribut'] = 'Label'
-        if self['multiplesubject']:
-            self.multiplesubject = True
-        param_vars[key]['unit'] = self['type']
+            return
 
     def update_values(self, input_dict):
         self['value_selected'] = input_dict
+
+    def get_input_values(self, input_param, sub):
+        if self['type'] == 'file':
+            subject = SubjectToAnalyse()
+            subject['sub'] = sub
+            #ne fonctionne pas, comment vérifier que les valeurs prises soit bien celle demandé par l'utilsateur
+            subject.copy_values(input_param)
+            input_files = self.get_subject_files(subject)
+        elif self['type'] == 'dir':
+            input_files = os.path.join(self.bids_directory, 'sub-'+sub)
+
+        return input_files
 
     def command_arg(self, subject_list, curr_bids):
         f_list = []
@@ -1000,22 +1036,33 @@ class InputArguments(Parameters):
 
         return input_to_return #{self['tag']: f_list}
 
-    def get_subject_files(self, modality, subject_list, curr_bids):
+    def get_subject_files(self, subject):#, modality, subject_list, curr_bids):
         input_files = []
-        modality = modality.capitalize()
-        #Old version
-        for sub in curr_bids['Subject']:
-            if sub['sub'] in subject_list['sub']:
-                for mod in sub[modality]:
-                    is_in = False
-                    for key in mod:
-                        if key in subject_list.keylist and subject_list[key]:
-                            if mod[key] and mod[key] in subject_list[key]:
-                                is_in = True
-                            else:
-                                is_in = False
-                    if is_in:
-                        input_files.append(os.path.join(curr_bids.cwdir, mod['fileLoc']))
+        #curr_bids = bids.BidsDataset(self.bids_directory)['Subject']
+        for sub in self.curr_bids['Subject']:
+            if sub['sub'] == subject['sub']:
+                for mod in sub:
+                    if mod in subject['modality']:
+                        for elt in sub[mod]:
+                            is_equal = []
+                            for key in elt:
+                                if key in subject.keys() and subject[key]:
+                                    if elt[key] in subject[key]:
+                                        is_equal.append(True)
+                                    elif key == 'modality':
+                                        if elt[key] in subject[key]:
+                                            is_equal.append(True)
+                                        elif elt[key].capitalize() in subject[key]:
+                                            is_equal.append(True)
+                                        else:
+                                            is_equal.append(False)
+                                    else:
+                                        is_equal.append(False)
+                            is_equal = list(set(is_equal))
+                            if not is_equal:
+                                pass
+                            elif len(is_equal) == 1 and is_equal[0]:
+                                input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
 
         return input_files
 
@@ -1031,6 +1078,8 @@ class Output(Parameters):
         else:
             for key in input_dict:
                 self[key] = input_dict[key]
+        if self['multiplesubject'] and self['type'] == 'file':
+            raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
 
     def create_parameter_to_inform(self, param_vars, key=None):
         if self['multiplesubject']:
@@ -1038,6 +1087,59 @@ class Output(Parameters):
 
     def update_values(self, input_dict):
         self['value_selected'] = input_dict
+
+    def get_output_values(self, in_out, taille, order, sub, output_dir, idx_in):
+        def create_output_file(output_dir, filename, extension, bids_directory):
+            out_file = []
+            soft_name = os.path.basename(output_dir).lower()
+            dirname, filename = os.path.split(filename)
+            trash, dirname = dirname.split(bids_directory + '\\')
+            file_elt = filename.split('_')
+            if isinstance(extension, list):
+                for ext in extension:
+                    file_elt[-1] = soft_name + ext
+                    filename = '_'.join(file_elt)
+                    output = os.path.join(output_dir, dirname, filename)
+                    os.makedirs(os.path.dirname(output), exist_ok=True)
+                    out_file.append(output)
+            else:
+                file_elt[-1] = soft_name + '.' + extension
+                filename = '_'.join(file_elt)
+                output = os.path.join(output_dir, dirname, filename)
+                os.makedirs(os.path.dirname(output), exist_ok=True)
+                out_file.append(output)
+            return out_file
+
+        def create_output_sub_dir(output_dir, filename, bids_directory):
+            dirname, filename = os.path.split(filename)
+            trash, dirname = dirname.split(bids_directory + '\\')
+            out_dir = os.path.join(output_dir, dirname)
+            os.makedirs(output_dir, exist_ok=True)
+            return out_dir
+        output_files = []
+        idx = order[self['tag']]
+        if not self['directory']:
+            if self['type'] == 'file':
+                if not taille:
+                    raise EOFError('No input list to create the output')
+                else:
+                    for filename in in_out[idx_in[0]]:
+                        out_file = create_output_file(output_dir, filename, self['extension'], self.bids_directory)
+                        output_files.append(out_file)
+            elif self['type'] == 'sub':
+                if not self['multiplesubject']:
+                    output_files = sub
+        else:
+            #A revoir avec subject_list
+            if self['multiplesubject']:
+                output_files = [output_dir] * taille
+            else:
+                for filename in in_out[idx_in[0]]:
+                    output_dir = create_output_sub_dir(output_dir, filename, self.bids_directory)
+                    output_files.append(output_dir)
+
+        in_out[idx] = output_files
+
 
     def command_arg(self, output_dir, soft_name, subject_list, input_type, input_file_list=None):
         def create_output_file(output_dir, filename, extension, soft_name, bids_directory):
@@ -1193,6 +1295,7 @@ class SubjectToAnalyse(Parameters):
         with open(filename, 'w+') as f:
             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
             f.write(json_str)
+
 
 def main(argv):
     bidsdirectory = None
