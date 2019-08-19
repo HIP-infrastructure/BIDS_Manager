@@ -24,7 +24,7 @@ import os
 import platform
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, S, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
-    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, GROOVE, YES, Variable, Canvas, font
+    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, YES, Variable, Canvas, font
 try:
     from importlib import reload
 except:
@@ -70,6 +70,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.issue_menu = issue_menu
         pipeline_menu = Menu(menu_bar, tearoff=0)
         self.pipeline_menu = pipeline_menu
+        statistic_menu = Menu(menu_bar, tearoff=0)
+        self.statistic_menu = statistic_menu
         # fill up the bids menu
         bids_menu.add_command(label='Create new BIDS directory', command=lambda: self.ask4bidsdir(True))
         bids_menu.add_command(label='Set BIDS directory', command=self.ask4bidsdir)
@@ -98,15 +100,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 name, ext = os.path.splitext(entry.name)
                 if ext == '.json':
                     pipeline_menu.add_command(label=name, command=lambda nm=name: self.run_analysis(nm), state=DISABLED)
-        #self.pipeline_settings = bids.PipelineSettings()
-        #self.pipeline_settings.read_file()
-        #for cnt, pipl in enumerate(self.pipeline_settings['Settings']):
-        #    pipeline_menu.add_command(label=pipl['label'], command=lambda idx=cnt: self.launch_pipeline(idx), state=DISABLED)
-        # settings_menu.add_command(label='Exit', command=self.quit)
+
+        #sattistic menu
+        statistic_menu.add_command(label='Create statistic table', command= lambda: self.createtablestats(), state=DISABLED)
+        statistic_menu.add_command(label='stats', state=DISABLED)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
         menu_bar.add_cascade(label="Issues", underline=0, menu=issue_menu)
         menu_bar.add_cascade(label="Pipelines", underline=0, menu=pipeline_menu)
+        menu_bar.add_cascade(label="Statistics", underline=0, menu=statistic_menu)
 
         # area to print logs
         self.main_frame['text'] = DisplayText(master=self.master)
@@ -376,6 +378,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.change_menu_state(self.issue_menu)
         # enalbe all pipelines
         self.change_menu_state(self.pipeline_menu)
+        self.change_menu_state(self.statistic_menu)
         # self.update_text(self.curr_bids.curr_log)
         self.make_available()
 
@@ -762,8 +765,23 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.update()  # may not be necessary if at the end of method but is needed otherwise...
 
     def ask4uploader_import(self):
+        #Check if the requirements is conform
+        is_conform = False
+        for key in self.curr_bids.requirements['Requirements'].keys():
+            if key in bids.ModalityType.get_list_subclasses_names():
+                is_conform = True
+        if not is_conform:
+            messagebox.showinfo('Requirements is not conform', 'Your requirements doesn"t contain the possible modalities, so Generic Uploader cannot be ran\n')
+            req_box = messagebox.askquestion('Modify your Requirements', 'Do you want to open the GUI to modify your requirements?')
+            if req_box == 'yes':
+                RequirementsDialog(self, self.curr_bids.dirname)
+                self.curr_bids.requirements = bids.Requirements(os.path.join(self.curr_bids.dirname, 'code', 'requirements.json'))
+            else:
+                messagebox.showinfo('Generic Uploader', 'Genereic Uploader cannot be ran')
+                return
+        #Run the Generic Uploader
         self.make_idle('Generic Uploader is running')
-        cmd = os.path.join(os.getcwd(), 'generic_uploader.exe') + ' "' + self.curr_bids.dirname + '" '
+        cmd = os.path.join(os.getcwd(), 'generic_uploader_1_03.exe') + ' "' + self.curr_bids.dirname + '" '
         x = os.system(cmd)
         if x != 0:
             self.update_text('Generic uploader crashed')
@@ -814,6 +832,12 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.update_text('Subjects selected \n' + '\n'.join(output_dict.subject_selected['sub']) + '\nThe analysis is ready to be run')
         log_analysis = soft_analyse.set_everything_for_analysis(output_dict.analysis_param, output_dict.subject_selected)
         self.update_text(log_analysis)
+
+    def createtablestats(self):
+        deriv_dir = os.path.join(self.curr_bids.dirname, 'derivatives')
+        select_list = TableForStatsDialog(self, deriv_dir)
+        type_select = SelectHowToCreateTable(self, select_list.results)
+        print('coucou')
 
     @staticmethod
     def make_table(table):
@@ -873,11 +897,9 @@ class IssueList(DoubleListbox):
     def __init__(self, master, cmd_apply, cmd_delete):
         super().__init__(master)
         self.user_choice = None
-        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
-                                        height=self.button_size[0], width=self.button_size[1])
+        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply, height=self.button_size[0], width=self.button_size[1])
 
-        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0],
-                                         width=self.button_size[1], default=ACTIVE)
+        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0], width=self.button_size[1], default=ACTIVE)
 
     def pack_elements(self):
         super().pack_elements()
@@ -1407,11 +1429,12 @@ class BidsBrickDialog(FormDialog):
     bidsdataset = None
     meta_brick = None
 
-    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None, flag_process=False):
+    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None, flag_process=False, addelements=False):
         if not isinstance(input_dict, (bids.BidsBrick, bids.BidsJSON)):
             raise TypeError('Second input should be a BidsBrick instance.')
         if isinstance(input_dict, (bids.BidsDataset, bids.Data2Import)):
-            BidsBrickDialog.meta_brick = input_dict.classname()  # meta_brick is either bids.BidsDataset or bids.Data2Import
+            if not addelements:
+                BidsBrickDialog.meta_brick = input_dict.classname()  # meta_brick is either bids.BidsDataset or bids.Data2Import
             self.attr_dict = input_dict['DatasetDescJSON']
             self.input_dict = dict()
             if not flag_process:
@@ -1422,7 +1445,7 @@ class BidsBrickDialog(FormDialog):
             title = input_dict.classname() + ': ' + input_dict['DatasetDescJSON']['Name']
             if disabled is None:
                 disabled = []
-            if isinstance(input_dict, bids.BidsDataset):
+            if isinstance(input_dict, bids.BidsDataset) and not addelements:
                 BidsBrickDialog.bidsdataset = input_dict
                 self.input_dict['ParticipantsTSV'] = input_dict['ParticipantsTSV']
                 disabled = input_dict.keylist
@@ -1546,12 +1569,16 @@ class BidsBrickDialog(FormDialog):
                             title=sub.classname() + ': ' + sub['sub'])
         elif key == 'Derivatives':
             pip = self.main_brick[key][0]['Pipeline'][curr_idx]
+            if isinstance(self.main_brick, bids.Data2Import):
+                addelements=True
+            else:
+                addelements=False
             if 'Derivatives' in self.key_disabled:
                 disabl = pip.keylist
             else:
                 disabl = None
             BidsBrickDialog(self, pip, disabled=disabl,
-                            title=pip.classname() + ': ' + pip['name'], flag_process=True)
+                            title=pip.classname() + ': ' + pip['name'], flag_process=True, addelements=addelements)
         elif key == 'Scans':
             sdcr_file = self.main_brick['Scans'][curr_idx]['ScansTSV']
             title=None
@@ -1627,10 +1654,40 @@ class BidsBrickDialog(FormDialog):
         self.update_fields()
         opt = None
         disbld = ['sub', 'fileLoc']
+        flag_process=False
+        addelements=False
         try:
             if isinstance(self.main_brick, (bids.BidsDataset, bids.Data2Import)):
-                messagebox.showerror('Not implemented', "Not implemented for now.")
-                return
+                if key =='Derivatives':
+                    if not isinstance(self.main_brick[key], bids.Derivatives):
+                        self.main_brick[key] = bids.Derivatives()
+                    sublist = [sub['sub'] for sub in self.main_brick['Subject']]
+                    dname = filedialog.askdirectory(title='Please select a derivatives directory', initialdir=bids.BidsBrick.cwdir)
+                    pip_name = os.path.basename(dname)
+                    new_brick = bids.Pipeline(name=pip_name)
+                    for sub in sublist:
+                        new_brick['SubjectProcess'].append(bids.SubjectProcess())
+                        new_brick['SubjectProcess'][-1]['sub'] = sub
+                    flag_process = True
+                    disbld=None
+                    opt=None
+                    addelements=True
+                elif key.startswith('Subject'):
+                    dname = filedialog.askdirectory(title='Please select a subject directory', initialdir=bids.BidsBrick.cwdir)
+                    sub_name = os.path.basename(dname).split('-')[1]
+                    if isinstance(self.main_brick, bids.Pipeline):
+                        new_brick = getattr(bids, key)()
+                        flag_process = True
+                    else:
+                        new_brick = getattr(bids, key)()
+                        flag_process = False
+                    new_brick['sub'] = sub_name
+                    addelements=True
+                    disbld = None
+                    opt = None
+                else:
+                    messagebox.showerror('Not implemented', "Not implemented for now.")
+                    return
             elif isinstance(self.main_brick, bids.Subject):
 
                 flag, miss_str = self.main_brick.has_all_req_attributes(nested=False)
@@ -1644,6 +1701,8 @@ class BidsBrickDialog(FormDialog):
                                                            ('photo', "*" + ";*".join(bids.Photo.allowed_file_formats))],
                                                        initialdir=bids.BidsBrick.cwdir)
                 elif key in bids.Imagery.get_list_subclasses_names():
+                    fname = filedialog.askdirectory(title='Please select a file', initialdir=bids.BidsBrick.cwdir)
+                elif key in bids.ImageryProcess.get_list_subclasses_names():
                     fname = filedialog.askdirectory(title='Please select a file', initialdir=bids.BidsBrick.cwdir)
                 else:
                     file_formats = [formt for formt in getattr(bids, key).readable_file_formats
@@ -1664,7 +1723,10 @@ class BidsBrickDialog(FormDialog):
                 else:
                     new_brick = getattr(bids, key)()
                     new_brick['fileLoc'] = os.path.basename(fname)
-                    if bids.BidsDataset.requirements:
+                    if isinstance(new_brick, bids.Process):
+                        opt = dict()
+                        opt['modality'] = new_brick.allowed_modalities
+                    elif bids.BidsDataset.requirements:
                         # use requirements.json to propose via drop down menu
                         opt = bids.BidsDataset.requirements.make_option_dict(key)
                     else:
@@ -1683,16 +1745,22 @@ class BidsBrickDialog(FormDialog):
             else:
                 new_brick = getattr(bids, key)()
             result_brick = BidsBrickDialog(self, new_brick, disabled=disbld, options=opt,
-                                           required_keys=new_brick.required_keys, title=new_brick.classname()).apply()
+                                           required_keys=new_brick.required_keys, title=new_brick.classname(), flag_process=flag_process, addelements=addelements).apply()
             if result_brick is not None:
-                new_brick.copy_values(result_brick)
+                if key == 'Derivatives':
+                    new_brick['DatasetDescJSON'].copy_values(result_brick)
+                else:
+                    new_brick.copy_values(result_brick)
                 # still issue with JSON since has_all_req_attributes does not return anything... but updates
                 # self.is_complete
                 flag, miss_str = new_brick.has_all_req_attributes()
                 if not isinstance(new_brick, (bids.BidsJSON, bids.BidsTSV)) and not flag:
                     messagebox.showerror('Missing attributes', miss_str)
                     return
-                self.main_brick[key] = new_brick
+                if key == 'Derivatives':
+                    self.main_brick[key][0]['Pipeline'].append(new_brick)
+                else:
+                    self.main_brick[key] = new_brick
                 self.populate_list(self.key_listw[key], self.main_brick[key])
         except Exception as err:
             messagebox.showerror('Error Occurred!', str(err))
@@ -2170,7 +2238,7 @@ class BidsSelectDialog(TemplateDialog):
                     val = False
                 var_dict[key]['value'] = BooleanVar()
                 var_dict[key]['value'].set(val)
-                l = Checkbutton(frame, text=str(val), variable=var_dict[key]['value'])
+                l = Checkbutton(frame, text='True', variable=var_dict[key]['value'])
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
             elif att_type == 'Label':
                 l = Label(frame, text=val_temp)
@@ -2500,7 +2568,8 @@ class RequirementsDialog(TemplateDialog):
                 value = self.info_value_label[i].get()
                 key = elt.get()
                 if not key:
-                    self.error_str = 'Subject"s information are missing'
+                    if not self.req_name:
+                        self.error_str = 'Subject"s information are missing'
                     break
                 else:
                     if ' ' in key and not key.endswith(' '):
@@ -2598,6 +2667,94 @@ class RequirementsDialog(TemplateDialog):
         self.destroy()
 
 
+class TableForStatsDialog(TemplateDialog):
+
+    def __init__(self, parent, deriv_dir):
+        self.derivatives_dir = deriv_dir
+        reject_dir = ['parsing', 'log']
+        self.deriv_list = [entry for entry in os.listdir(deriv_dir) if not os.path.isfile(os.path.join(deriv_dir,entry)) and not entry in reject_dir]
+        self.deriv_button = {key: IntVar() for key in self.deriv_list}
+        self.display_button = {key: None for key in self.deriv_list}
+        #self.display_button = {'display_'+key: '' for key in self.deriv_list}
+        super().__init__(parent)
+
+    def body(self, parent):
+        self.title('Select directories to create your statistical table')
+        self.geometry('800x600')
+        double_frame = Frame(parent)
+        double_frame.pack(side=TOP)
+        folder_frame = Frame(double_frame, relief='groove')
+        folder_frame.pack(side=LEFT)
+        display_frame = HorizontalScrollbarFrame(double_frame)
+        display_frame.frame.pack(side=LEFT, fill=BOTH, expand=True, anchor='nw')
+        okcancel_frame = Frame(parent)
+        okcancel_frame.pack(side=BOTTOM)
+        for cnt, key in enumerate(self.deriv_button):
+            l = Checkbutton(folder_frame, text=key,  variable=self.deriv_button[key])
+            l.grid(row=cnt+1, column=0)
+            self.display_button[key] = Button(folder_frame, text='display '+key, command=lambda fm=display_frame, dname=key: self.display_dataset(fm, dname))
+            self.display_button[key].grid(row=cnt+1, column=1)
+        display_frame.update_scrollbar()
+        self.ok_cancel_button(okcancel_frame)
+
+    def display_dataset(self, frame2display, deriv_name):
+        def deletewidgetframe(frame2delete):
+            for w in frame2delete.winfo_children():
+                w.destroy()
+        deletewidgetframe(frame2display.frame)
+        dataset_file = os.path.join(self.derivatives_dir, deriv_name, 'dataset_description.json')
+        datastore = bids.DatasetDescJSON()
+        datastore.read_file(jsonfilename=dataset_file)
+        temp_text = ''
+        #canvas_id = frame2display.create_text(10, 10, anchor='nw', font=('Helvetica', 12))
+        for key in datastore:
+            temp_text = temp_text + '{0} : {1}\n'.format(key, datastore[key])
+            #frame2display.insert(canvas_id, END, temp_text)
+        lab = Label(frame2display.frame, text=temp_text, anchor='nw', bg='white', font=('Helvetica', 12), justify='left')
+        lab.grid(row=0, column=0)
+        frame2display.update_scrollbar()
+
+    def ok(self):
+        self.results = [key for key in self.deriv_button if self.deriv_button[key].get()]
+        self.destroy()
+
+
+class SelectHowToCreateTable(TemplateDialog):
+
+    def __init__(self, parent, select_deriv):
+        self.select_deriv = {key: {} for key in select_deriv}
+        self.multiple_choice = ['Average', 'Maximum', 'All']
+        super().__init__(parent)
+
+    def body(self, parent):
+        self.title('What to do if multiple files by participants?')
+        value_radio = len(self.select_deriv)*len(self.multiple_choice)
+        values=list(range(2, value_radio+2, 1))
+        a=0
+        for key in self.select_deriv:
+            self.select_deriv[key]['frame'] = Frame(parent, relief=GROOVE, borderwidth=2)
+            self.select_deriv[key]['value'] = []
+            #self.select_deriv[key]['button'] = []
+            Label(self.select_deriv[key]['frame'], text=key).pack(side=TOP)
+            for val in self.multiple_choice:
+                self.select_deriv[key]['value'].append(IntVar())
+                b = Radiobutton(self.select_deriv[key]['frame'], variable=self.select_deriv[key]['value'][-1], text=val, value=values[a])
+                b.pack(side=LEFT, expand=1)
+                #self.select_deriv[key]['button'].append(b)
+                a=+1
+                #self.select_deriv[key]['value'].append(b)
+            self.select_deriv[key]['frame'].pack(side=TOP)
+        self.ok_cancel_button(parent)
+
+    def ok(self):
+        self.results = {key: '' for key in self.select_deriv}
+        for key in self.select_deriv:
+            for cnt, val in enumerate(self.select_deriv[key]['value']):
+                if val.get():
+                    self.results[key] = self.multiple_choice[cnt]
+        self.destroy()
+
+
 class VerticalScrollbarFrame(Frame):
 
     def __init__(self, parent):
@@ -2619,6 +2776,30 @@ class VerticalScrollbarFrame(Frame):
         self.frame.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
         self.vsb.configure(command=self.canvas.yview)
+        self.frame.bind('<Configure>', myfunction(self.canvas))
+
+
+class HorizontalScrollbarFrame(Frame):
+
+    def __init__(self, parent):
+        self.Frame_to_scrollbar = Frame(parent, relief=GROOVE, borderwidth=2)
+        self.Frame_to_scrollbar.pack(side=LEFT, fill=BOTH, expand=True)
+        self.vsb = Scrollbar(self.Frame_to_scrollbar, orient="horizontal")
+        self.vsb.pack(side=BOTTOM, fill=X)
+        self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.vsb.set)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        self.frame = Frame(self.canvas, bg='white')#, relief=GROOVE, borderwidth=2)
+        self.frame.pack()
+
+    def update_scrollbar(self):
+        def myfunction(canvas):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        self.canvas.create_window(0, 0, window=self.frame, anchor='nw') #scrollregion=self.canvas.bbox("all"),
+        self.canvas.pack()
+        self.frame.update_idletasks()
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+        self.vsb.configure(command=self.canvas.xview)
         self.frame.bind('<Configure>', myfunction(self.canvas))
 
 
@@ -2673,6 +2854,7 @@ class CheckbuttonList(Frame):
             self.hidden = False
             self.combo_entry.toplevel.withdraw()
             self.parent.master.master.grab_set()
+
 
 def enable(frame, state):
     for child in frame.winfo_children():

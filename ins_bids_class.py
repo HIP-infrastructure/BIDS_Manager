@@ -735,7 +735,7 @@ class BidsBrick(dict):
             str_issue = 'Need import and bids directory to be set.'
             self.write_log(str_issue)
             raise NotADirectoryError(str_issue)
-        if isinstance(self, Imagery):
+        if isinstance(self, (Imagery, ImageryProcess)):
             converter_path = BidsDataset.converters['Imagery']['path']
             conv_ext = BidsDataset.converters['Imagery']['ext']
             # by default dcm2niix not do overwrite file with same names but adds a letter to it (inputnamea, inputnameb)
@@ -764,19 +764,25 @@ class BidsBrick(dict):
              for file in list_files if os.path.splitext(file)[0] == nii_fname]
             os.remove(os.path.join(Data2Import.dirname, self['fileLoc'], 'dcmHeaders.mat'))
         elif isinstance(self, Electrophy):
-            converter_path = BidsDataset.converters['Electrophy']['path']
-            conv_ext = BidsDataset.converters['Electrophy']['ext']
-            attr_dict = self.get_attributes(['fileLoc'])
-            name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
+            #Temporary, waiting for Anywave to import Meg
+            if isinstance(self, Meg):
+                shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
+                    BidsDataset.dirname, dirname, filename))
+                return [filename]
+            else:
+                converter_path = BidsDataset.converters['Electrophy']['path']
+                conv_ext = BidsDataset.converters['Electrophy']['ext']
+                attr_dict = self.get_attributes(['fileLoc'])
+                name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
 
-            # cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
-            #            os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
-            #            name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
-            cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + \
-                       os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
-                       Data2Import.dirname + '" ' + name_cmd + ' --bids_format vhdr"'
+                # cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
+                #            os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
+                #            name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
+                cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + \
+                           os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
+                           Data2Import.dirname + '" ' + name_cmd + ' --bids_format vhdr"'
 
-            os.system(cmd_line)
+                os.system(cmd_line)
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
             if not os.path.exists(os.path.join(BidsDataset.dirname, dirname)):
@@ -818,7 +824,13 @@ class BidsBrick(dict):
             os.makedirs(os.path.join(BidsDataset.dirname, dirname))
         for fname in list_filename:
             if os.path.exists(os.path.join(Data2Import.dirname, fname)):
-                shutil.move(os.path.join(Data2Import.dirname, fname),
+                if dest_change:
+                    if not os.path.exists(os.path.join(dest_change, dirname)):
+                        os.makedirs(os.path.join(dest_change, dirname))
+                    shutil.move(os.path.join(Data2Import.dirname, fname),
+                                os.path.join(dest_change, dirname, fname))
+                else:
+                    shutil.move(os.path.join(Data2Import.dirname, fname),
                             os.path.join(BidsDataset.dirname, dirname, fname))
         return list_filename
 
@@ -827,6 +839,11 @@ class BidsBrick(dict):
             for sub in self['Subject']:
                 if not sub.is_empty():
                     return False
+            if self['Derivatives']:
+                for pip in self['Derivatives'][-1]['Pipeline']:
+                    for sub in pip['SubjectProcess']:
+                        if not sub.is_empty():
+                            return False
             return True
         else:
             if isinstance(self, GlobalSidecars):
@@ -1580,6 +1597,22 @@ class AnatJSON(ImageryJSON):
     keylist = ImageryJSON.keylist + ['ContrastBolusIngredient', 'NiftiDescription']
 
 
+""" Pet brick with its file-specific sidecar files. """
+
+class Pet(Imagery):
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'modality', 'fileLoc', 'PetJSON']
+    required_keys = Imagery.required_keys + ['modality']
+    allowed_modalities = ['pet', 'petmr', 'petct']
+    allowed_file_formats = ['.nii']
+    readable_file_formats = allowed_file_formats + ['.dcm']
+
+    def __init__(self):
+        super().__init__()
+
+class PetJSON(ImageryJSON):
+    pass
+
+
 """ Func brick with its file-specific sidecar files. """
 
 
@@ -1648,6 +1681,17 @@ class Dwi(Imagery):
 
 class DwiJSON(ImageryJSON):
     pass
+
+class ImageryProcess(Process):
+    pass
+
+
+class DwiProcess(ImageryProcess):
+    keylist = Dwi.keylist + ['space', 'desc', 'model', 'subset', 'parameter']
+    required_keys = Imagery.required_keys + ['modality']
+    allowed_file_formats = ['.nii']
+    readable_file_formats = allowed_file_formats + ['.dcm']
+    allowed_modalities = ['dwi', 'diffmodel', 'tractography', 'FA', 'MD', 'AD', 'RD', 'MODE', 'LINEARITY', 'PLANARITY', 'SPHERICITY', 'MK', 'RK', 'AK', 'GFA', 'FSUM', 'Fi', 'D', 'DSTD', 'RTPP', 'RTAP']
 
 
 class Bval(BidsFreeFile):
@@ -1805,7 +1849,7 @@ class ScansTSV(BidsTSV):
 
 class Subject(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Eeg', 'Ieeg',
+    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Pet', 'Meg', 'Eeg', 'Ieeg',
                                    'Beh', 'IeegGlobalSidecars', 'Scans']
     required_keys = BidsBrick.required_keys
 
@@ -1875,8 +1919,8 @@ class Subject(BidsBrick):
 
 class SubjectProcess(Subject):
 
-    keyprocess = [key + 'Process' for key in Subject.keylist if key in ModalityType.get_list_subclasses_names()]
-    keylist = BidsBrick.keylist + keyprocess
+    keyprocess = [key + 'Process' for key in Subject.keylist if key in ModalityType.get_list_subclasses_names() and not key =='Dwi']
+    keylist = BidsBrick.keylist + keyprocess + ['DwiProcess', 'Scans']
     required_keys = BidsBrick.required_keys
 
     def __init__(self):
@@ -1901,14 +1945,6 @@ class SubjectProcess(Subject):
         #     newclass = type(modproc, (superclasse,), {})  # To add a base key.capitalize()
         #     newclass.__module__ = superclasse.__module__
         #     setattr(modules[__name__], newclass.__name__, newclass)
-
-
-# class Pipeline(BidsBrick):
-#
-#     keylist = ['name', 'Subject']
-#
-#     def __init__(self):
-#         super().__init__()
 
 
 class Derivatives(BidsBrick):
@@ -2176,6 +2212,18 @@ class MetaBrick(BidsBrick):
                         for mod_elmt in self.curr_subject['Subject'][subclss.__name__]:
                             if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
                                 return mod_elmt
+            pip_list = self.get_derpip_list()
+            subclass = ImageryProcess.__subclasses__()
+            for pip in pip_list:
+                self.is_pipeline_present(pip)
+                if self.curr_pipeline['isPresent']:
+                    for s_id in sub_list:
+                        self.curr_pipeline['Pipeline'].is_subject_present(s_id, flagProcess=True)
+                        if self.curr_pipeline['Pipeline'].curr_subject['isPresent'] and subclass:
+                            for subclss in subclass:
+                                for mod_elmt in self.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][subclss.__name__]:
+                                    if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
+                                        return mod_elmt
             error_str = 'Subject ' + str(sub_id) + ' filename ' + str(filename) + ' is not found in '\
                         + self.dirname + '.'
         else:
@@ -2406,6 +2454,8 @@ class BidsDataset(MetaBrick):
                             if is_same:
                                 scan['fileLoc'] = file.path
                     elif mod_dir and file.is_file():
+                        if flag_process and not mod_dir.endswith('Process'):
+                            mod_dir = mod_dir + 'Process'
                         filename, ext = os.path.splitext(file)
                         if ext.lower() == '.gz':
                             filename, ext = os.path.splitext(filename)
@@ -2953,6 +3003,7 @@ class BidsDataset(MetaBrick):
                             sublist.add(sub['sub'])
                     # if copy_data2import['Subject'][import_sub_idx].is_empty():
                     # pop empty subject
+                sub_index = self.curr_subject['index']
                 for scan in self['Subject'][sub_index]['Scans']:
                     scan.write_file()
 
@@ -3057,6 +3108,8 @@ class BidsDataset(MetaBrick):
                                     self.issues.remove(modality)
                                     # need to get the index before importing because push_into_dataset adds data from sidecars
                                     try:
+                                        keep_sourcedata=False
+                                        keep_file_trace=False
                                         idx2pop = copy_data2import['Derivatives'][idxdev]['Pipeline'][idxpip]['SubjectProcess'][import_sub_idx][modality_type].index(modality)
                                         push_into_dataset(pipDataset, modality, keep_sourcedata, keep_file_trace, flag_process=True)
                                         pipDataset.update_bids_original(self, modality)
@@ -3536,7 +3589,7 @@ class BidsDataset(MetaBrick):
             for pip in dev['Pipeline']:
                 for sub in pip['SubjectProcess']:
                     for key in sub:
-                        if key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
+                        if key in Process.get_list_subclasses_names():
                             for mod_brick in sub[key]:
                                 self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
                                                       sub=mod_brick['sub'], path=data2import.dirname,
@@ -3942,12 +3995,11 @@ class Pipeline(BidsDataset):
     curr_name = None
     list_ext = ['.nii', '.vhdr', '.txt']
 
-    def __init__(self):
+    def __init__(self, name=None):
         self.requirements = BidsDataset.requirements
         self.parsing_path = BidsDataset.parsing_path
         self.log_path = BidsDataset.log_path
         self.curr_subject = {'SubjectProcess': SubjectProcess(), 'isPresent': False, 'index': None}
-
         for key in self.keylist:
             if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []
@@ -3955,6 +4007,16 @@ class Pipeline(BidsDataset):
                 self[key] = {}
             else:
                 self[key] = ''
+
+        if name:
+            self['name'] = name
+            self['DatasetDescJSON'] = DatasetDescJSON()
+            dataset_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, DatasetDescJSON.filename)
+            if os.path.exists(dataset_dir):
+                self['DatasetDescJSON'].read_file(jsonfilename=dataset_dir)
+            else:
+                self['DatasetDescJSON']['Name'] = name
+                self['DatasetDescJSON'].write_file(jsonfilename=dataset_dir)
 
     # def parse_filename_dervivatives(self, mod_dict, file):
     #     fname_pieces = file.split('_')
