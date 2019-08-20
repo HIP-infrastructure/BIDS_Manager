@@ -2628,10 +2628,14 @@ class BidsDataset(MetaBrick):
             raise NameError('modality_type: ' + modality_type + ' is not a correct modality type.\n'
                                                                 'Check ModalityType.get_list_subclasses_names().')
 
-    def get_number_of_session4subject(self, subject_label):
-        if not self.curr_subject or not self.curr_subject['Subject']['sub'] == subject_label:
+    def get_number_of_session4subject(self, subject_label, flag_process=False):
+        if flag_process:
+            str='Process'
+        else:
+            str=''
+        if not self.curr_subject or not self.curr_subject['Subject' + str]['sub'] == subject_label:
             # check whether the required subject is the current subject otherwise make it the current one
-            self.is_subject_present(subject_label)
+            self.is_subject_present(subject_label, flagProcess=flag_process)
         bln = self.curr_subject['isPresent']
         sub_index = self.curr_subject['index']
         if self.curr_subject['Subject'].is_empty():
@@ -3115,11 +3119,11 @@ class BidsDataset(MetaBrick):
                                         pipDataset.update_bids_original(self, modality)
 
                                         copy_data2import['Derivatives'][idxdev]['Pipeline'][idxpip]['SubjectProcess'][import_sub_idx][modality_type].pop(idx2pop)
-                                        copy_data2import.save_as_json(savedir=os.path.join(copy_data2import.dirname, 'temp_bids'))
+                                        copy_data2import.save_as_json(savedir=os.path.join(copy_data2import.dirname))
                                         #sublist.add(sub['sub'])
                                     except FileNotFoundError as err:
                                         self.write_log(str(err))
-                                        copy_data2import.save_as_json(savedir=os.path.join(copy_data2import.dirname, 'temp_bids'))
+                                        copy_data2import.save_as_json(savedir=os.path.join(copy_data2import.dirname))
 
                                     part_present, part_info, part_index = pipDataset['ParticipantsTSV'].is_subject_present(sub['sub'])
                                     if not part_present:

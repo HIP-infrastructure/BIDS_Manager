@@ -59,7 +59,7 @@ class DerivativesSetting(object):
             if it_exist and not variant_list:
                 directory_name = pip_name + '-v1'
             elif it_exist and variant_list:
-                directory_name = pip_name + '-' + str(len(variant_list)+1)
+                directory_name = pip_name + '-v' + str(len(variant_list)+1)
             elif not it_exist:
                 directory_name = pip_name
         else:
@@ -140,10 +140,10 @@ class DerivativesSetting(object):
 
         is_present, index_pip = self.pipeline_is_present(pip_name)
         if not is_present:
-            pip = bids.Pipeline()
-            pip['name'] = pip_name
-            pip['DatasetDescJSON'] = bids.DatasetDescJSON()
-            pip['DatasetDescJSON'].read_file(jsonfilename=os.path.join(directory_path, 'dataset_description.json'))
+            pip = bids.Pipeline(pip_name)
+            # pip['name'] = pip_name
+            # pip['DatasetDescJSON'] = bids.DatasetDescJSON()
+            # pip['DatasetDescJSON'].read_file(jsonfilename=os.path.join(directory_path, 'dataset_description.json'))
             self.pipelines.append(pip)
         else:
             pip = self.pipelines[index_pip]
@@ -634,9 +634,8 @@ class Parameters(dict):
         if curr_path:
             if not os.path.exists(curr_path):
                 curr_path = select_pipeline_path(name)
-            else:
-                if not name in curr_path:
-                    curr_path = select_pipeline_path(name)
+            elif not name in curr_path:
+                curr_path = select_pipeline_path(name)
         else:
             curr_path = select_pipeline_path(name)
         return curr_path
@@ -959,7 +958,10 @@ class Input(ParametersSide):
         idx_in = []
         for elt in self:
             idx = order[elt['tag']]
-            in_out[idx] = elt.get_input_values(input_param[elt['tag']], sub)
+            if input_param:
+                in_out[idx] = elt.get_input_values(sub, input_param[elt['tag']])
+            else:
+                in_out[idx] = elt.get_input_values(sub)
             if temp:
                 if temp != len(in_out[idx]):
                     raise ValueError('The elements in the list don"t have the same size')
@@ -998,7 +1000,7 @@ class InputArguments(Parameters):
     def update_values(self, input_dict):
         self['value_selected'] = input_dict
 
-    def get_input_values(self, input_param, sub):
+    def get_input_values(self, sub, input_param=None):
         if self['type'] == 'file':
             subject = SubjectToAnalyse()
             subject['sub'] = sub
@@ -1006,7 +1008,7 @@ class InputArguments(Parameters):
             subject.copy_values(input_param)
             input_files = self.get_subject_files(subject)
         elif self['type'] == 'dir':
-            input_files = os.path.join(self.bids_directory, 'sub-'+sub)
+            input_files = [os.path.join(self.bids_directory, 'sub-'+sub)]
 
         return input_files
 
@@ -1111,11 +1113,15 @@ class Output(Parameters):
             return out_file
 
         def create_output_sub_dir(output_dir, filename, bids_directory):
-            dirname, filename = os.path.split(filename)
-            trash, dirname = dirname.split(bids_directory + '\\')
-            out_dir = os.path.join(output_dir, dirname)
+            if os.path.isfile(filename):
+                dirname, filename = os.path.split(filename)
+                trash, dirname = dirname.split(bids_directory + '\\')
+            else:
+                trash, dirname = filename.split(bids_directory+'\\')
+            out_dir = [os.path.join(output_dir, dirname)]
             os.makedirs(output_dir, exist_ok=True)
             return out_dir
+
         output_files = []
         idx = order[self['tag']]
         if not self['directory']:
