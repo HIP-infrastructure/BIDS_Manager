@@ -638,9 +638,6 @@ class BidsBrick(dict):
 
             if sub_list and integrity_list:
                 idx_elec_name = IeegElecTSV.header.index('group')
-                idx_chan_name = IeegChannelsTSV.header.index('group')
-                idx_chan_type = IeegChannelsTSV.header.index('type')
-
                 for bidsintegrity_key in integrity_list:
                     for sub in sub_list:
                         # initiate to True and mark False for any issue
@@ -666,13 +663,14 @@ class BidsBrick(dict):
                         # several electrodes.tsv can be found (e.g. for several space)
                         for tsv in elect_tsv:
                             if not ref_elec:
-                                if not tsv[0][idx_elec_name] == 'group':
-                                    idx_elec_name = tsv[0].index('name')
+                                if 'group' in tsv.header:
+                                    idx_elec_name = tsv.header.index('group')
+                                    elecname = [line[idx_elec_name] for line in tsv[1:]]
+                                else:
+                                    idx_elec_name = tsv.header.index('name')
                                     for line in tsv[1:]:
                                         str_group = [c for c in line[idx_elec_name] if not c.isdigit()]
                                         elecname.append(''.join(str_group))
-                                else:
-                                    elecname = [line[idx_elec_name] for line in tsv[1:]]
                                 [ref_elec.append(name) for name in elecname if name not in ref_elec]
                             else:
                                 curr_elec = []
@@ -694,6 +692,8 @@ class BidsBrick(dict):
                             curr_type = []
                             """ list all the channels of the modality type end check whether their are in the reference 
                             list of electrodes"""
+                            idx_chan_name = mod['IeegChannelsTSV'].header.index('group')
+                            idx_chan_type = mod['IeegChannelsTSV'].header.index('type')
                             [(curr_elec.append(line[idx_chan_name]), curr_type.append(line[idx_chan_type]))
                              for line in mod['IeegChannelsTSV'][1:] if line[idx_chan_name] not in curr_elec and
                              not line[idx_chan_name] == BidsSidecar.bids_default_unknown and
@@ -765,24 +765,23 @@ class BidsBrick(dict):
             os.remove(os.path.join(Data2Import.dirname, self['fileLoc'], 'dcmHeaders.mat'))
         elif isinstance(self, Electrophy):
             #Temporary, waiting for Anywave to import Meg
-            if isinstance(self, Meg):
-                shutil.move(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(
-                    BidsDataset.dirname, dirname, filename))
-                return [filename]
-            else:
-                converter_path = BidsDataset.converters['Electrophy']['path']
-                conv_ext = BidsDataset.converters['Electrophy']['ext']
-                attr_dict = self.get_attributes(['fileLoc'])
-                name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
+            converter_path = BidsDataset.converters['Electrophy']['path']
+            conv_ext = BidsDataset.converters['Electrophy']['ext']
+            attr_dict = self.get_attributes(['fileLoc'])
+            name_cmd = ' '.join(['--bids_' + key + ' ' + attr_dict[key] for key in attr_dict if attr_dict[key]])
+            if os.path.isdir(os.path.join(Data2Import.dirname, self['fileLoc'])):
+                input_cmd = '--input_dir "'
+                bids_format = ''
+                conv_ext = ['']
+            elif os.path.isfile(os.path.join(Data2Import.dirname, self['fileLoc'])) and isinstance(self, Ieeg):
+                input_cmd = '--input_file "'
+                bids_format = ' --bids_format vhdr'
 
-                # cmd_line = '""' + converter_path + '"' + ' --seegBIDS "' +\
-                #            os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' +\
-                #            name_cmd + ' --bids_dir "' + Data2Import.dirname + '" --bids_format vhdr"'
-                cmd_line = '""' + converter_path + '"' + ' --toBIDS --input_file "' + \
-                           os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
-                           Data2Import.dirname + '" ' + name_cmd + ' --bids_format vhdr"'
+            cmd_line = '""' + converter_path + '"' + ' --toBIDS ' + input_cmd + \
+                        os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
+                        Data2Import.dirname + '" ' + name_cmd + bids_format + '"'
 
-                os.system(cmd_line)
+            os.system(cmd_line)
         elif isinstance(self, GlobalSidecars):
             fname = filename + os.path.splitext(self['fileLoc'])[1]
             if not os.path.exists(os.path.join(BidsDataset.dirname, dirname)):
@@ -1347,8 +1346,8 @@ class GlobalSidecars(BidsBrick):
         filename, ext = os.path.splitext(filename)
         if ext.lower() in ['.json', '.tsv']:
             comp_key = [value for counter, value in enumerate(self.complementary_keylist) if value in
-                        BidsSidecar.get_list_subclasses_names() and eval(value + '.modality_field') ==
-                        filename.split('_')[-1]]
+                        BidsSidecar.get_list_subclasses_names() and eval(value + '.extension') ==
+                        ext.lower()]
             super().__init__(keylist=self.__class__.keylist + comp_key,
                              required_keys=self.__class__.required_keys)
             self['modality'] = getattr(modules[__name__], comp_key[0]).modality_field
@@ -1707,8 +1706,8 @@ class Bvec(BidsFreeFile):
 
 class Meg(Electrophy):
 
-    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'MegJSON',
-                                   'MegEventsTSV']
+    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'MegJSON', 'MegChannelsTSV',
+                                   'MegCoordSysJSON']
     # keybln = BidsBrick.create_keytype(keylist)
     required_keys = Imagery.required_keys + ['task', 'modality']
     allowed_modalities = ['meg']
@@ -1734,6 +1733,7 @@ class MegJSON(BidsJSON):
 
 
 class MegChannelsTSV(ChannelsTSV):
+
     header = ['name', 'type', 'units', 'description', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'software_filters',
                'status', 'status_description']
     required_fields = ['name', 'type', 'units']
@@ -1763,7 +1763,7 @@ class Beh(ModalityType):
 
     keylist = BidsBrick.keylist + ['ses', 'task', 'modality', 'fileLoc', 'BehEventsTSV']
     required_keys = ModalityType.required_keys + ['task', 'modality']
-    allowed_modalities = ['beh']
+    allowed_modalities = ['beh', 'physio', 'stim']
     allowed_file_formats = ['.tsv']
     readable_file_formats = allowed_file_formats
 
@@ -2645,7 +2645,7 @@ class BidsDataset(MetaBrick):
             ses_list = []
             sub = self['Subject'][sub_index]
             for mod_type in sub:
-                if mod_type in ModalityType.get_list_subclasses_names():
+                if mod_type in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
                     mod_list = sub[mod_type]
                     for mod in mod_list:
                         if mod['ses'] and mod['ses'] not in ses_list:
@@ -2734,7 +2734,7 @@ class BidsDataset(MetaBrick):
                     src_dir = os.path.dirname(path_src)
                     f_list = os.listdir(src_dir)
                     fbasename = os.path.splitext(os.path.basename(mod_dict2import['fileLoc']))[0]
-                    path_src = [os.path.join(Data2Import.dirname, file) for file in f_list if os.path.splitext(file)[0]
+                    path_src = [os.path.join(src_dir, file) for file in f_list if os.path.splitext(file)[0]
                                 == fbasename]
                     path_dst = [os.path.join(scr_data_dirname, os.path.basename(file)) for file in path_src]
                 for cnt, src_fname in enumerate(path_src):
@@ -2992,6 +2992,8 @@ class BidsDataset(MetaBrick):
                                 self['Subject'][-1].update(sub.get_attributes())
                                 self['ParticipantsTSV'].add_subject(sub)
                                 self.is_subject_present(sub['sub'])
+                                sub_present = self.curr_subject['isPresent']
+                                sub_index = self.curr_subject['index']
                                 if keep_sourcedata:
                                     self['SourceData'][-1]['Subject'] = Subject()
                                     self['SourceData'][-1]['Subject'][-1].update(sub.get_attributes())
@@ -3007,7 +3009,6 @@ class BidsDataset(MetaBrick):
                             sublist.add(sub['sub'])
                     # if copy_data2import['Subject'][import_sub_idx].is_empty():
                     # pop empty subject
-                sub_index = self.curr_subject['index']
                 for scan in self['Subject'][sub_index]['Scans']:
                     scan.write_file()
 
@@ -3361,6 +3362,13 @@ class BidsDataset(MetaBrick):
                         hdr.modify_header(action['name'], kwargs['name'])
                         hdr.write_header()
                     for key in sidecar:
+                        if not 'group' in sidecar[key].header:
+                            sidecar[key].header.append('group')
+                            idx_elec_name = sidecar[key].header.index('name')
+                            for line in sidecar[key][1:]:
+                                str_group = [c for c in line[idx_elec_name] if not c.isdigit()]
+                                grp_name = ''.join(str_group)
+                                line.append(grp_name)
                         if type_bln and all(wrd in sidecar[key].header for wrd in ['type', 'group']):
                             idx_group = sidecar[key].header.index('group')
                             idx_type = sidecar[key].header.index('type')
@@ -4004,6 +4012,7 @@ class Pipeline(BidsDataset):
         self.parsing_path = BidsDataset.parsing_path
         self.log_path = BidsDataset.log_path
         self.curr_subject = {'SubjectProcess': SubjectProcess(), 'isPresent': False, 'index': None}
+
         for key in self.keylist:
             if key in BidsBrick.get_list_subclasses_names() or key in BidsTSV.get_list_subclasses_names():
                 self[key] = []

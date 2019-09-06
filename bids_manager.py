@@ -4,7 +4,7 @@
     This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
     (with minor changes by Aude Jegou <aude.jegou@univ-amu.fr)
     This module is GUI to explore bids dataset.
-    v0.2.0 March 2019
+    v0.2.1 July 2019
 """
 
 from __future__ import division
@@ -20,6 +20,7 @@ from builtins import object
 from future import standard_library
 import ins_bids_class as bids
 import pipeline_class as pip
+import statistics_class as st
 import os
 import platform
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
@@ -36,7 +37,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.2.0'
+    version = '0.2.3'
     if bids.BidsBrick.curr_user.lower() == 'roehri':
         bids_startfile = r'\\dynaserv\SPREAD\SPREAD'
         import_startfile = r'\\dynaserv\SPREAD\uploaded_data'
@@ -781,7 +782,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 return
         #Run the Generic Uploader
         self.make_idle('Generic Uploader is running')
-        cmd = os.path.join(os.getcwd(), 'generic_uploader_1_03.exe') + ' "' + self.curr_bids.dirname + '" '
+        cmd = os.path.join(os.getcwd(), 'generic_uploader.exe') + ' "' + self.curr_bids.dirname + '" '
         x = os.system(cmd)
         if x != 0:
             self.update_text('Generic uploader crashed')
@@ -828,15 +829,33 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.update_text(err)
             #self.ask4bidsdir(isnew_dir=False)
         output_dict = BidsSelectDialog(self, self.curr_bids, soft_analyse)
+        if output_dict.log_error:
+            self.make_available()
+            return
         #add the parameters
         self.update_text('Subjects selected \n' + '\n'.join(output_dict.subject_selected['sub']) + '\nThe analysis is ready to be run')
-        log_analysis = soft_analyse.set_everything_for_analysis(output_dict.analysis_param, output_dict.subject_selected)
+        self.make_idle('Analysis in process')
+        log_analysis = soft_analyse.set_everything_for_analysis(output_dict.analysis_param, output_dict.subject_selected, output_dict.input_param)
+        self.make_available()
         self.update_text(log_analysis)
 
     def createtablestats(self):
+        self.make_idle('Create your statistical table')
         deriv_dir = os.path.join(self.curr_bids.dirname, 'derivatives')
         select_list = TableForStatsDialog(self, deriv_dir)
-        type_select = SelectHowToCreateTable(self, select_list.results)
+        try:
+            stat_table = st.CreateTable(deriv_dir, select_list.results)
+            type_select = SelectHowToCreateTable(self, stat_table)
+            error = stat_table.create_tsv_table(type_select.results)
+            if error:
+                messagebox.showerror('ERROR', error)
+            self.make_available()
+            return
+        except ValueError as err:
+            messagebox.showerror('ERROR', err)
+            self.make_available()
+            return
+
         print('coucou')
 
     @staticmethod
@@ -897,9 +916,11 @@ class IssueList(DoubleListbox):
     def __init__(self, master, cmd_apply, cmd_delete):
         super().__init__(master)
         self.user_choice = None
-        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply, height=self.button_size[0], width=self.button_size[1])
+        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
+                                        height=self.button_size[0], width=self.button_size[1])
 
-        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0], width=self.button_size[1], default=ACTIVE)
+        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0],
+                                         width=self.button_size[1], default=ACTIVE)
 
     def pack_elements(self):
         super().pack_elements()
@@ -1139,8 +1160,8 @@ class BidsTSVDialog(TemplateDialog):
         self.max_lines = min(self.n_lines, self.max_lines)
         self.max_columns = min(self.n_columns, self.max_columns)
         self.key_labels = [[] for k in range(0, self.max_lines)]
-        self.n_pages = round(self.n_lines / self.max_lines)
-        self.n_pages_columns = round(self.n_columns/self.max_columns)
+        self.n_pages = (self.n_lines + self.max_lines - 1) // self.max_lines
+        self.n_pages_columns = (self.n_columns + self.max_columns - 1) // self.max_columns
         self.page_label_var = StringVar()
         self.page_label = None
         self.clmn_width = 0
@@ -1193,8 +1214,14 @@ class BidsTSVDialog(TemplateDialog):
                 if isinstance(self.main_brick, bids.ChannelsTSV) and self.main_brick.header[clmn] == 'status':
                     self.key_labels[line][-1].bind('<Double-Button-1>',
                                                    lambda event, l=line, c=clmn: self.switch_chan_status(l, c, event))
-                if isinstance(self.main_brick, bids.ParticipantsTSV):
-                    self.key_labels[line][0].bind('<Double-Button-1>', lambda event, l=line: self.modify_participants_tsv(l, event))
+                if isinstance(self.main_brick, bids.ParticipantsTSV) and \
+                        list(self.key_button.keys())[clmn] == 'participant_id':
+                    self.parent.bidsdataset.is_subject_present(self.key_labels[line][clmn]['text'])
+                    sub = self.parent.bidsdataset.curr_subject['Subject']
+                    if 'Subject' in self.parent.key_disabled:
+                        disabl = sub.keylist
+                    else:
+                        disabl = None
 
     def modify_participants_tsv(self, lin, ev=None):
         #line = line.num
@@ -1240,7 +1267,7 @@ class BidsTSVDialog(TemplateDialog):
         self.update_table()
 
     def change_column_page(self, parent, column_step):
-        #Erase header button
+        # Erase header button
         for cnt, key in enumerate(self.key_button):
             self.key_button[key].destroy()
         self.clear_table()
@@ -1281,6 +1308,8 @@ class BidsTSVDialog(TemplateDialog):
         self.page_label_var.set('Page ' + str(self.idx + 1) + '/' + str(self.n_pages))
         if self.idx == self.n_pages-1:
             self.next_btn.config(state=DISABLED)
+            if self.prev_btn['state'] == DISABLED:
+                self.prev_btn.config(state=NORMAL)
         elif self.idx == 0:
             self.next_btn.config(state=NORMAL)
             self.prev_btn.config(state=DISABLED)
@@ -1314,6 +1343,43 @@ class BidsTSVDialog(TemplateDialog):
                 if self.prev_col_btn:
                     self.key_labels[line][clmn].config(fg='black', bg=self.prev_col_btn.cget("bg"))
             # self.key_labels[line] = []
+
+
+class ParticipantsTSVDialog(BidsTSVDialog):
+
+    def make_table(self, parent):
+
+        for line in range(0, min(self.max_lines, len(self.table2show))):
+            for clmn in range(0, min(self.max_columns, self.n_columns)):
+                lbl = self.table2show[line][clmn]
+                self.key_labels[line].append(Label(parent, text=lbl, relief=RIDGE))
+                self.key_labels[line][-1].grid(row=line + 1, column=clmn, sticky=W + E)
+                if lbl in self.bln_color.keys():
+                    self.key_labels[line][-1].config(fg='white', bg=self.bln_color[lbl])
+                if list(self.key_button.keys())[clmn] == 'participant_id':
+
+                    self.key_labels[line][clmn].bind('<Double-Button-1>', lambda event, li=line, co=clmn: self.what2domenu(line=li, clmn=co, event=event))
+                    #                                 lambda event, li=line, co=clmn:
+                    #                                 self.open_subject_info(ln=li, cm=co))
+                if list(self.key_button.keys())[clmn].endswith('_ready'):
+                    self.key_labels[line][clmn].bind('<Double-Button-1>',
+                                                     lambda event: print('To be implemented'))
+
+    def open_subject_info(self, ln, cm):
+        self.parent.bidsdataset.is_subject_present(self.key_labels[ln][cm]['text'])
+        sub = self.parent.bidsdataset.curr_subject['Subject']
+        if 'Subject' in self.parent.key_disabled:
+            disabl = sub.keylist
+        else:
+            disabl = None
+        BidsBrickDialog(self, sub, disabled=disabl, title=sub.classname() + ': ' + sub['sub'])
+
+    def what2domenu(self, line, clmn, event):
+        pop_menu = Menu(self.master, tearoff=0)
+        pop_menu.add_command(label='Open subject dataset', command=lambda li=line, co=clmn:
+                                                     self.open_subject_info(ln=li, cm=co))
+        pop_menu.add_command(label='Modify this participant"s line', command=lambda l=line: self.modify_participants_tsv(l))
+        pop_menu.post(event.x_root, event.y_root)
 
 
 class ModifDialog(TemplateDialog):
@@ -1610,6 +1676,11 @@ class BidsBrickDialog(FormDialog):
                                      command=lambda brick=mod_brick, idx=curr_idx, k=key:
                                      self.remove_file(brick, k, idx))
             pop_menu.post(event.x_root, event.y_root)
+        elif key == 'ParticipantsTSV':
+            ptpts_tsv = self.main_brick[key]
+            title = 'participants.tsv'
+            ParticipantsTSVDialog(self, ptpts_tsv, title=title)
+
         elif key in bids.BidsTSV.get_list_subclasses_names():
             sdcr_file = self.main_brick[key]
             title = None
@@ -1889,6 +1960,7 @@ class BidsSelectDialog(TemplateDialog):
             raise TypeError('Second input should be a bids dataset')
 
         #init variable
+        self.log_error = ''
         self.subject_dict =dict()
 
         self.participants = BidsSelectDialog.bidsdataset['ParticipantsTSV']
@@ -1924,6 +1996,8 @@ class BidsSelectDialog(TemplateDialog):
                             for key in keys:
                                 value = [elt[key] for elt in sub[mod]]
                                 value = sorted(list(set(value)))
+                                if '' in value:
+                                    value.remove('')
                                 if value and value[0] is not '':
                                     if not key in self.input_vars[clef]:
                                         self.input_vars[clef][key] = {}
@@ -1948,7 +2022,7 @@ class BidsSelectDialog(TemplateDialog):
         self.Crit_sub = IntVar()
         frame_subject = Frame(parent,  relief=GROOVE, borderwidth=2)
         Label(frame_subject, text='Select subjects for analysis', font='bold', fg='#1F618D').pack(side=TOP)
-        frame_subject.pack(side=LEFT)
+        frame_subject.pack(side=TOP)
         frame_sub_check = Frame(frame_subject)
         All_sub_butt = Checkbutton(frame_sub_check, text='All subjects', variable=self.All_sub)
         All_sub_butt.pack(side=LEFT)
@@ -2006,12 +2080,13 @@ class BidsSelectDialog(TemplateDialog):
         max_param, cntP = self.create_button(frame_param_select, self.param_vars)
 
         enable(frame_param_select, 'disabled')
-        frame_parameters.pack(side=LEFT)
+        frame_parameters.pack(side=TOP)
 
         #row_okcancel = max(length, cntR, cntC)+1
         frame_okcancel = Frame(parent)
-        frame_okcancel.pack(side=BOTTOM)
+        frame_okcancel.pack(side=TOP, fill=BOTH, expand=True)
         self.ok_cancel_button(frame_okcancel)
+
 
     def ok(self):
         self.subject_selected = self.get_the_subject_id()
@@ -2026,6 +2101,9 @@ class BidsSelectDialog(TemplateDialog):
         self.vars = {}
         self.input_vars = {}
         self.param_vars = {}
+
+    def cancel(self):
+        self.log_error = 'The running has been cancel.'
 
     def select_criteria(self, participant_dict):
 
@@ -2138,7 +2216,7 @@ class BidsSelectDialog(TemplateDialog):
                 res_dict[key] = val_temp
             elif att_type == 'File':
                 if val_temp:
-                    res_dict[key] = val_temp[0]
+                    res_dict[key] = val_temp[1:]
 
         return res_dict
 
@@ -2244,13 +2322,14 @@ class BidsSelectDialog(TemplateDialog):
                 l = Label(frame, text=val_temp)
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
             elif att_type == 'File':
-                l = Button(frame, text='Browse', command=lambda: self.ask4file(var_dict[key]['value']))
+                l = Button(frame, text='Browse', command=lambda file=val_temp: self.ask4file(file))
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
 
         return max_col, cnt
 
     def ask4file(self, file):
-        filename = filedialog.askopenfilename(title='Select file', initialdir=self.bidsdataset.cwdir)
+        filetypes = ('Files', file)
+        filename = filedialog.askopenfilename(title='Select file', initialdir=self.bidsdataset.cwdir, filetypes=[filetypes])
         file.append(filename)
 
 
@@ -2614,8 +2693,12 @@ class RequirementsDialog(TemplateDialog):
                             type_dict[key] = value
                     if len(type_list) > 1:
                         mod_dict['type'] = type_list
-                    else:
+                    elif len(type_list) == 1:
                         mod_dict['type'] = type_list[0]
+                    else:
+                        mod_dict['type'] = type_dict
+                        if not 'modality' in mod_dict['type'].keys():
+                            mod_dict['type']['modality'] = '_'
                     if self.modality_required_name[i] in bids.GlobalSidecars.get_list_subclasses_names():
                         if isinstance(mod_dict['type'], dict):
                             if 'space' and 'acq' in mod_dict['type'].keys():
@@ -2721,37 +2804,55 @@ class TableForStatsDialog(TemplateDialog):
 
 class SelectHowToCreateTable(TemplateDialog):
 
-    def __init__(self, parent, select_deriv):
-        self.select_deriv = {key: {} for key in select_deriv}
+    def __init__(self, parent, stat_table):
+        if not isinstance(stat_table, st.CreateTable):
+            raise TypeError('The input variable should be CreatTable instance')
+        self.select_deriv = {key: {} for key in stat_table}
         self.multiple_choice = ['Average', 'Maximum', 'All']
+        self.header = stat_table.possibility['header']
+        self.channels = stat_table.possibility['channels']
         super().__init__(parent)
 
     def body(self, parent):
-        self.title('What to do if multiple files by participants?')
+        self.title('What metric would you like to import?')
         value_radio = len(self.select_deriv)*len(self.multiple_choice)
-        values=list(range(2, value_radio+2, 1))
+        values = list(range(2, value_radio+2, 1))
         a=0
         for key in self.select_deriv:
-            self.select_deriv[key]['frame'] = Frame(parent, relief=GROOVE, borderwidth=2)
+            self.select_deriv[key]['frame'] = {}
+            self.select_deriv[key]['frame']['parent'] = Frame(parent, relief=RIDGE, borderwidth=2)
+            Label(self.select_deriv[key]['frame']['parent'], text=key, font=('Helvetica', '14'), fg='blue').pack(side=TOP)
+            self.select_deriv[key]['frame']['header'] = Frame(self.select_deriv[key]['frame']['parent'], relief=GROOVE, borderwidth=2)
+            self.select_deriv[key]['frame']['header'].pack(side=LEFT)
+            Label(self.select_deriv[key]['frame']['header'], text='Select your metrics:', font=('Helvetica', '12', 'bold')).grid(row=0)
+            self.select_deriv[key]['frame']['multi'] = Frame(self.select_deriv[key]['frame']['parent'], relief=GROOVE, borderwidth=2)
+            self.select_deriv[key]['frame']['multi'].pack(side=LEFT)
+            Label(self.select_deriv[key]['frame']['multi'], text='What to do if multiple files:', font=('Helvetica', '12', 'bold')).pack(side=TOP)
             self.select_deriv[key]['value'] = []
+            self.select_deriv[key]['headervalue'] = []
             #self.select_deriv[key]['button'] = []
-            Label(self.select_deriv[key]['frame'], text=key).pack(side=TOP)
             for val in self.multiple_choice:
                 self.select_deriv[key]['value'].append(IntVar())
-                b = Radiobutton(self.select_deriv[key]['frame'], variable=self.select_deriv[key]['value'][-1], text=val, value=values[a])
+                b = Radiobutton(self.select_deriv[key]['frame']['multi'], variable=self.select_deriv[key]['value'][-1], text=val, value=values[a])
                 b.pack(side=LEFT, expand=1)
                 #self.select_deriv[key]['button'].append(b)
                 a=+1
                 #self.select_deriv[key]['value'].append(b)
-            self.select_deriv[key]['frame'].pack(side=TOP)
+            for val in self.header[key]:
+                self.select_deriv[key]['headervalue'] = CheckbuttonList(self.select_deriv[key]['frame']['header'], self.header[key], 1, 1).variable_list
+            self.select_deriv[key]['frame']['parent'].pack(side=TOP)
         self.ok_cancel_button(parent)
 
     def ok(self):
-        self.results = {key: '' for key in self.select_deriv}
+        self.results = {key: {} for key in self.select_deriv}
         for key in self.select_deriv:
+            self.results[key]['header'] =[]
             for cnt, val in enumerate(self.select_deriv[key]['value']):
                 if val.get():
-                    self.results[key] = self.multiple_choice[cnt]
+                    self.results[key]['multi'] = self.multiple_choice[cnt]
+            for cnt, val in enumerate(self.select_deriv[key]['headervalue']):
+                if val.get():
+                    self.results[key]['header'].append(self.header[key][cnt])
         self.destroy()
 
 
@@ -2853,7 +2954,7 @@ class CheckbuttonList(Frame):
         else:
             self.hidden = False
             self.combo_entry.toplevel.withdraw()
-            self.parent.master.master.grab_set()
+            self.parent.master.master.master.grab_set()
 
 
 def enable(frame, state):
@@ -2879,7 +2980,7 @@ def enable_frames(frame, button):
             enable(frame, 'disabled')
 
 def make_splash():
-    if bids.BidsBrick.curr_user in ['Ponz', 'ponz']:
+    if bids.BidsBrick.curr_user.lower() == 'ponz':
         splash = [r" _______  .-./`)  ______        .-'''-.",
                   r"\  ____  \\ .-.')|    _ `''.   / _     \ ",
                   r"| |    \ |/ `-' \| _ | ) _  \ (`' )/`--' ",
