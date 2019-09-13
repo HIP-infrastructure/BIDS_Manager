@@ -2213,7 +2213,7 @@ class MetaBrick(BidsBrick):
                             if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
                                 return mod_elmt
             pip_list = self.get_derpip_list()
-            subclass = ImageryProcess.__subclasses__()
+            #subclass = ImageryProcess.__subclasses__()
             for pip in pip_list:
                 self.is_pipeline_present(pip)
                 if self.curr_pipeline['isPresent']:
@@ -2221,7 +2221,7 @@ class MetaBrick(BidsBrick):
                         self.curr_pipeline['Pipeline'].is_subject_present(s_id, flagProcess=True)
                         if self.curr_pipeline['Pipeline'].curr_subject['isPresent'] and subclass:
                             for subclss in subclass:
-                                for mod_elmt in self.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][subclss.__name__]:
+                                for mod_elmt in self.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][subclss.__name__+'Process']:
                                     if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
                                         return mod_elmt
             error_str = 'Subject ' + str(sub_id) + ' filename ' + str(filename) + ' is not found in '\
@@ -2638,12 +2638,12 @@ class BidsDataset(MetaBrick):
             self.is_subject_present(subject_label, flagProcess=flag_process)
         bln = self.curr_subject['isPresent']
         sub_index = self.curr_subject['index']
-        if self.curr_subject['Subject'].is_empty():
+        if self.curr_subject['Subject'+str].is_empty():
             # if a subject is created without any data (in case of the first import crashes) return None because
             return None, None
         if bln:
             ses_list = []
-            sub = self['Subject'][sub_index]
+            sub = self['Subject'+str][sub_index]
             for mod_type in sub:
                 if mod_type in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
                     mod_list = sub[mod_type]
@@ -3009,8 +3009,9 @@ class BidsDataset(MetaBrick):
                             sublist.add(sub['sub'])
                     # if copy_data2import['Subject'][import_sub_idx].is_empty():
                     # pop empty subject
-                for scan in self['Subject'][sub_index]['Scans']:
-                    scan.write_file()
+                if not sub_index is None:
+                    for scan in self['Subject'][sub_index]['Scans']:
+                        scan.write_file()
 
             # Add the derivatives folder
             for dev in data2import['Derivatives']:
@@ -3021,7 +3022,7 @@ class BidsDataset(MetaBrick):
                     idxpip = dev['Pipeline'].index(pip)
                     if not os.path.exists(os.path.join(BidsDataset.dirname, 'derivatives', pip['name'])):
                         os.makedirs(os.path.join(BidsDataset.dirname, 'derivatives', pip['name']))
-                    self.is_pipeline_present(pip)
+                    self.is_pipeline_present(pip['name'])
                     pip_present = self.curr_pipeline['isPresent']
                     pip_index = self.curr_pipeline['index']
                     pipDataset = Pipeline()
@@ -4063,13 +4064,29 @@ class Pipeline(BidsDataset):
     def update_bids_original(self, bids_origin, modality):
         pip = bids_origin.curr_pipeline['Pipeline']
         mod_type = modality.classname()
-        for sub in self['SubjectProcess']:
-            tmp_attr = modality.get_attributes()
-            tmp_attr['fileLoc'] = sub[mod_type][-1]['fileLoc']
-            for sub_origin in pip['SubjectProcess']:
-                if sub['sub'] == sub_origin['sub']:
-                    sub_origin[mod_type] = create_subclass_instance(mod_type, Process)
-                    sub_origin[mod_type][-1].update(tmp_attr)
+        sub = self.curr_subject['SubjectProcess']
+        sublist = {sub['sub']: pip['SubjectProcess'].index(sub) for sub in pip['SubjectProcess']}
+        if sub['sub'] in sublist.keys():
+            for mod in sub[mod_type]:
+                is_in = False
+                tmp_attr = mod.get_attributes('fileLoc')
+                for elt in pip['SubjectProcess'][sublist[sub['sub']]][mod_type]:
+                    tmp_elt = elt.get_attributes('fileLoc')
+                    if tmp_elt == tmp_attr:
+                        elt.update(mod)
+                        is_in = True
+                if not is_in:
+                    pip['SubjectProcess'][sublist[sub['sub']]][mod_type].append(mod)
+        else:
+            pip['SubjectProcess'].append(sub)
+
+        # for sub in self['SubjectProcess']:
+        #     tmp_attr = modality.get_attributes()
+        #     tmp_attr['fileLoc'] = sub[mod_type][-1]['fileLoc']
+        #     for sub_origin in pip['SubjectProcess']:
+        #         if sub['sub'] == sub_origin['sub']:
+        #             sub_origin[mod_type] = create_subclass_instance(mod_type, Process)
+        #             sub_origin[mod_type][-1].update(tmp_attr)
 
     def is_pipeline_present(self, pipeline_label):
         print(self.classname() + ' does not have pipelines!')

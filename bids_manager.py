@@ -22,6 +22,7 @@ import ins_bids_class as bids
 import pipeline_class as pip
 import statistics_class as st
 import os
+import json
 import platform
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, S, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
@@ -836,8 +837,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.update_text('Subjects selected \n' + '\n'.join(output_dict.subject_selected['sub']) + '\nThe analysis is ready to be run')
         self.make_idle('Analysis in process')
         log_analysis = soft_analyse.set_everything_for_analysis(output_dict.analysis_param, output_dict.subject_selected, output_dict.input_param)
-        self.make_available()
         self.update_text(log_analysis)
+        self.curr_bids.write_log(log_analysis)
+        self.make_available()
 
     def createtablestats(self):
         self.make_idle('Create your statistical table')
@@ -916,11 +918,9 @@ class IssueList(DoubleListbox):
     def __init__(self, master, cmd_apply, cmd_delete):
         super().__init__(master)
         self.user_choice = None
-        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
-                                        height=self.button_size[0], width=self.button_size[1])
+        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply, height=self.button_size[0], width=self.button_size[1])
 
-        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0],
-                                         width=self.button_size[1], default=ACTIVE)
+        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0], width=self.button_size[1], default=ACTIVE)
 
     def pack_elements(self):
         super().pack_elements()
@@ -2103,7 +2103,14 @@ class BidsSelectDialog(TemplateDialog):
         self.param_vars = {}
 
     def cancel(self):
+        # put focus back to the parent window
+        if self.parent is not None:
+            self.parent.focus_set()
+        self.vars = None
+        self.input_vars = None
+        self.param_vars = None
         self.log_error = 'The running has been cancel.'
+        self.destroy()
 
     def select_criteria(self, participant_dict):
 
@@ -2754,9 +2761,11 @@ class TableForStatsDialog(TemplateDialog):
 
     def __init__(self, parent, deriv_dir):
         self.derivatives_dir = deriv_dir
+        self.software_dir = parent.folder_software
         reject_dir = ['parsing', 'log']
-        self.deriv_list = [entry for entry in os.listdir(deriv_dir) if not os.path.isfile(os.path.join(deriv_dir,entry)) and not entry in reject_dir]
+        self.deriv_list = [entry for entry in os.listdir(deriv_dir) if not os.path.isfile(os.path.join(deriv_dir, entry)) and not entry in reject_dir]
         self.deriv_button = {key: IntVar() for key in self.deriv_list}
+        self.deriv_extension = {key: {} for key in self.deriv_list}
         self.display_button = {key: None for key in self.deriv_list}
         #self.display_button = {'display_'+key: '' for key in self.deriv_list}
         super().__init__(parent)
@@ -2772,18 +2781,51 @@ class TableForStatsDialog(TemplateDialog):
         display_frame.frame.pack(side=LEFT, fill=BOTH, expand=True, anchor='nw')
         okcancel_frame = Frame(parent)
         okcancel_frame.pack(side=BOTTOM)
+        cp = 0
         for cnt, key in enumerate(self.deriv_button):
-            l = Checkbutton(folder_frame, text=key,  variable=self.deriv_button[key])
-            l.grid(row=cnt+1, column=0)
-            self.display_button[key] = Button(folder_frame, text='display '+key, command=lambda fm=display_frame, dname=key: self.display_dataset(fm, dname))
-            self.display_button[key].grid(row=cnt+1, column=1)
+            extension, display = self.get_outputs_extension(key)
+            if display:
+                l = Checkbutton(folder_frame, text=key,  variable=self.deriv_button[key])
+                l.grid(row=cnt+cp+1, column=0)
+                self.display_button[key] = Button(folder_frame, text='display '+key, command=lambda fm=display_frame, dname=key: self.display_dataset(fm, dname))
+                self.display_button[key].grid(row=cnt+cp+1, column=1)
+                self.deriv_extension[key] = {ext: IntVar() for ext in extension}
+                for ct, ext in enumerate(extension):
+                    e = Checkbutton(folder_frame, text=ext,  variable=self.deriv_extension[key][ext])
+                    e.grid(row=cnt+cp+2, column=ct)
+                cp += 1
         display_frame.update_scrollbar()
         self.ok_cancel_button(okcancel_frame)
 
+    def get_outputs_extension(self, jsonfilename):
+        display = True
+        jsonfile = os.path.join(self.software_dir, jsonfilename+'.json')
+        if os.path.exists(jsonfile):
+            with open(jsonfile, 'r') as file:
+                read_json = json.load(file)
+            if 'Output' in read_json['Parameters'].keys():
+                extension = read_json['Parameters']['Output']['extension']
+                if isinstance(extension, list):
+                    return extension, display
+                elif not extension in st.CreateTable.readable_extension:
+                    display = False
+                    return extension, display
+                else:
+                    extension = [extension]
+                    return extension, display
+            else:
+                extension=[]
+                return extension, display
+        else:
+            extension =[]
+            return extension, display
+
     def display_dataset(self, frame2display, deriv_name):
+
         def deletewidgetframe(frame2delete):
             for w in frame2delete.winfo_children():
                 w.destroy()
+
         deletewidgetframe(frame2display.frame)
         dataset_file = os.path.join(self.derivatives_dir, deriv_name, 'dataset_description.json')
         datastore = bids.DatasetDescJSON()
@@ -2798,7 +2840,9 @@ class TableForStatsDialog(TemplateDialog):
         frame2display.update_scrollbar()
 
     def ok(self):
-        self.results = [key for key in self.deriv_button if self.deriv_button[key].get()]
+        self.results = {key: [] for key in self.deriv_button if self.deriv_button[key].get()}
+        for key in self.results:
+            self.results[key] = [ext for ext in self.deriv_extension[key] if self.deriv_extension[key][ext].get()]
         self.destroy()
 
 

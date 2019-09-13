@@ -41,7 +41,7 @@ class DerivativesSetting(object):
             is_empty = True
         return is_empty, pip_list
 
-    def create_pipeline_directory(self, pip_name):
+    def create_pipeline_directory(self, pip_name, param_var, subject_list):
         def check_pipeline_variant(pip_list, pip_name):
             variant_list = []
             it_exist = False
@@ -52,21 +52,36 @@ class DerivativesSetting(object):
                         variant_list.append(variant[1:])
                     it_exist=True
             return it_exist, variant_list
-
+        directory_name = None
         is_empty, pip_list = self.is_empty()
         if not is_empty:
             it_exist, variant_list = check_pipeline_variant(pip_list, pip_name)
-            if it_exist and not variant_list:
-                directory_name = pip_name + '-v1'
-            elif it_exist and variant_list:
-                directory_name = pip_name + '-v' + str(len(variant_list)+1)
-            elif not it_exist:
+            if it_exist:
+                for elt in variant_list:
+                    desc_data = DatasetDescPipeline(filename=os.path.join(self.path, elt))
+                    same_param, sub_not_inside = desc_data.compare_parameters(param_var, subject_list)
+                    if same_param and sub_not_inside:
+                        directory_name = elt
+                        desc_data['SourceDataset']['sub'].append(subject_list['sub'])
+                if not directory_name:
+                    directory_name = pip_name + '-v' + str(len(variant_list) + 1)
+                    desc_data = DatasetDescPipeline(param_var, subject_list)
+                    desc_data['Name'] = directory_name
+            # if it_exist and not variant_list:
+            #     directory_name = pip_name + '-v1'
+            # elif it_exist and variant_list:
+            #     directory_name = pip_name + '-v' + str(len(variant_list)+1)
+            else:
                 directory_name = pip_name
+                desc_data = DatasetDescPipeline(param_var, subject_list)
+                desc_data['Name'] = directory_name
         else:
             directory_name = pip_name
+            desc_data = DatasetDescPipeline(param_var, subject_list)
+            desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
         os.makedirs(directory_path, exist_ok=True)
-        return directory_path, directory_name
+        return directory_path, directory_name, desc_data
 
     def pipeline_is_present(self, pip_name):
         is_present = False
@@ -169,17 +184,37 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
     filename = 'dataset_description.json'
     bids_version = '1.0.1'
 
-    def __init__(self, param_vars, subject_list):
+    def __init__(self, filename=None, param_vars=None, subject_list=None):
         super().__init__()
-        self['PipelineDescription'] = {}
-        for key in param_vars:
-            if key=='Callname':
-                self['PipelineDescription']['Name'] = param_vars[key]
+        if filename:
+            self.read_file(filename)
+        elif param_vars and subject_list:
+            self['PipelineDescription'] = {}
+            for key in param_vars:
+                if key=='Callname':
+                    self['PipelineDescription']['Name'] = param_vars[key]
+                else:
+                    self['PipelineDescription'][key] = param_vars[key]
+            self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
+            self['Author'] = getpass.getuser()
+            self['Date'] = str(datetime.datetime.now())
+
+    def compare_parameters(self, param_vars, subject_list):
+        keylist = [key for key in param_vars if not key == 'Callname']
+        is_same = []
+        for key in keylist:
+            if self['PipelineDescription'][key] == param_vars[key]:
+                is_same.append(True)
             else:
-                self['PipelineDescription'][key] = param_vars[key]
-        self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
-        self['Author'] = getpass.getuser()
-        self['Date'] = str(datetime.datetime.now())
+                is_same.append(False)
+        is_same = all(is_same)
+        if not subject_list['sub'] in self['SourceDataset']['sub']:
+            no_subject = True
+        else:
+            no_subject = False
+
+        return is_same, no_subject
+
 
 
 class PipelineSetting(dict):
@@ -406,9 +441,7 @@ class PipelineSetting(dict):
         #save the param_vars in json file for next analysis
         try:
             dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
-            output_directory, output_name = dev.create_pipeline_directory(self['Name'])
-            dataset_desc = DatasetDescPipeline(param_vars, subject_list)
-            dataset_desc['Name'] = self['Name']
+            output_directory, output_name, dataset_desc = dev.create_pipeline_directory(self['Name'], param_vars, subject_list)
             participants = bids.ParticipantsTSV()
 
             #update the parameters and get the subjects
@@ -897,14 +930,14 @@ class Matlab(Parameters):
                     cmd_line.append("'{" + str(cnt_tot) + "}'")
                     cnt_tot += 1
             elif isinstance(self[clef], list):
-                cmd_line.append("'"+clef+"'")
+                cmd_line.append(" '"+clef+"' ")
                 value = '", '.join(self[clef])
-                cmd_line.append('{"'+value+'"}')
+                cmd_line.append("'" + value +"'")
             elif self[clef].isnumeric():
-                cmd_line.append("'"+clef+"'")
+                cmd_line.append(" '"+clef+"' ")
                 cmd_line.append(self[clef])
             else:
-                cmd_line.append("'" + clef + "'")
+                cmd_line.append(" '" + clef + "' ")
                 cmd_line.append("'"+self[clef]+"'")
         cmd_line = '(' + ', '.join(cmd_line) + ')'
 
@@ -1139,7 +1172,7 @@ class Output(Parameters):
                     os.makedirs(os.path.dirname(output), exist_ok=True)
                     out_file.append(output)
             else:
-                file_elt[-1] = soft_name + '.' + extension
+                file_elt[-1] = soft_name + extension
                 filename = '_'.join(file_elt)
                 output = os.path.join(output_dir, dirname, filename)
                 os.makedirs(os.path.dirname(output), exist_ok=True)
