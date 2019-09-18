@@ -5,7 +5,7 @@
     This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
     (with changes by Aude Jegou <aude.jegou@univ-amu.fr)
     This module is concerned by managing BIDS directory.
-    v0.1.11 June 2019
+    v0.1.12 June 2019
 """
 
 from __future__ import print_function
@@ -47,6 +47,7 @@ class BidsBrick(dict):
 
     keylist = ['sub']
     required_keys = ['sub']
+    required_protocol_keys = []
     access_time = datetime.now()
     time_format = "%Y-%m-%dT%H-%M-%S"
     try:  # python 3
@@ -1684,6 +1685,8 @@ class DwiJSON(ImageryJSON):
 class ImageryProcess(Process):
     pass
 
+class ElectrophyProcess(Process):
+    pass
 
 class DwiProcess(ImageryProcess):
     keylist = Dwi.keylist + ['space', 'desc', 'model', 'subset', 'parameter']
@@ -1733,7 +1736,6 @@ class MegJSON(BidsJSON):
 
 
 class MegChannelsTSV(ChannelsTSV):
-
     header = ['name', 'type', 'units', 'description', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'software_filters',
                'status', 'status_description']
     required_fields = ['name', 'type', 'units']
@@ -2213,7 +2215,7 @@ class MetaBrick(BidsBrick):
                             if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
                                 return mod_elmt
             pip_list = self.get_derpip_list()
-            #subclass = ImageryProcess.__subclasses__()
+            subclass = ImageryProcess.__subclasses__() + ElectrophyProcess.__subclasses__()
             for pip in pip_list:
                 self.is_pipeline_present(pip)
                 if self.curr_pipeline['isPresent']:
@@ -2221,7 +2223,7 @@ class MetaBrick(BidsBrick):
                         self.curr_pipeline['Pipeline'].is_subject_present(s_id, flagProcess=True)
                         if self.curr_pipeline['Pipeline'].curr_subject['isPresent'] and subclass:
                             for subclss in subclass:
-                                for mod_elmt in self.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][subclss.__name__+'Process']:
+                                for mod_elmt in self.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][subclss.__name__]:
                                     if os.path.basename(mod_elmt['fileLoc']) == os.path.basename(filename):
                                         return mod_elmt
             error_str = 'Subject ' + str(sub_id) + ' filename ' + str(filename) + ' is not found in '\
@@ -2274,6 +2276,16 @@ class MetaBrick(BidsBrick):
                                 not in ParticipantsTSV.header:
                             ParticipantsTSV.header.append(key + self.requirements.keywords[1])
                             ParticipantsTSV.required_fields.append(key + self.requirements.keywords[1])
+                    elif key in ModalityType.get_list_subclasses_names():
+                        protocol_keys = []
+                        for elt in self.requirements['Requirements']['Subject'][key]:
+                            if isinstance(elt['type'], dict):
+                                protocol_keys.extend(list(elt['type'].keys()))
+                            elif isinstance(elt['type'], list):
+                                temp_keys = [ty for clef in elt['type'] for ty in clef]
+                                protocol_keys.extend(temp_keys)
+                        protocol_keys = list(set(protocol_keys))
+                        eval(key+'.required_protocol_keys.extend(protocol_keys)')
 
             if 'Subject' + self.requirements.keywords[0] not in ParticipantsTSV.header:
                 ParticipantsTSV.header.append('Subject' + self.requirements.keywords[0])
@@ -3025,31 +3037,14 @@ class BidsDataset(MetaBrick):
                     self.is_pipeline_present(pip['name'])
                     pip_present = self.curr_pipeline['isPresent']
                     pip_index = self.curr_pipeline['index']
-                    pipDataset = Pipeline()
-                    pipDataset['ParticipantsTSV'] = ParticipantsTSV()
-                    pipDataset['ParticipantsTSV'].header = ['participant_id']
-                    pipDataset['ParticipantsTSV'].required_fields = ['participant_id']
-                    pipDataset['ParticipantsTSV'][:] =[]
-                    pipDataset['DatasetDescJSON'] = pip['DatasetDescJSON']
                     if pip_present:
-                        pipCurrent = self.curr_pipeline['Pipeline']
-                        pipDataset['name'] = pipCurrent['name']
-                        for sub in pipCurrent['SubjectProcess']:
-                            pipDataset['SubjectProcess'].append(sub)
-                        pipDataset['ParticipantsTSV'] = pipCurrent['ParticipantsTSV']
+                        pipDataset = self.curr_pipeline['Pipeline']
                     else:
-                        pipDataset['SubjectProcess'] = Subject()
-                        if not self['Derivatives']:
-                            self['Derivatives'] = Derivatives()
-                        pipDataset['name'] = pip['name']
-                        size_pipeline = len(self['Derivatives'][0]['Pipeline'])
-                        self['Derivatives'][0]['Pipeline'].append(Pipeline())
-                        pip_dict = {key: pipDataset[key] for key in pipDataset.keys() if key not in BidsSidecar.get_list_subclasses_names()}
-                        self['Derivatives'][0]['Pipeline'][size_pipeline].update(pip_dict)
-                        self.is_pipeline_present(pip)
+                        pipDataset = Pipeline(pip['name'])
+                        self['Derivatives'][0]['Pipeline'].append(pipDataset)
+                        self.is_pipeline_present(pip['name'])
+
                     pipDataset.dirname = os.path.join(BidsDataset.dirname, 'derivatives', pip['name'])
-                    #BidsDataset.dirname = os.path.join(self.dirname, 'Derivatives', pip['name'])
-                    #import pdb; pdb.set_trace()
                     for sub in pip['SubjectProcess']:
                         import_sub_idx = pip['SubjectProcess'].index(sub)
 
@@ -3118,6 +3113,7 @@ class BidsDataset(MetaBrick):
                                         keep_file_trace=False
                                         idx2pop = copy_data2import['Derivatives'][idxdev]['Pipeline'][idxpip]['SubjectProcess'][import_sub_idx][modality_type].index(modality)
                                         push_into_dataset(pipDataset, modality, keep_sourcedata, keep_file_trace, flag_process=True)
+                                        #Not sure this function is useful
                                         pipDataset.update_bids_original(self, modality)
 
                                         copy_data2import['Derivatives'][idxdev]['Pipeline'][idxpip]['SubjectProcess'][import_sub_idx][modality_type].pop(idx2pop)
@@ -3132,7 +3128,7 @@ class BidsDataset(MetaBrick):
                                         pipDataset['ParticipantsTSV'].add_subject(sub)
                             # if copy_data2import['Subject'][import_sub_idx].is_empty():
                             # pop empty subject
-                    self.is_pipeline_present(pip)
+                    self.is_pipeline_present(pip['name'])
                     if pipDataset['DatasetDescJSON']:
                         pipDataset['DatasetDescJSON'].write_file(jsonfilename=os.path.join(pipDataset.dirname, 'dataset_description.json'))
                     pipDataset['ParticipantsTSV'].write_file(tsv_full_filename=os.path.join(pipDataset.dirname, 'participants.tsv'))
@@ -3363,7 +3359,7 @@ class BidsDataset(MetaBrick):
                         hdr.modify_header(action['name'], kwargs['name'])
                         hdr.write_header()
                     for key in sidecar:
-                        if not 'group' in sidecar[key].header:
+                        if isinstance(sidecar[key], IeegChannelsTSV) and 'group' not in sidecar[key].header:
                             sidecar[key].header.append('group')
                             idx_elec_name = sidecar[key].header.index('name')
                             for line in sidecar[key][1:]:
@@ -4025,12 +4021,21 @@ class Pipeline(BidsDataset):
         if name:
             self['name'] = name
             self['DatasetDescJSON'] = DatasetDescJSON()
+            self['ParticipantsTSV'] = ParticipantsTSV()
             dataset_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, DatasetDescJSON.filename)
             if os.path.exists(dataset_dir):
                 self['DatasetDescJSON'].read_file(jsonfilename=dataset_dir)
             else:
                 self['DatasetDescJSON']['Name'] = name
                 self['DatasetDescJSON'].write_file(jsonfilename=dataset_dir)
+            participants_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, ParticipantsTSV.filename)
+            if os.path.exists(participants_dir):
+                self['ParticipantsTSV'].read_file(tsv_full_filename=participants_dir)
+            else:
+                self['ParticipantsTSV'].header = ['participant_id']
+                self['ParticipantsTSV'].required_fields = ['participant_id']
+                self['ParticipantsTSV'][:] = []
+                self['ParticipantsTSV'].write_file(tsv_full_filename=participants_dir)
 
     # def parse_filename_dervivatives(self, mod_dict, file):
     #     fname_pieces = file.split('_')
@@ -4057,6 +4062,10 @@ class Pipeline(BidsDataset):
         else:
             self['SubjectProcess'].append(SubjectProcess())
             self['SubjectProcess'][-1].update(sub.get_attributes())
+        if not self['ParticipantsTSV']:
+            self['ParticipantsTSV'] = ParticipantsTSV()
+            self['ParticipantsTSV'].header = ['participant_id']
+            self['ParticipantsTSV'][:] = []
         part_present, part_info, part_index = self['ParticipantsTSV'].is_subject_present(sub['sub'])
         if not part_present:
             self['ParticipantsTSV'].add_subject(sub)

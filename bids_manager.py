@@ -316,9 +316,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             return acss
 
         bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
-                                           initialdir=BidsManager.bids_startfile)
+                                           initialdir=self.bids_startfile)
         if not bids_dir:
             return
+        self.bids_startfile = bids_dir
         reload(bids)
         self.pack_element(self.main_frame['text'])
         self.upload_dir = None
@@ -392,9 +393,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     def ask4upload_dir(self):
         self.pack_element(self.main_frame['text'])
         self.upload_dir = filedialog.askdirectory(title='Please select a upload/import directory',
-                                                  initialdir=BidsManager.import_startfile)
+                                                  initialdir=self.import_startfile)
         if not self.upload_dir:
             return
+        self.import_startfile = self.upload_dir
         self.make_idle()
         try:
             if os.path.isfile(os.path.join(self.upload_dir, bids.Data2Import.filename)):
@@ -918,9 +920,11 @@ class IssueList(DoubleListbox):
     def __init__(self, master, cmd_apply, cmd_delete):
         super().__init__(master)
         self.user_choice = None
-        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply, height=self.button_size[0], width=self.button_size[1])
+        self.elements['apply'] = Button(master=master, text='Apply', command=cmd_apply,
+                                        height=self.button_size[0], width=self.button_size[1])
 
-        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0], width=self.button_size[1], default=ACTIVE)
+        self.elements['delete'] = Button(master=master, text='DELETE', command=cmd_delete, height=self.button_size[0],
+                                         width=self.button_size[1], default=ACTIVE)
 
     def pack_elements(self):
         super().pack_elements()
@@ -1378,7 +1382,7 @@ class ParticipantsTSVDialog(BidsTSVDialog):
         pop_menu = Menu(self.master, tearoff=0)
         pop_menu.add_command(label='Open subject dataset', command=lambda li=line, co=clmn:
                                                      self.open_subject_info(ln=li, cm=co))
-        pop_menu.add_command(label='Modify this participant"s line', command=lambda l=line: self.modify_participants_tsv(l))
+        pop_menu.add_command(label='Modify this participant"s line', command=lambda li=line: self.modify_participants_tsv(li))
         pop_menu.post(event.x_root, event.y_root)
 
 
@@ -1413,12 +1417,24 @@ class ModifDialog(TemplateDialog):
             if not cnt in self.required:
                 if self.line_modification[elt].get():
                     self.results[elt] = self.line_modification[elt].get()
+        for key in self.line_modification:
+            if isinstance(self.line_modification[key], Entry):
+                self.line_modification[key].delete(0, END)
+        self.destroy()
+
+    def cancel(self):
+        for key in self.line_modification:
+            if isinstance(self.line_modification[key], Entry):
+                self.line_modification[key].delete(0, END)
+        if self.parent is not None:
+            self.parent.focus_set()
+        self.results = None
         self.destroy()
 
 
 class FormDialog(TemplateDialog):
 
-    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, title=None):
+    def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, required_protocol_keys=None, title=None):
         def init_dict(keylist, list_attr):
             for att in list_attr:
                 setattr(self, att, {key: '' for key in keylist})
@@ -1433,6 +1449,7 @@ class FormDialog(TemplateDialog):
         #  not the wanted behaviour. This is the solution
         self.key_opt_var = {key: StringVar() for key in input_dict.keys()}
         self.required_keys = required_keys
+        self.required_protocol_keys = required_protocol_keys
         if options:
             for key in options:
                 if key in self.options.keys():
@@ -1461,6 +1478,8 @@ class FormDialog(TemplateDialog):
         for cnt, key in enumerate(self.input_dict.keys()):
             if key in self.required_keys:
                 color = 'red'
+            elif key in self.required_protocol_keys:
+                color = 'orange'
             else:
                 color = 'black'
             self.key_labels[key] = Label(parent, text=key, fg=color)
@@ -1540,7 +1559,7 @@ class BidsBrickDialog(FormDialog):
         # #  not the wanted behaviour. This is the solution
         # self.key_opt_var = {key: StringVar() for key in input_dict.keys()}
         super().__init__(parent, input_dict=self.attr_dict, options=options,
-                         required_keys=input_dict.required_keys, disabled=disabled, title=title)
+                         required_keys=input_dict.required_keys, required_protocol_keys=input_dict.required_protocol_keys, disabled=disabled, title=title)
 
     def body(self, parent):
         self.main_form(parent)
@@ -1583,6 +1602,8 @@ class BidsBrickDialog(FormDialog):
             if key not in self.key_disabled or not self.key_disabled[key] == DISABLED:
                 if key in bids.BidsSidecar.get_list_subclasses_names():
                     btn_str = 'Modify '
+                elif key == 'Derivatives':
+                    btn_str = 'Set '
                 else:
                     btn_str = 'Add '
                 self.key_button[key] = Button(parent, text=btn_str + key, justify=CENTER,
@@ -1730,29 +1751,42 @@ class BidsBrickDialog(FormDialog):
         try:
             if isinstance(self.main_brick, (bids.BidsDataset, bids.Data2Import)):
                 if key =='Derivatives':
-                    if not isinstance(self.main_brick[key], bids.Derivatives):
+                    if not isinstance(self.main_brick[key], bids.Derivatives) and not self.main_brick[key]:
                         self.main_brick[key] = bids.Derivatives()
                     sublist = [sub['sub'] for sub in self.main_brick['Subject']]
-                    dname = filedialog.askdirectory(title='Please select a derivatives directory', initialdir=bids.BidsBrick.cwdir)
+                    dname = filedialog.askdirectory(title='Please select a derivatives directory', initialdir=bids.BidsDataset.dirname)
                     pip_name = os.path.basename(dname)
-                    new_brick = bids.Pipeline(name=pip_name)
+                    self.main_brick.is_pipeline_present(pip_name)
+                    if self.main_brick.curr_pipeline['isPresent']:
+                        idx = self.main_brick.curr_pipeline['index']
+                        new_brick = self.main_brick[key][-1]['Pipeline'][idx]
+                    else:
+                        new_brick = bids.Pipeline(name=pip_name)
                     for sub in sublist:
-                        new_brick['SubjectProcess'].append(bids.SubjectProcess())
-                        new_brick['SubjectProcess'][-1]['sub'] = sub
+                        new_brick.is_subject_present(sub, flagProcess=True)
+                        if not new_brick.curr_subject['isPresent']:
+                            new_brick['SubjectProcess'].append(bids.SubjectProcess())
+                            new_brick['SubjectProcess'][-1]['sub'] = sub
                     flag_process = True
                     disbld=None
                     opt=None
                     addelements=True
                 elif key.startswith('Subject'):
-                    dname = filedialog.askdirectory(title='Please select a subject directory', initialdir=bids.BidsBrick.cwdir)
+                    dname = filedialog.askdirectory(title='Please select a subject directory', initialdir=bids.BidsDataset.dirname)
                     sub_name = os.path.basename(dname).split('-')[1]
                     if isinstance(self.main_brick, bids.Pipeline):
-                        new_brick = getattr(bids, key)()
+                        self.main_brick.is_subject_present(sub_name, flagProcess=True)
+                        str = 'Process'
                         flag_process = True
                     else:
-                        new_brick = getattr(bids, key)()
+                        self.main_brick.is_subject_present(sub_name, flagProcess=False)
+                        str =''
                         flag_process = False
-                    new_brick['sub'] = sub_name
+                    if self.main_brick.curr_subject['isPresent']:
+                        new_brick = self.main_brick.curr_subject['Subject'+str]
+                    else:
+                        new_brick = getattr(bids, key)()
+                        new_brick['sub'] = sub_name
                     addelements=True
                     disbld = None
                     opt = None
@@ -1829,7 +1863,13 @@ class BidsBrickDialog(FormDialog):
                     messagebox.showerror('Missing attributes', miss_str)
                     return
                 if key == 'Derivatives':
-                    self.main_brick[key][0]['Pipeline'].append(new_brick)
+                    self.main_brick.is_pipeline_present(pip_name)
+                    if not self.main_brick.curr_pipeline['isPresent']:
+                        self.main_brick[key][0]['Pipeline'].append(new_brick)
+                elif key.startswith('Subject'):
+                    self.main_brick.is_subject_present(result_brick['sub'], flagProcess=flag_process)
+                    if not self.main_brick.curr_subject['isPresent']:
+                        self.main_brick[key].append(new_brick)
                 else:
                     self.main_brick[key] = new_brick
                 self.populate_list(self.key_listw[key], self.main_brick[key])
@@ -2851,52 +2891,70 @@ class SelectHowToCreateTable(TemplateDialog):
     def __init__(self, parent, stat_table):
         if not isinstance(stat_table, st.CreateTable):
             raise TypeError('The input variable should be CreatTable instance')
+        self.deriv_file = {key: stat_table[key].files_header for key in stat_table}
         self.select_deriv = {key: {} for key in stat_table}
         self.multiple_choice = ['Average', 'Maximum', 'All']
-        self.header = stat_table.possibility['header']
-        self.channels = stat_table.possibility['channels']
+        # self.header = stat_table.possibility['header']
+        # self.channels = stat_table.possibility['channels']
         super().__init__(parent)
 
     def body(self, parent):
-        self.title('What metric would you like to import?')
-        value_radio = len(self.select_deriv)*len(self.multiple_choice)
-        values = list(range(2, value_radio+2, 1))
-        a=0
+        self.title('For each derivatives, choose the files to import with his metrics?')
         for key in self.select_deriv:
+            value_radio = len(self.deriv_file[key]) * len(self.multiple_choice)
+            values = list(range(2, value_radio + 2, 1))
+            a = 0
             self.select_deriv[key]['frame'] = {}
+            self.select_deriv[key]['value'] = {}
             self.select_deriv[key]['frame']['parent'] = Frame(parent, relief=RIDGE, borderwidth=2)
-            Label(self.select_deriv[key]['frame']['parent'], text=key, font=('Helvetica', '14'), fg='blue').pack(side=TOP)
-            self.select_deriv[key]['frame']['header'] = Frame(self.select_deriv[key]['frame']['parent'], relief=GROOVE, borderwidth=2)
-            self.select_deriv[key]['frame']['header'].pack(side=LEFT)
-            Label(self.select_deriv[key]['frame']['header'], text='Select your metrics:', font=('Helvetica', '12', 'bold')).grid(row=0)
-            self.select_deriv[key]['frame']['multi'] = Frame(self.select_deriv[key]['frame']['parent'], relief=GROOVE, borderwidth=2)
-            self.select_deriv[key]['frame']['multi'].pack(side=LEFT)
-            Label(self.select_deriv[key]['frame']['multi'], text='What to do if multiple files:', font=('Helvetica', '12', 'bold')).pack(side=TOP)
-            self.select_deriv[key]['value'] = []
-            self.select_deriv[key]['headervalue'] = []
-            #self.select_deriv[key]['button'] = []
-            for val in self.multiple_choice:
-                self.select_deriv[key]['value'].append(IntVar())
-                b = Radiobutton(self.select_deriv[key]['frame']['multi'], variable=self.select_deriv[key]['value'][-1], text=val, value=values[a])
-                b.pack(side=LEFT, expand=1)
-                #self.select_deriv[key]['button'].append(b)
-                a=+1
-                #self.select_deriv[key]['value'].append(b)
-            for val in self.header[key]:
-                self.select_deriv[key]['headervalue'] = CheckbuttonList(self.select_deriv[key]['frame']['header'], self.header[key], 1, 1).variable_list
+            Label(self.select_deriv[key]['frame']['parent'], text=key, font=('Helvetica', '14'), fg='blue').grid(row=0, column=0)
+            Label(self.select_deriv[key]['frame']['parent'], text='What to do if multiple files:',
+                  font=('Helvetica', '14'), fg='blue').grid(row=0, column=3)
+            for cnt, elt in enumerate(self.deriv_file[key]):
+                self.select_deriv[key]['frame'][elt] = {}
+                self.select_deriv[key]['value'][elt] = {}
+                Label(self.select_deriv[key]['frame']['parent'], text=elt).grid(row=cnt+1, column=0)
+                self.select_deriv[key]['value'][elt]['header'] = CheckbuttonList(self.select_deriv[key]['frame']['parent'], self.deriv_file[key][elt], cnt+1, 1).variable_list
+                self.select_deriv[key]['value'][elt]['multi'] = []
+                for ct, val in enumerate(self.multiple_choice):
+                    self.select_deriv[key]['value'][elt]['multi'].append(IntVar())
+                    b = Radiobutton(self.select_deriv[key]['frame']['parent'],
+                                    variable=self.select_deriv[key]['value'][elt]['multi'][-1], text=val, value=values[a])
+                    b.grid(row=cnt+1, column=3+ct)
+                    # self.select_deriv[key]['button'].append(b)
+                    a +=1
+
+            # Label(self.select_deriv[key]['frame']['header'], text='Select your metrics:', font=('Helvetica', '12', 'bold')).grid(row=0)
+            # self.select_deriv[key]['frame']['multi'] = Frame(self.select_deriv[key]['frame']['parent'], relief=GROOVE, borderwidth=2)
+            # self.select_deriv[key]['frame']['multi'].pack(side=LEFT)
+            # Label(self.select_deriv[key]['frame']['multi'], text='What to do if multiple files:', font=('Helvetica', '12', 'bold')).pack(side=TOP)
+            # self.select_deriv[key]['value'] = []
+            # self.select_deriv[key]['headervalue'] = []
+            # #self.select_deriv[key]['button'] = []
+            # for val in self.multiple_choice:
+            #     self.select_deriv[key]['value'].append(IntVar())
+            #     b = Radiobutton(self.select_deriv[key]['frame']['multi'], variable=self.select_deriv[key]['value'][-1], text=val, value=values[a])
+            #     b.pack(side=LEFT, expand=1)
+            #     #self.select_deriv[key]['button'].append(b)
+            #     a=+1
+            #     #self.select_deriv[key]['value'].append(b)
+            # for val in self.header[key]:
+            #     self.select_deriv[key]['headervalue'] = CheckbuttonList(self.select_deriv[key]['frame']['header'], self.header[key], 1, 1).variable_list
             self.select_deriv[key]['frame']['parent'].pack(side=TOP)
         self.ok_cancel_button(parent)
 
     def ok(self):
         self.results = {key: {} for key in self.select_deriv}
         for key in self.select_deriv:
-            self.results[key]['header'] =[]
-            for cnt, val in enumerate(self.select_deriv[key]['value']):
-                if val.get():
-                    self.results[key]['multi'] = self.multiple_choice[cnt]
-            for cnt, val in enumerate(self.select_deriv[key]['headervalue']):
-                if val.get():
-                    self.results[key]['header'].append(self.header[key][cnt])
+            for clef in self.deriv_file[key]:
+                self.results[key][clef] = {}
+                self.results[key][clef]['header'] = []
+                for cnt, val in enumerate(self.select_deriv[key]['value'][clef]['multi']):
+                    if val.get():
+                        self.results[key][clef]['multi'] = self.multiple_choice[cnt]
+                for cnt, val in enumerate(self.select_deriv[key]['value'][clef]['header']):
+                    if val.get():
+                        self.results[key][clef]['header'].append(self.deriv_file[key][clef][cnt])
         self.destroy()
 
 
