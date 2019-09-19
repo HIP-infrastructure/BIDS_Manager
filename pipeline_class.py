@@ -47,9 +47,10 @@ class DerivativesSetting(object):
             it_exist = False
             for pip in pip_list:
                 if pip.startswith(pip_name):
-                    variant = pip.split('-')
-                    if len(variant) > 1:
-                        variant_list.append(variant[1:])
+                    # variant = pip.split('-')
+                    # if len(variant) > 1:
+                    #     variant_list.append(variant[1:])
+                    variant_list.append(pip)
                     it_exist=True
             return it_exist, variant_list
         directory_name = None
@@ -65,7 +66,7 @@ class DerivativesSetting(object):
                         desc_data['SourceDataset']['sub'].append(subject_list['sub'])
                 if not directory_name:
                     directory_name = pip_name + '-v' + str(len(variant_list) + 1)
-                    desc_data = DatasetDescPipeline(param_var, subject_list)
+                    desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                     desc_data['Name'] = directory_name
             # if it_exist and not variant_list:
             #     directory_name = pip_name + '-v1'
@@ -73,7 +74,7 @@ class DerivativesSetting(object):
             #     directory_name = pip_name + '-v' + str(len(variant_list)+1)
             else:
                 directory_name = pip_name
-                desc_data = DatasetDescPipeline(param_var, subject_list)
+                desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                 desc_data['Name'] = directory_name
         else:
             directory_name = pip_name
@@ -188,22 +189,28 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
         super().__init__()
         if filename:
             self.read_file(filename)
-        elif param_vars and subject_list:
+        else:
             self['PipelineDescription'] = {}
-            for key in param_vars:
-                if key=='Callname':
-                    self['PipelineDescription']['Name'] = param_vars[key]
-                else:
-                    self['PipelineDescription'][key] = param_vars[key]
-            self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
             self['Author'] = getpass.getuser()
             self['Date'] = str(datetime.datetime.now())
+            if param_vars and subject_list:
+                for key in param_vars:
+                    if key=='Callname':
+                        self['PipelineDescription']['Name'] = param_vars[key]
+                    else:
+                        self['PipelineDescription'][key] = param_vars[key]
+                self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
+
 
     def compare_parameters(self, param_vars, subject_list):
         keylist = [key for key in param_vars if not key == 'Callname']
         is_same = []
         for key in keylist:
-            if self['PipelineDescription'][key] == param_vars[key]:
+            if isinstance(self['PipelineDescription'], str):
+                is_same = False
+                no_subject = False
+                return is_same, no_subject
+            elif self['PipelineDescription'][key] == param_vars[key]:
                 is_same.append(True)
             else:
                 is_same.append(False)
@@ -483,8 +490,7 @@ class PipelineSetting(dict):
                     self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
                     self.write_json_associated(use_list, output_directory, cmd_arg)
                     idx = idx + 1
-                if not self.log_error:
-                    participants.append({'participant_id': sub})
+                participants.append({'participant_id': sub})
         else:
             self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs. \n'.format(self['Name'])
             return self.log_error
@@ -793,7 +799,7 @@ class AnyWave(Parameters):
         order = {}
         #Handle the input and output
         cnt_tot = 0
-        for cn, elt in enumerate():
+        for cn, elt in enumerate(input):
             if elt['multiplesubject'] and elt['type'] == 'dir':
                 cmd_line += elt['tag'] + ' ' + self.bids_directory
             else:
@@ -888,7 +894,7 @@ class Matlab(Parameters):
         cmd_end = ''
         if mode == 'automatic':
             if not cmd_line_set:
-                cmd_line_set = "matlab -nodisplay -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); "
+                cmd_line_set = "matlab -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); "
             cmd_end = '; exit\"'
         elif mode == 'manual':
             if not cmd_line_set:
@@ -1068,10 +1074,10 @@ class InputArguments(Parameters):
 
     def get_input_values(self, sub, input_param=None):
         if self['type'] == 'file':
-            subject = SubjectToAnalyse()
+            subject = SubjectToAnalyse(input_param)
             subject['sub'] = sub
             #ne fonctionne pas, comment vérifier que les valeurs prises soit bien celle demandé par l'utilsateur
-            subject.copy_values(input_param)
+            #subject.copy_values(input_param)
             input_files = self.get_subject_files(subject)
         elif self['type'] == 'dir':
             input_files = [os.path.join(self.bids_directory, 'sub-'+sub)]
@@ -1106,7 +1112,9 @@ class InputArguments(Parameters):
 
     def get_subject_files(self, subject):#, modality, subject_list, curr_bids):
         input_files = []
-        modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if any(elmt in subject['modality'] for elmt in eval('bids.'+elt+'.allowed_modalities'))]
+        modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elt in subject['modality']]
+        if not modality:
+            modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if any(elmt in subject['modality'] for elmt in eval('bids.' + elt + '.allowed_modalities'))]
         #curr_bids = bids.BidsDataset(self.bids_directory)['Subject']
         for sub in self.curr_bids['Subject']:
             if sub['sub'] == subject['sub']:
@@ -1354,17 +1362,26 @@ class Arguments(Parameters):
 
 
 class SubjectToAnalyse(Parameters):
-    keylist = ['sub', 'ses', 'task', 'acq', 'proc', 'run']
+    required_keys = ['sub']
+    keylist = required_keys + ['ses', 'task', 'acq', 'proc', 'run']
+
 
     def __init__(self, input_dict=None):
         for key in self.keylist:
             self[key] = []
         if input_dict:
+            for key in input_dict.keys():
+                self[key] = []
             self.copy_values(input_dict)
 
     def copy_values(self, input_dict):
         for key in input_dict:
-            self[key] = input_dict[key]
+            if key not in self.keys():
+                self[key] = []
+            if isinstance(input_dict[key], str):
+                self[key].append(input_dict[key])
+            else:
+                self[key] = input_dict[key]
 
     def write_file(self, output_directory):
         filename = os.path.join(output_directory, 'subjects_selected_file.json')

@@ -860,8 +860,6 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.make_available()
             return
 
-        print('coucou')
-
     @staticmethod
     def make_table(table):
         string_table = ''
@@ -2812,7 +2810,7 @@ class TableForStatsDialog(TemplateDialog):
 
     def body(self, parent):
         self.title('Select directories to create your statistical table')
-        self.geometry('800x600')
+        self.geometry('1000x800')
         double_frame = Frame(parent)
         double_frame.pack(side=TOP)
         folder_frame = Frame(double_frame, relief='groove')

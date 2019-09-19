@@ -40,7 +40,7 @@ class CreateTable(dict):
         tsv_dict = {}
         for key in self:
             for file in self[key].files_header:
-                if file == 'header':
+                if file == 'files':
                     st = ''
                 else:
                     st = '_'+file
@@ -52,10 +52,14 @@ class CreateTable(dict):
                     else:
                         header_key = [hd + st for hd in head_main]
                     idx_channels = self[key][sub].specific_file[file]
-                    nbr_chan = len(self[key][sub].electrodes_label[idx_channels])
+                    if not idx_channels:
+                        channels = self[key][sub].electrodes_label[:]
+                    else:
+                        channels = self[key][sub].electrodes_label[idx_channels]
+                    nbr_chan = len(channels)
                     if sub not in tsv_dict.keys():
                         tsv_dict[sub] = {}
-                        tsv_dict[sub]['channels'] = self[key][sub].electrodes_label[idx_channels]
+                        tsv_dict[sub]['channels'] = channels
                         tsv_dict[sub]['patient_id'] = [sub] * nbr_chan
                     for hd in header_key:
                         tsv_dict[sub][hd] = ['NaN'] * nbr_chan
@@ -67,7 +71,7 @@ class CreateTable(dict):
             for i in range(0, len(tsv_dict[sub]['patient_id']), 1):
                 temp_dict = {key: tsv_dict[sub][key][i] for key in tsv_dict[sub]}
                 tsv_file.append(temp_dict)
-        tsv_file.write_file(tsvfilename=os.path.join(self.derivatives_dir, 'statistics_table_max.tsv'))
+        tsv_file.write_file(tsvfilename=os.path.join(self.derivatives_dir, 'statistics_table_maximum.tsv'))
         return err
 
 
@@ -81,13 +85,13 @@ class Derivatives(dict):
         for sub in self:
             for elt in self[sub].specific_file:
                 idx = self[sub].specific_file[elt]
-                if elt not in self.files_header:
+                if elt == 'files':
+                    self.files_header[elt] = self[sub].header_label
+                elif elt not in self.files_header:
                     self.files_header[elt] = self[sub].header_label[idx]
                 elif elt in self.files_header:
                     if not self.files_header[elt] == self[sub].header_label[idx]:
                         error += 'Files throught subjects don"t have the same header for same analysis.\n'
-                elif elt == 'files':
-                    self.files_header[elt] = self[sub].header_label
         return error
 
 
@@ -106,7 +110,7 @@ class SubjectData(Derivatives):
         if self['channels'].is_specific_file:
             self.specific_file = {key: cnt for cnt, key in enumerate(self['channels'])}
         else:
-            self.specific_file = {'files': 0}
+            self.specific_file = {'files': None}
         self.electrodes_label = [val for val in self['channels'].values_label]
         self.header_label = [val for val in self['header'].values_label]
         for elt in self['data']:
@@ -125,10 +129,10 @@ class SubjectData(Derivatives):
             return res_dict
 
         clef = file_type
-        if file_type:
-            st ='_'+file_type
-        elif file_type == 'files':
+        if file_type == 'files':
             st = ''
+        elif file_type:
+            st ='_'+file_type
         chan_list = tsv_dict['channels']
         for hd in header_key:
             hd_label = hd+st
@@ -143,14 +147,15 @@ class SubjectData(Derivatives):
                         if tsv_dict[hd_label][key] == 'NaN':
                             tsv_dict[hd_label][key] = hd_dict[key]
                         elif hd_dict[key] != 'NaN' and tsv_dict[hd_label][key] != 'NaN':
-                            tsv_dict[hd_label][key] = max(tsv_dict[hd_label][key], hd_dict[key])
+                            tsv_dict[hd_label][key] = str(max(float(tsv_dict[hd_label][key]), float(hd_dict[key])))
                 elif multi_type == 'Average':
                     for key in hd_dict:
-                        tsv_dict[hd_label][key] = 0
-                        if hd_dict[key] != 'NaN':
-                            tsv_dict[hd_label][key] += float(hd_dict[key])
+                        if tsv_dict[hd_label][key] == 'NaN':
+                            tsv_dict[hd_label][key] = float(hd_dict[key])
+                        elif hd_dict[key] != 'NaN':
+                            tsv_dict[hd_label][key] = tsv_dict[hd_label][key] + float(hd_dict[key])
                         else:
-                            tsv_dict[hd_label][key] += 0
+                            tsv_dict[hd_label][key] = tsv_dict[hd_label][key] + 0
             if multi_type == 'Average':
                 size = len(self[clef])
                 tsv_dict[hd_label] = [str(val/size) for val in tsv_dict[hd_label]]
@@ -215,7 +220,6 @@ class Channels(ManipulateData):
         super().__init__(multiple_file=multiple_file)
 
 
-
 def read_tsv_table(file):
     file = open(file, 'r+')
     data = file.readlines()
@@ -232,15 +236,18 @@ def read_tsv_table(file):
 
 def read_mat_table(file):
     data = loadmat(file)
-    header = list(data.keys())
+    header = [key for key in data.keys() if not key.startswith('__')]
     channels = []
     for key in data:
-        if key in ['electrode_names', 'label']:
-            if isinstance(data[key], ndarray):
-                channels = data[key].tolist()
-                channels = [elt[0] for elt in channels[0]]
-            else:
-                channels = data[key]
+        if isinstance(data[key], ndarray):
+            data[key] = data[key].tolist()
+        if key in ['electrode_names', 'label', 'channels', 'Channels']:
+            for elt in data[key]:
+                if isinstance(elt, ndarray):
+                    channels.extend(elt.tolist())
+                else:
+                    channels.extend(elt)
+    #channels = [elt.tolist() for elt in channels if isinstance(elt, ndarray)]
     return data, channels, header
 
 
@@ -248,22 +255,22 @@ def read_xls_table(file):
     workbook = xlrd.open_workbook(file)
     nsheets = workbook.nsheets
     data = {}
-    header = []
+    header = {}
     channels = []
     for i in range(0, nsheets, 1):
         worksheet = workbook.sheet_by_index(i)
         nrow = worksheet.nrows
         if nrow:
             head = worksheet.row(0)
-            tmp_header = [elt.value for elt in head]
-            if not header:
-                header = tmp_header
-            elif not header == tmp_header:
-                raise ValueError('The different sheets don"t have the same header.\n')
+            header[str(i)] = [elt.value for elt in head]
+            # if not header:
+            #     header = tmp_header
+            # elif not header == tmp_header:
+            #     raise ValueError('The different sheets don"t have the same header.\n')
             data[str(i)] = [worksheet.row_values(ro) for ro in range(0, nrow, 1)]
-            for key in header:
+            for key in header[str(i)]:
                 if key in ['electrode_names', 'label', 'Channels', 'Channel']:
-                    idx = header.index(key)
+                    idx = header[str(i)].index(key)
                     tmp_channels = [elt[idx] for elt in data[str(i)][1:]]
                     if not channels:
                         channels = tmp_channels
@@ -329,17 +336,31 @@ def parse_mod_dir(path, extd=None):
         filename = os.path.join(path, fil)
         name, ext = os.path.splitext(fil)
         ext = ext.split('.')[1]
+        if ext == 'xlsx':
+            ext = 'xls'
         metrique, channels, header = eval('read_'+ext+'_table(filename)')
         if possible_elt:
             for elt in possible_elt:
                 if elt in fil:
-                    metric[elt][name] = metrique
-                    chanlabel[elt][name] = channels
-                    header_val[elt][name] = header
+                    if isinstance(metrique, dict) and isinstance(header, dict):
+                        for key in metrique:
+                            metric[elt][name+'_'+key] = metrique[key]
+                            header_val[elt][name+'_'+key] = header[key]
+                            chanlabel[elt][name + '_' + key] = channels
+                    else:
+                        metric[elt][name] = metrique
+                        header_val[elt][name] = header
+                        chanlabel[elt][name] = channels
         else:
-            metric['files'][name] = metrique
-            chanlabel['files'][name] = channels
-            header_val['files'][name] = header
+            if isinstance(metrique, dict) and isinstance(header, dict):
+                for key in metrique:
+                    metric['files'][name + '_' + key] = metrique[key]
+                    header_val['files'][name + '_' + key] = header[key]
+                    chanlabel['files'][name+ '_' + key] = channels
+            else:
+                metric['files'][name] = metrique
+                header_val['files'][name] = header
+                chanlabel['files'][name] = channels
 
     return metric, chanlabel, header_val
     #
