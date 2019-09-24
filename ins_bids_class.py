@@ -4004,7 +4004,7 @@ class Pipeline(BidsDataset):
     curr_name = None
     list_ext = ['.nii', '.vhdr', '.txt']
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, dirname=None):
         self.requirements = BidsDataset.requirements
         self.parsing_path = BidsDataset.parsing_path
         self.log_path = BidsDataset.log_path
@@ -4019,16 +4019,20 @@ class Pipeline(BidsDataset):
                 self[key] = ''
 
         if name:
+            if dirname:
+                dataset_dir = os.path.join(dirname, name, DatasetDescJSON.filename)
+                participants_dir = os.path.join(dirname, name, ParticipantsTSV.filename)
+            else:
+                dataset_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, DatasetDescJSON.filename)
+                participants_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, ParticipantsTSV.filename)
             self['name'] = name
             self['DatasetDescJSON'] = DatasetDescJSON()
             self['ParticipantsTSV'] = ParticipantsTSV()
-            dataset_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, DatasetDescJSON.filename)
             if os.path.exists(dataset_dir):
                 self['DatasetDescJSON'].read_file(jsonfilename=dataset_dir)
             else:
                 self['DatasetDescJSON']['Name'] = name
                 self['DatasetDescJSON'].write_file(jsonfilename=dataset_dir)
-            participants_dir = os.path.join(BidsDataset.dirname, 'derivatives', name, ParticipantsTSV.filename)
             if os.path.exists(participants_dir):
                 self['ParticipantsTSV'].read_file(tsv_full_filename=participants_dir)
             else:

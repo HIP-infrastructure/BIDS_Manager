@@ -21,7 +21,7 @@ class DerivativesSetting(object):
         elif isinstance(bids_dev, str):
             if os.path.exists(bids_dev) and bids_dev.endswith('derivatives'):
                 self.path = bids_dev
-                self.read_directory()
+                self.read_directory(bids_dev)
 
     def read_directory(self, dev_dir):
         with os.scandir(dev_dir) as it:
@@ -29,8 +29,13 @@ class DerivativesSetting(object):
                 if entry.is_dir():
                     pip = bids.Pipeline()
                     pip.dirname = entry.path
-                    self.parse_pipeline(pip.dirname, entry.name)
-                    self.pipelines.append(pip)
+                    empty_dir = self.empty_dirs(entry.name, recursive=True)
+                    if not empty_dir:
+                        self.parse_pipeline(pip.dirname, entry.name)
+                    else:
+                        shutil.rmtree(entry.path, ignore_errors=True)
+                    #self.pipelines.append(pip)
+
 
     def is_empty(self):
         default = ['log', 'parsing']
@@ -59,9 +64,12 @@ class DerivativesSetting(object):
             it_exist, variant_list = check_pipeline_variant(pip_list, pip_name)
             if it_exist:
                 for elt in variant_list:
-                    desc_data = DatasetDescPipeline(filename=os.path.join(self.path, elt))
-                    same_param, sub_not_inside = desc_data.compare_parameters(param_var, subject_list)
-                    if same_param and sub_not_inside:
+                    dataset_file = os.path.join(self.path, elt, DatasetDescPipeline.filename)
+                    if not os.path.exists(dataset_file):
+                        dataset_file = None
+                    desc_data = DatasetDescPipeline(filename=dataset_file)
+                    same_param, sub_inside = desc_data.compare_parameters(param_var, subject_list)
+                    if same_param and not sub_inside:
                         directory_name = elt
                         desc_data['SourceDataset']['sub'].append(subject_list['sub'])
                 if not directory_name:
@@ -120,7 +128,7 @@ class DerivativesSetting(object):
                             subinfo[mod_dir + 'Process'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'Process'][-1].get_attributes_from_filename()
                             subinfo[mod_dir + 'Process'][-1]['modality'] = mod_dir
-                            subinfo[mod_dir + 'Process'][-1].get_sidecar_files()
+                            #subinfo[mod_dir + 'Process'][-1].get_sidecar_files()
                         # elif mod_dir + 'GlobalSidecars' in bids.BidsBrick.get_list_subclasses_names() and ext.lower() \
                         #         in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
                         #         in [eval(value + '.modality_field') for _, value in
@@ -156,10 +164,7 @@ class DerivativesSetting(object):
 
         is_present, index_pip = self.pipeline_is_present(pip_name)
         if not is_present:
-            pip = bids.Pipeline(pip_name)
-            # pip['name'] = pip_name
-            # pip['DatasetDescJSON'] = bids.DatasetDescJSON()
-            # pip['DatasetDescJSON'].read_file(jsonfilename=os.path.join(directory_path, 'dataset_description.json'))
+            pip = bids.Pipeline(name=pip_name, dirname=self.path)
             self.pipelines.append(pip)
         else:
             pip = self.pipelines[index_pip]
@@ -179,11 +184,38 @@ class DerivativesSetting(object):
                     pip['SubjectProcess'][-1]['sub'] = subname
                     parse_sub_bids_dir(entry.path, pip['SubjectProcess'][-1])
 
+    def empty_dirs(self, pip_name, recursive=False):
+        def is_empty(files, default_files):
+            return (len(files) == 0 or all(file in default_files for file in files))
+
+        empty_dirs = False
+        emp_dirs = []
+        pip_directory = os.path.join(self.path, pip_name)
+        analyse_name = pip_name.split('-')[0].lower()
+        default_files = [DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename, 'log_error_analyse.log', analyse_name + '_parameters.json']
+        for root, dirs, files in os.walk(pip_directory, topdown=False):
+            # print root, dirs, files
+            if recursive:
+                all_subs_empty = True  # until proven otherwise
+                for sub in dirs:
+                    full_sub = os.path.join(root, sub)
+                    if full_sub not in emp_dirs:
+                        # print full_sub, "not empty"
+                        all_subs_empty = False
+                        break
+            else:
+                all_subs_empty = (len(dirs) == 0)
+            if all_subs_empty and is_empty(files, default_files):
+                empty_dirs = True
+                emp_dirs.append(root)
+                # yield root
+        return empty_dirs
+
 
 class DatasetDescPipeline(bids.DatasetDescJSON):
     keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Author', 'Date']
     filename = 'dataset_description.json'
-    bids_version = '1.0.1'
+    bids_version = '1.3.0'
 
     def __init__(self, filename=None, param_vars=None, subject_list=None):
         super().__init__()
@@ -195,12 +227,26 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
             self['Date'] = str(datetime.datetime.now())
             if param_vars and subject_list:
                 for key in param_vars:
-                    if key=='Callname':
+                    if key == 'Callname':
                         self['PipelineDescription']['Name'] = param_vars[key]
                     else:
                         self['PipelineDescription'][key] = param_vars[key]
                 self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
 
+    def read_file(self, jsonfilename):
+        if os.path.splitext(jsonfilename)[1] == '.json':
+            if not os.path.exists(jsonfilename):
+                print('datasetdescription.json does not exists.')
+                return
+            with open(jsonfilename, 'r') as file:
+                read_json = json.load(file)
+                for key in read_json:
+                    if key == 'Authors' and isinstance(self[key], list) and self[key] == ['n/a']:
+                        self[key] = read_json[key]
+                    elif (key in self.keylist and self[key] == 'n/a') or key not in self.keylist:
+                        self[key] = read_json[key]
+        else:
+            raise TypeError('File is not ".json".')
 
     def compare_parameters(self, param_vars, subject_list):
         keylist = [key for key in param_vars if not key == 'Callname']
@@ -215,19 +261,20 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
             else:
                 is_same.append(False)
         is_same = all(is_same)
-        if not subject_list['sub'] in self['SourceDataset']['sub']:
-            no_subject = True
-        else:
-            no_subject = False
+        subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
 
-        return is_same, no_subject
+        return is_same, subject_inside
 
+    def update(self, subject2add):
+        for elt in subject2add:
+            if elt not in self['SourceDataset']['sub']:
+                self['SourceDataset']['sub'].extend(subject2add)
 
 
 class PipelineSetting(dict):
     #A changer pour que l'utilisateurs indique le dossier des softwares json
     keylist = ['Name', 'Path', 'Parameters']
-    soft_path = r'D:\ProjectPython\SoftwarePipeline'
+    soft_path = os.path.join(os.getcwd(), 'SoftwarePipeline')#r'D:\ProjectPython\SoftwarePipeline'
     log_error = ''
     curr_dev = None
     curr_bids = None
@@ -412,16 +459,6 @@ class PipelineSetting(dict):
         return param_vars, input_vars
 
     def set_everything_for_analysis(self, param_vars, subject_list, input_param):
-        def check_length_input_output(inout_list):
-            taille = [len(elt) for elt in inout_list if isinstance(elt, list)]
-            taille = list(set(taille))
-            if not taille:
-                taille = 1
-                return taille
-            elif len(taille) > 1:
-                return 'ERROR: the number of inputs and outputs is differents'
-            else:
-                return taille[0]
 
         def list_for_str_format(order, idx):
             use_list = []
@@ -492,12 +529,19 @@ class PipelineSetting(dict):
                     idx = idx + 1
                 participants.append({'participant_id': sub})
         else:
-            self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs. \n'.format(self['Name'])
+            self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             return self.log_error
-        participants.write_file(tsv_full_filename=os.path.join(output_directory, 'participants.tsv'))
-        self.write_error_system(output_directory)
-        dev.parse_pipeline(output_directory, output_name)
-        self.curr_bids.save_as_json()
+        empty_dir = dev.empty_dirs(output_name, recursive=True)
+        if not empty_dir:
+            participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
+            dataset_desc.update(subject_to_analyse['sub'])
+            dataset_desc.write_file(jsonfilename=os.path.join(output_directory, DatasetDescPipeline.filename))
+            self.write_error_system(output_directory)
+            dev.parse_pipeline(output_directory, output_name)
+            self.curr_bids.save_as_json()
+        else:
+            self.log_error += str(datetime.datetime.now()) + ': ' + 'Warning: The folder {0} has no results so your analysis may not succeed. The folder {0} will be erased.\n'.format(output_name)
+            shutil.rmtree(output_directory)
 
         return self.log_error
 
@@ -1224,7 +1268,6 @@ class Output(Parameters):
 
         in_out[idx] = output_files
 
-
     def command_arg(self, output_dir, soft_name, subject_list, input_type, input_file_list=None):
         def create_output_file(output_dir, filename, extension, soft_name, bids_directory):
             out_file = []
@@ -1364,7 +1407,6 @@ class Arguments(Parameters):
 class SubjectToAnalyse(Parameters):
     required_keys = ['sub']
     keylist = required_keys + ['ses', 'task', 'acq', 'proc', 'run']
-
 
     def __init__(self, input_dict=None):
         for key in self.keylist:

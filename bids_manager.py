@@ -43,9 +43,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_startfile = r'\\dynaserv\SPREAD\SPREAD'
         import_startfile = r'\\dynaserv\SPREAD\uploaded_data'
     else:
-        bids_startfile = r'D:\Data'
-        import_startfile = r'D:\Data'
-        folder_software = r'D:\ProjectPython\SoftwarePipeline'
+        bids_startfile = os.path.join(os.getcwd(), 'Data')
+        import_startfile = os.path.join(os.getcwd(), 'Data')
+        folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
 
     def __init__(self):
         super().__init__()
@@ -833,6 +833,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             #self.ask4bidsdir(isnew_dir=False)
         output_dict = BidsSelectDialog(self, self.curr_bids, soft_analyse)
         if output_dict.log_error:
+            self.update_text(output_dict.log_error)
             self.make_available()
             return
         #add the parameters
@@ -847,9 +848,17 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.make_idle('Create your statistical table')
         deriv_dir = os.path.join(self.curr_bids.dirname, 'derivatives')
         select_list = TableForStatsDialog(self, deriv_dir)
+        if not select_list.results:
+            self.update_text('The creation of the statistic  table has been cancelled')
+            self.make_available()
+            return
         try:
             stat_table = st.CreateTable(deriv_dir, select_list.results)
             type_select = SelectHowToCreateTable(self, stat_table)
+            if not type_select.results:
+                self.update_text('The creation of the statistic  table has been cancelled')
+                self.make_available()
+                return
             error = stat_table.create_tsv_table(type_select.results)
             if error:
                 messagebox.showerror('ERROR', error)
@@ -1476,7 +1485,7 @@ class FormDialog(TemplateDialog):
         for cnt, key in enumerate(self.input_dict.keys()):
             if key in self.required_keys:
                 color = 'red'
-            elif key in self.required_protocol_keys:
+            elif self.required_protocol_keys and key in self.required_protocol_keys:
                 color = 'orange'
             else:
                 color = 'black'
@@ -2147,7 +2156,7 @@ class BidsSelectDialog(TemplateDialog):
         self.vars = None
         self.input_vars = None
         self.param_vars = None
-        self.log_error = 'The running has been cancel.'
+        self.log_error = 'The pipeline selection has been cancel.'
         self.destroy()
 
     def select_criteria(self, participant_dict):
@@ -2921,23 +2930,6 @@ class SelectHowToCreateTable(TemplateDialog):
                     b.grid(row=cnt+1, column=3+ct)
                     # self.select_deriv[key]['button'].append(b)
                     a +=1
-
-            # Label(self.select_deriv[key]['frame']['header'], text='Select your metrics:', font=('Helvetica', '12', 'bold')).grid(row=0)
-            # self.select_deriv[key]['frame']['multi'] = Frame(self.select_deriv[key]['frame']['parent'], relief=GROOVE, borderwidth=2)
-            # self.select_deriv[key]['frame']['multi'].pack(side=LEFT)
-            # Label(self.select_deriv[key]['frame']['multi'], text='What to do if multiple files:', font=('Helvetica', '12', 'bold')).pack(side=TOP)
-            # self.select_deriv[key]['value'] = []
-            # self.select_deriv[key]['headervalue'] = []
-            # #self.select_deriv[key]['button'] = []
-            # for val in self.multiple_choice:
-            #     self.select_deriv[key]['value'].append(IntVar())
-            #     b = Radiobutton(self.select_deriv[key]['frame']['multi'], variable=self.select_deriv[key]['value'][-1], text=val, value=values[a])
-            #     b.pack(side=LEFT, expand=1)
-            #     #self.select_deriv[key]['button'].append(b)
-            #     a=+1
-            #     #self.select_deriv[key]['value'].append(b)
-            # for val in self.header[key]:
-            #     self.select_deriv[key]['headervalue'] = CheckbuttonList(self.select_deriv[key]['frame']['header'], self.header[key], 1, 1).variable_list
             self.select_deriv[key]['frame']['parent'].pack(side=TOP)
         self.ok_cancel_button(parent)
 
