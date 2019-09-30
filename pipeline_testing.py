@@ -91,7 +91,7 @@ class ParameterTest(unittest.TestCase):
     def setUp(self):
         self.results = {}
         self.results['subject_selected'] = {'sub': ['01', '02', '03']}
-        self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '10sec', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
+        self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '20', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
         self.results['input_param'] = {}
         self.results['input_param']['--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
         self.results['input_param']['--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
@@ -104,13 +104,22 @@ class ParameterTest(unittest.TestCase):
         subjects_results = {'sub': ['01', '02', '03'], '--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run': ['01']}, '--input_anat': {'modality': ['T1w'], 'acq': ['preimp']}}
         self.assertEqual(subjects, subjects_results)
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_tmp = 'D:/Data/testing --input_ieeg {0} --input_anat {1} --output_file {2} --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'
         self.assertIsInstance(cmd_arg, pip.Parameters)
+        self.assertEqual(cmd_line, cmd_tmp)
         self.assertIsNotNone(order)
         taille, idx_in, in_out = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
         for sub in in_out:
             in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr'.format(sub)], ['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\anat\\sub-{0}_ses-01_acq-preimp_T1w.nii'.format(sub)], [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.mat'.format(sub), 'D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.tsv'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
+            idx = 0
+            while idx < taille[sub]:
+                use_list = list_for_str_format(in_out[sub], idx)
+                cmd = cmd_line.format(*use_list)
+                cmd_final = 'D:/Data/testing --input_ieeg D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr --input_anat D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\anat\\sub-{0}_ses-01_acq-preimp_T1w.nii --output_file "D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.mat, D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.tsv" --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'.format(sub)
+                self.assertEqual(cmd, cmd_final)
+                idx = idx + 1
 
     def test_bids_directory_input(self):
         self.results['input_param'] = {}
@@ -169,13 +178,13 @@ class ParameterTest(unittest.TestCase):
         #assert intermediate instance
         analyse = pip.PipelineSetting(__bids_dataset__, 'h2')
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'C:/anywave_september/AnyWave.exe --run   "D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json" --input_file {0} --output_dir {1} '
+        cmd_tmp = 'C:/anywave_september/AnyWave.exe --run "D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json" --input_file {0} --output_dir {1}'
         self.assertIsInstance(cmd_arg, pip.AnyWave)
         self.assertEqual(cmd_line, cmd_tmp)
 
         analyse = pip.PipelineSetting(__bids_dataset__, 'example')
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'docker run -i --rm -v D:\\Data\\testing\\test_dataset:/bids_dataset:ro -v D:\\Data\\testing\\test_dataset\\derivatives\\testing:/outputs bids/example /bids_dataset /outputs --participant_label [01 02 03] '
+        cmd_tmp = 'docker run -i --rm -v D:\\Data\\testing\\test_dataset:/bids_dataset:ro -v D:\\Data\\testing\\test_dataset\\derivatives\\testing:/outputs bids/example /bids_dataset /outputs --participant_label [01 02 03]'
         self.assertIsInstance(cmd_arg, pip.Docker)
         self.assertEqual(cmd_line, cmd_tmp)
 
@@ -210,6 +219,18 @@ def suite_init():
     #suite.addTest(DerivativesTest('test_create_output_directory'))
     return suite
 
+
+def list_for_str_format(order, idx):
+    use_list = []
+    for elt in order:
+        if isinstance(elt, list):
+            if isinstance(elt[idx], list):
+                use_list.append('"'+', '.join(elt[idx])+'"')
+            else:
+                use_list.append(elt[idx])
+        else:
+            use_list.append(elt)
+    return use_list
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(failfast=True, verbosity=3)

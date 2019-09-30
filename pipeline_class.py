@@ -485,7 +485,7 @@ class PipelineSetting(dict):
             for elt in order:
                 if isinstance(elt, list):
                     if isinstance(elt[idx], list):
-                        use_list.append(', '.join(elt[idx]))
+                        use_list.append('"'+', '.join(elt[idx])+'"')
                     else:
                         use_list.append(elt[idx])
                 else:
@@ -790,9 +790,9 @@ class Parameters(dict):
 
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         if not cmd_line_set:
-            cmd_base = self.curr_path + ' '
+            cmd_base = self.curr_path
         else:
-            cmd_base = self.curr_path + cmd_line_set + ' '
+            cmd_base = self.curr_path + cmd_line_set
 
         cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
         cmd = cmd_base + cmd_line
@@ -806,26 +806,29 @@ class Parameters(dict):
             if clef == 'Input':
                 for elt in input_dict:
                     if elt['multiplesubject'] and elt['type'] == 'dir':
-                        cmd_line += elt['tag'] + ' ' + self.bids_directory + ' '
+                        cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
                     else:
                         order[elt['tag']] = cnt_tot
-                        cmd_line += elt['tag'] + ' {' + str(cnt_tot) + '} '
+                        cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                         cnt_tot += 1
             elif clef == 'Output':
                 if output_dict['multiplesubject'] and output_dict['directory']:
-                    cmd_line += output_dict['tag'] + ' ' + output_directory + ' '
+                    cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
                 else:
                     order[output_dict['tag']] = cnt_tot
-                    cmd_line += output_dict['tag'] + ' {' + str(cnt_tot) + '} '
+                    cmd_line += ' ' + output_dict['tag'] + ' {' + str(cnt_tot) + '}'
                     cnt_tot += 1
                 #cmd_line += determine_input_output_type(output_dict, cnt_tot, order)
                 #order.append(output_dict)
             elif isinstance(self[clef], bool):
-                cmd_line += clef + ' '
+                cmd_line += ' ' + clef
             elif isinstance(self[clef], list):
-                cmd_line += clef + ' "' + ', '.join(self[clef]) + '" '
+                if len(self[clef]) == 1:
+                    cmd_line += ' ' + clef + ' ' + self[clef][0]
+                else:
+                    cmd_line += ' ' + clef + ' "' + ', '.join(self[clef]) + '"'
             else:
-                cmd_line += clef + ' ' + self[clef] + ' '
+                cmd_line += ' ' + clef + ' ' + self[clef]
         return cmd_line, order
 
     def verify_log_for_errors(self, input, x):
@@ -869,8 +872,8 @@ class AnyWave(Parameters):
         self['plugin'] = self.callname
         cmd_end = ''
         if not cmd_line_set:
-            cmd_line_set = ' --run '
-        cmd_base = self.curr_path + cmd_line_set + ' '
+            cmd_line_set = ' --run'
+        cmd_base = self.curr_path + cmd_line_set
 
         cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
         cmd = cmd_base + cmd_line
@@ -883,30 +886,30 @@ class AnyWave(Parameters):
         del self['Output']
         with open(jsonfilename, 'w') as json_file:
             json.dump(self, json_file)
-        cmd_line = ' "' + jsonfilename + '" '
+        cmd_line = ' "' + jsonfilename + '"'
 
         order = {}
         #Handle the input and output
         cnt_tot = 0
         for cn, elt in enumerate(input):
             if elt['multiplesubject'] and elt['type'] == 'dir':
-                cmd_line += elt['tag'] + ' ' + self.bids_directory
+                cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
             else:
                 if not elt['tag']:
                     order['in' + str(cn)] = cnt_tot
                 else:
                     order[elt['tag']] = cnt_tot
-                cmd_line += elt['tag'] + ' {' + str(cnt_tot) + '} '
+                cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                 cnt_tot += 1
 
         if output['multiplesubject'] and output['directory']:
-            cmd_line += output['tag'] + ' ' + output_directory
+            cmd_line += ' ' + output['tag'] + ' ' + output_directory
         else:
             if not output['tag']:
                 order['out'] = cnt_tot
             else:
                 order[output['tag']] = cnt_tot
-            cmd_line += output['tag'] + ' {' + str(cnt_tot) + '} '
+            cmd_line += ' ' + output['tag'] + ' {' + str(cnt_tot) + '}'
             cnt_tot += 1
 
         return cmd_line, order
@@ -944,7 +947,7 @@ class Docker(Parameters):
         if not cmd_line_set:
             cmd_line_set = 'docker run -ti --rm'
         #should change outputs in derivatives normally
-        cmd_base = cmd_line_set + ' -v ' + self.bids_directory + ':/bids_dataset:ro -v ' + self.derivatives_directory + ':/outputs ' + self.callname + ' /bids_dataset /outputs '
+        cmd_base = cmd_line_set + ' -v ' + self.bids_directory + ':/bids_dataset:ro -v ' + self.derivatives_directory + ':/outputs ' + self.callname + ' /bids_dataset /outputs'
 
         cmd_line, order = self.chaine_parameters(input_p, output_p)
         cmd = cmd_base + cmd_line
@@ -965,16 +968,16 @@ class Docker(Parameters):
             #             cnt_tot += 1
             # el
             if isinstance(self[clef], bool):
-                cmd_line += clef + ' '
+                cmd_line += ' ' + clef
             elif isinstance(self[clef], list):
                 if len(self[clef]) > 1:
                     value = ' '.join(self[clef])
-                    cmd_line += clef + ' [' + value + '] '
+                    cmd_line += ' ' + clef + ' [' + value + ']'
                 else:
                     value = self[clef][0]
-                    cmd_line += clef + ' ' + value + ' '
+                    cmd_line += ' ' + clef + ' ' + value
             else:
-                cmd_line += clef + ' ' + self[clef] + ' '
+                cmd_line += ' ' + clef + ' ' + self[clef]
         return cmd_line, order
 
 
@@ -1017,7 +1020,7 @@ class Matlab(Parameters):
                 if output_dict['multiplesubject'] and output_dict['directory']:
                     if output_dict['tag']:
                         cmd_line.append("'"+output_dict['tag']+"'")
-                    cmd_line.append("'" + output_directory + "' ")
+                    cmd_line.append("'" + output_directory + "'")
                 else:
                     if not output_dict['tag']:
                         order['out'] = cnt_tot
