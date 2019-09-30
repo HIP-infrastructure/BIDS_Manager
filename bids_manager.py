@@ -837,10 +837,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.make_available()
             return
         #add the parameters
-        self.update_text('Subjects selected \n' + '\n'.join(output_dict.subject_selected['sub']) + '\nThe analysis is ready to be run')
+        self.update_text('Subjects selected \n' + '\n'.join(output_dict.results['subject_selected']['sub']) + '\nThe analysis is ready to be run')
         self.make_idle('Analysis in process')
-        log_analysis = soft_analyse.set_everything_for_analysis(output_dict.analysis_param, output_dict.subject_selected, output_dict.input_param)
-        self.update_text(log_analysis)
+        log_analysis = soft_analyse.set_everything_for_analysis(output_dict.results) #['analysis_param'], output_dict.results['subject_selected'], output_dict.reults['input_param']
+        #self.update_text(log_analysis)
         self.curr_bids.write_log(log_analysis)
         self.make_available()
 
@@ -1995,7 +1995,6 @@ def make_cmd4elecnamechg(new_name, curr_iss, mismtch_elec):
 class BidsSelectDialog(TemplateDialog):
     bidsdataset = None
     select_subject = None
-    #subject_list = {'SubjectToAnalyse': []}
 
     def __init__(self, parent, input_dict, analysis_dict):
 
@@ -2019,45 +2018,53 @@ class BidsSelectDialog(TemplateDialog):
 
         self.software = analysis_dict
         try:
-            self.param_vars, self.input_vars = self.software.create_parameter_to_inform()
+            self.param_vars, self.input_vars, warn_error = self.software.create_parameter_to_inform()
             self.param_script = IntVar()
             self.param_gui = IntVar()
             self.param_file = []
         except EOFError as err:
             messagebox.showerror('ERROR', err)
             return
+        if warn_error:
+            messagebox.showwarning('WARNING', warn_error)
 
-        if self.input_vars:
-            req_keys = [key for key in pip.SubjectToAnalyse.keylist if not key == 'sub']
-            for clef in self.input_vars:
-                if self.input_vars[clef]['modality']['attribut'] == 'Label':
-                    modality = [self.input_vars[clef]['modality']['value']]
-                else:
-                    modality = self.input_vars[clef]['modality']['value']
-                for sub in BidsSelectDialog.bidsdataset['Subject']:
-                    for mod in sub:
-                        if mod and mod in modality:
-                            keys = [elt for elt in req_keys if elt in eval('bids.'+mod+'.keylist')]
-                            if mod in bids.Imagery.get_list_subclasses_names():
-                                keys.append('modality')
-                            for key in keys:
-                                value = [elt[key] for elt in sub[mod]]
-                                value = sorted(list(set(value)))
-                                if '' in value:
-                                    value.remove('')
-                                if value and value[0] is not '':
-                                    if not key in self.input_vars[clef]:
-                                        self.input_vars[clef][key] = {}
-                                        self.input_vars[clef][key]['value'] = value
-                                        self.input_vars[clef][key]['attribut'] = 'IntVar'
-                                    elif key == 'modality' and self.input_vars[clef][key]['attribut'] == 'Label':
-                                        self.input_vars[clef][key]['value'] = value
-                                        self.input_vars[clef][key]['attribut'] = 'IntVar'
-                                    else:
-                                        self.input_vars[clef][key]['value'].extend(value)
-                                    self.input_vars[clef][key]['value'] = sorted(list(set(self.input_vars[clef][key]['value'])))
-                                    if len(self.input_vars[clef][key]['value']) > 1:
-                                        self.input_vars[clef][key]['attribut'] = 'Variable'
+        if not self.input_vars:
+            self.input_vars = {'Input_': {'modality': {}}}
+            self.input_vars['Input_']['modality']['attribut'] = 'Listbox'
+            self.input_vars['Input_']['modality']['value'] = bids.Imagery.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
+
+        req_keys = [key for key in pip.SubjectToAnalyse.keylist]
+        for clef in self.input_vars:
+            if self.input_vars[clef]['modality']['attribut'] == 'Label':
+                modality = [self.input_vars[clef]['modality']['value']]
+            else:
+                modality = self.input_vars[clef]['modality']['value']
+            for sub in BidsSelectDialog.bidsdataset['Subject']:
+                for mod in sub:
+                    if mod and mod in modality:
+                        keys = [elt for elt in req_keys if elt in eval('bids.' + mod + '.keylist')]
+                        if mod in bids.Imagery.get_list_subclasses_names():
+                            keys.append('modality')
+                        for key in keys:
+                            value = [elt[key] for elt in sub[mod]]
+                            value = sorted(list(set(value)))
+                            if '' in value:
+                                value.remove('')
+                            if value and value[0] is not '':
+                                if not key in self.input_vars[clef]:
+                                    self.input_vars[clef][key] = {}
+                                    self.input_vars[clef][key]['value'] = value
+                                    self.input_vars[clef][key]['attribut'] = 'IntVar'
+                                elif key == 'modality' and self.input_vars[clef][key]['attribut'] == 'Label':
+                                    self.input_vars[clef][key]['value'] = value
+                                    self.input_vars[clef][key]['attribut'] = 'IntVar'
+                                else:
+                                    self.input_vars[clef][key]['value'].extend(value)
+                                self.input_vars[clef][key]['value'] = sorted(
+                                    list(set(self.input_vars[clef][key]['value'])))
+                                if len(self.input_vars[clef][key]['value']) > 1:
+                                    self.input_vars[clef][key]['attribut'] = 'Variable'
+
 
         super().__init__(parent)
 
@@ -2136,14 +2143,15 @@ class BidsSelectDialog(TemplateDialog):
 
 
     def ok(self):
-        self.subject_selected = self.get_the_subject_id()
+        self.results = {key: {} for key in ['input_param', 'subject_selected', 'analysis_param']}
+        self.results['subject_selected'] = self.get_the_subject_id()
         if self.param_script.get():
-            self.analysis_param = self.param_file[0]
+            self.results['analysis_param'] = self.param_file[0]
         else:
-            self.analysis_param = self.get_parameter_from_gui(self.param_vars)
-        self.input_param = {}
+            self.results['analysis_param'] = self.get_parameter_from_gui(self.param_vars)
         for inp in self.input_vars:
-            self.input_param[inp[6:]] = self.get_parameter_from_gui(self.input_vars[inp])
+            self.results['input_param'][inp[6:]] = self.get_parameter_from_gui(self.input_vars[inp])
+
         self.destroy()
         self.vars = {}
         self.input_vars = {}
@@ -2156,6 +2164,7 @@ class BidsSelectDialog(TemplateDialog):
         self.vars = None
         self.input_vars = None
         self.param_vars = None
+        self.results = None
         self.log_error = 'The pipeline selection has been cancel.'
         self.destroy()
 
@@ -2317,8 +2326,8 @@ class BidsSelectDialog(TemplateDialog):
     def create_button(self, frame, var_dict, max_col=None):
         if not max_col:
             max_col = 1
-        label_dict = {clef: '' for clef in var_dict.keys()}
-        for cnt, key in enumerate(var_dict):
+        label_dict = {clef: '' for clef in var_dict.keys() if var_dict[clef]['attribut'] != 'Label'}
+        for cnt, key in enumerate(label_dict):
             label_dict[key] = Label(frame, text=key)
             label_dict[key].grid(row=cnt + 1, sticky=W)
             att_type = var_dict[key]['attribut']
