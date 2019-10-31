@@ -20,6 +20,12 @@ class PipelineTest(unittest.TestCase):
             soft_analyse = pip.PipelineSetting(os.path.join(__main_dir__, 'bids_vide'), self.software_name)
         with self.assertRaises(EOFError):
             soft_analyse = pip.PipelineSetting(__bids_dir__, 'h2', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        with self.assertRaises(EOFError):
+            soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_path_error',
+                                                   soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        with self.assertRaises(EOFError):
+            soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror',
+                                               soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         keys = [key for key in soft_analyse]
         self.assertEqual(keys, pip.PipelineSetting.keylist)
@@ -34,6 +40,9 @@ class PipelineTest(unittest.TestCase):
                 self.assertIsInstance(soft_analyse['Parameters'][key], pip.Arguments)
 
     def test_get_arguments(self):
+        with self.assertRaises(EOFError):
+            soft = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+            param_vars, in_vars, error_log = soft.create_parameter_to_inform()
         soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         param_vars, in_vars, error_log = soft_analyse.create_parameter_to_inform()
         param_tmp = dict()
@@ -51,13 +60,13 @@ class PipelineTest(unittest.TestCase):
             elif cnt == 2:
                 in_tmp[elt] = dict()
                 in_tmp[elt]['modality'] = dict()
-                in_tmp[elt]['modality']['attribut'] = 'Label'
                 in_tmp[elt]['modality']['value'] = "Ieeg"
+                in_tmp[elt]['modality']['attribut'] = 'Label'
             elif cnt == 3:
                 in_tmp[elt] = dict()
                 in_tmp[elt]['modality'] = dict()
-                in_tmp[elt]['modality']['attribut'] = 'Label'
                 in_tmp[elt]['modality']['value'] = "Anat"
+                in_tmp[elt]['modality']['attribut'] = 'Label'
             elif cnt == 4:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'StringVar'
@@ -72,9 +81,10 @@ class PipelineTest(unittest.TestCase):
                 param_tmp[elt]['attribut'] = 'Variable'
                 param_tmp[elt]['value'] = ['ses', 'task', 'modality']
             elif cnt == 7:
-                param_tmp[elt] = dict()
-                param_tmp[elt]['attribut'] = 'Label'
-                param_tmp[elt]['value'] = 'acq'
+                in_tmp['arg_readbids'] = ['acq']
+            #     param_tmp[elt] = dict()
+            #     param_tmp[elt]['attribut'] = 'Label'
+            #     param_tmp[elt]['value'] = 'acq'
             elif cnt == 8:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'File'
@@ -211,11 +221,11 @@ def suite_init():
     suite.addTest(PipelineTest('test_init'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected
-    suite.addTest(ParameterTest('test_multiple_input_output'))
-    suite.addTest(ParameterTest('test_bids_directory_input'))
-    suite.addTest(ParameterTest('test_input_directory'))
-    suite.addTest(ParameterTest('test_infile_outdir'))
-    suite.addTest(ParameterTest('test_instance_parameter'))
+    # suite.addTest(ParameterTest('test_multiple_input_output'))
+    # suite.addTest(ParameterTest('test_bids_directory_input'))
+    # suite.addTest(ParameterTest('test_input_directory'))
+    # suite.addTest(ParameterTest('test_infile_outdir'))
+    # suite.addTest(ParameterTest('test_instance_parameter'))
     #suite.addTest(DerivativesTest('test_create_output_directory'))
     return suite
 
@@ -231,6 +241,7 @@ def list_for_str_format(order, idx):
         else:
             use_list.append(elt)
     return use_list
+
 
 if __name__ == '__main__':
     runner = unittest.TextTestRunner(failfast=True, verbosity=3)

@@ -36,7 +36,6 @@ class DerivativesSetting(object):
                         shutil.rmtree(entry.path, ignore_errors=True)
                     #self.pipelines.append(pip)
 
-
     def is_empty(self):
         default = ['log', 'parsing']
         pip_list = [pip['name'] for pip in self.pipelines if pip['name'] not in default]
@@ -291,10 +290,10 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
                     self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
                     self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
 
+
 class PipelineSetting(dict):
-    #A changer pour que l'utilisateurs indique le dossier des softwares json
     keylist = ['Name', 'Path', 'Parameters']
-    soft_path = os.path.join(os.getcwd(), 'SoftwarePipeline')#r'D:\ProjectPython\SoftwarePipeline'
+    soft_path = os.path.join(os.getcwd(), 'SoftwarePipeline')
     log_error = ''
     curr_dev = None
     curr_bids = None
@@ -320,7 +319,9 @@ class PipelineSetting(dict):
         if soft_path and os.path.exists(soft_path):
             self.soft_path = soft_path
         if soft_name + '.json' in os.listdir(self.soft_path):
-            self.read_json_parameter_file(soft_name)
+            err_str = self.read_json_parameter_file(soft_name)
+            if err_str:
+                raise EOFError(err_str)
         else:
             self.log_error += 'ERROR: The software doesn"t exist'
             raise EOFError(self.log_error)
@@ -373,6 +374,8 @@ class PipelineSetting(dict):
         if self.curr_path.startswith('ERROR'):
             raise EOFError(self.curr_path)
         #check the validity of the json ??
+        if not all(key in self.keys() for key in self.keylist):
+            raise EOFError("JSON is not conform.")
 
     def create_parameter_to_inform(self):
         def read_file(file, elements):
@@ -470,11 +473,14 @@ class PipelineSetting(dict):
                 if not param:
                     raise EOFError("All the dataset is not ready for this analysis.\n There is no file format {0} in your Bids database.".format(reading_file))
                 elif not is_same:
-                    error_log += 'WARNING: Not all files have the same elements'
+                    error_log += 'WARNING: Not all files have the same elements.'
 
                 param_vars[key]['value'] = [par for par in param if not par in mark_to_remove]
         for key in keys_2_remove:
             del param_vars[key]
+
+        if self['Parameters'].arg_readbids:
+            input_vars['arg_readbids'] = self['Parameters'].arg_readbids
 
         return param_vars, input_vars, error_log
 
@@ -491,14 +497,12 @@ class PipelineSetting(dict):
                 else:
                     use_list.append(elt)
             return use_list
-
-        param_vars = results['analysis_param']
         # subject_list = results['subject_selected']
         #input_param = results['input_param']
-        subject_to_analyse = SubjectToAnalyse(results['subject_selected']['sub'], input_dict=results['input_param'])
         # for inp, value in input_param.items():
         #     subject_to_analyse.copy_values(value)
         #Check if the param are dict or file
+        param_vars = results['analysis_param']
         if isinstance(param_vars, str):
             file, ext = os.path.splitext(param_vars)
             if not ext == '.json':
@@ -510,12 +514,24 @@ class PipelineSetting(dict):
 
         #save the param_vars in json file for next analysis
         try:
+            # update the parameters and get the subjects
+            self['Parameters'].update_values(param_vars, results['input_param'])
+            #Verify the validity of the input value
+            warn, err = verify_subject_has_parameters(self.curr_bids,
+                                                      results['subject_selected']['sub'],
+                                                      results['input_param'],
+                                                      self['Parameters']['Input'])
+            if warn:
+                self.log_error += 'Warning: ' + warn
+            if err:
+                raise ValueError(err)
+            subject_to_analyse = SubjectToAnalyse(results['subject_selected']['sub'], input_dict=results['input_param'])
             dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
             output_directory, output_name, dataset_desc = dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
-            participants = bids.ParticipantsTSV()
+            participants = bids.ParticipantsProcessTSV()
 
-            #update the parameters and get the subjects
-            self['Parameters'].update_values(param_vars)
+
+            # Check if the subjects have all the required values
             self['Parameters'].write_file(output_directory)
             # subject_to_analyse = SubjectToAnalyse(subject_list)
             # for inp, value in input_param.items():
@@ -526,7 +542,7 @@ class PipelineSetting(dict):
 
             #Get the value for the command_line
             cmd_arg, cmd_line, order, input_dict, output_dict = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
-        except (EOFError, TypeError, ValueError) as er:
+        except (EOFError, TypeError, ValueError, SystemError) as er:
             self.log_error += str(er)
             self.write_error_system()
             return self.log_error
@@ -693,9 +709,10 @@ class Parameters(dict):
     callname = None
     curr_path = None
     curr_bids = None
+    arg_readbids = []
     filename = 'parameters_file.json'
 
-    def __init__(self, bids_directory=None, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None):
         if dev_path:
             self.derivatives_directory = dev_path
         if callname:
@@ -715,13 +732,17 @@ class Parameters(dict):
                 self[key].copy_values(input_dict[key])
 
     def create_parameter_to_inform(self, param_vars, key=None):
+        bool_list = []
         for key, value in self.items():
             if key in Parameters.get_list_subclasses_names() + ParametersSide.get_list_subclasses_names():
                 value.create_parameter_to_inform(param_vars, key=key)
             elif isinstance(value, Arguments):
-                value.create_parameter_to_inform(param_vars, key=key)
+                readbids = value.create_parameter_to_inform(param_vars, key=key)
+                if readbids is not None:
+                    self.arg_readbids.append(readbids)
 
-    def update_values(self, input_dict):
+
+    def update_values(self, input_dict, input_param=None):
         keylist = list(self.keys())
         for key in input_dict:
             if key in keylist:
@@ -731,6 +752,12 @@ class Parameters(dict):
                 if isinstance(tag, list):
                     tag = '_'.join(tag)
                 self[new_key].update_values(input_dict[key], tag)
+        if input_param:
+            input_tag = [elt['tag'] for elt in self['Input']]
+            for inp in input_param:
+                if inp in input_tag:
+                    idx = input_tag.index(inp)
+                    self['Input'][idx].update_values(input_param[inp])
 
     def check_presence_of_software(self, curr_path):
         def type_of_software(name, intermediaire):
@@ -806,11 +833,22 @@ class Parameters(dict):
             if clef == 'Input':
                 for elt in input_dict:
                     if elt['multiplesubject'] and elt['type'] == 'dir':
-                        cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
+                        if not elt.deriv_input:
+                            cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
+                        elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ''):
+                            cmd_line += ' ' + elt['tag'] +  ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'])
                     else:
-                        order[elt['tag']] = cnt_tot
-                        cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
-                        cnt_tot += 1
+                        if elt.deriv_input:
+                            if elt['deriv-folder'] == '' and not elt['optional']:
+                                raise ValueError('The derivative folder for this paramater {} should be mentionned.\n'.format(elt['tag']))
+                            elif elt['deriv-folder'] != '':
+                                order[elt['tag']] = cnt_tot
+                                cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
+                                cnt_tot += 1
+                        else:
+                            order[elt['tag']] = cnt_tot
+                            cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
+                            cnt_tot += 1
             elif clef == 'Output':
                 if output_dict['multiplesubject'] and output_dict['directory']:
                     cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
@@ -942,6 +980,13 @@ class AnyWave(Parameters):
 class Docker(Parameters):
     keylist = ['command_line_base', 'Intermediate', 'Callname']
 
+    def __init__(self, curr_path=None, dev_path=None, callname=None):
+        super().__init__(curr_path=curr_path, dev_path=dev_path, callname=callname)
+        out_docker = subprocess.check_output("docker -v", shell=True)
+        out_docker = out_docker.decode("utf-8")
+        if not out_docker.startswith('Docker version'):
+            raise SystemError('Docker is not installed on your computer.\n Please install docker before to continue.\n')
+
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         os.system('docker pull ' + self.callname)
         if not cmd_line_set:
@@ -1071,9 +1116,13 @@ class Mode(ParametersSide):
             param_vars[key]['value'] = self[-1]
 
     def update_values(self, input_dict):
+        key2remove = []
         for elt in self:
             if not elt == input_dict:
-                self.remove(elt)
+                key2remove.append(elt)
+                #self.remove(elt)
+        for key in key2remove:
+            self.remove(key)
 
 
 class Input(ParametersSide):
@@ -1090,7 +1139,7 @@ class Input(ParametersSide):
             param_vars[key] = {}
             input.create_parameter_to_inform(param_vars, key=key)
 
-    def update_values(self, input_dict, tag):
+    def update_values(self, input_dict, tag, input_param=None):
         for elt in self:
             if elt['tag'] == tag:
                 elt.update_values(input_dict)
@@ -1124,19 +1173,24 @@ class Input(ParametersSide):
 
         in_out = {clef: ['']*len(order) for clef in subject_to_analyse['sub']}
         temp = {clef: 0 for clef in subject_to_analyse['sub']}
+        order_tag = [tag for tag in order]
         idx_in = []
         for cn, elt in enumerate(self):
+            not_inside = False
             if not elt['tag']:
                 idx = order['in'+str(cn)]
+            elif elt['tag'] not in order_tag:
+                not_inside = True
             else:
                 idx = order[elt['tag']]
-            elt.get_input_values(subject_to_analyse, in_out, idx)
-            # if temp:
-            #     if temp != len(in_out[idx]):
-            #         raise ValueError('The elements in the list don"t have the same size')
-            # else:
-            #     temp = len(in_out[idx])
-            idx_in.append(idx)
+            if not not_inside:
+                elt.get_input_values(subject_to_analyse, in_out, idx)
+                # if temp:
+                #     if temp != len(in_out[idx]):
+                #         raise ValueError('The elements in the list don"t have the same size')
+                # else:
+                #     temp = len(in_out[idx])
+                idx_in.append(idx)
         for sub in in_out:
             if len(idx_in) > 1:
                 error = compare_length_multi_input(in_out[sub], idx_in)
@@ -1149,24 +1203,34 @@ class Input(ParametersSide):
 
 class InputArguments(Parameters):
     keylist = ['tag', 'multiplesubject', 'modality', 'type']
+    keylist_deriv = keylist + ['deriv-folder', 'filetype', 'optional']
     path_key = ['sub', 'ses', 'modality']
     multiplesubject = False
+    deriv_input = False
 
-    def copy_values(self, input_dict, flag_process=False):
+    def copy_values(self, input_dict): #, flag_process=False):
         keys = list(input_dict.keys())
-        if not keys == self.keylist and not flag_process:
+        if not keys == self.keylist and not keys == self.keylist_deriv: #and not flag_process:
             raise KeyError('Your json is not conform.\n')
         else:
             for key in input_dict:
                 if key == 'modality' and isinstance(input_dict[key], str):
                     self[key] = []
                     self[key].append(input_dict[key])
+                elif key == 'deriv-folder':
+                    self[key] = input_dict[key]
+                    self.deriv_input = True
                 else:
                     self[key] = input_dict[key]
         if self['multiplesubject'] and self['type'] == 'file':
             raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
 
     def create_parameter_to_inform(self, param_vars, key=None):
+        if self.deriv_input: #self.read_deriv_fold is not None:
+            param_vars[key]['deriv-folder'] = dict()
+            param_vars[key]['deriv-folder']['attribut'] = 'Listbox'
+            deriv_list = [elt['name'] for elt in self.curr_bids['Derivatives'][-1]['Pipeline'] if elt['name'] not in ['log', 'parsing', 'parsing_old']]
+            param_vars[key]['deriv-folder']['value'] = deriv_list
         if self['modality']:
             param_vars[key]['modality'] = dict()
             if len(self['modality']) > 1:
@@ -1179,9 +1243,24 @@ class InputArguments(Parameters):
             return
 
     def update_values(self, input_dict):
-        self['value_selected'] = input_dict
+        for key in input_dict:
+            if key in self.keys() and key == 'deriv-folder':
+                self[key] = input_dict[key]
+        #self['value_selected'] = input_dict
 
     def get_input_values(self, subject_to_analyse, in_out, idx):#sub, input_param=None):
+        if self.deriv_input: #'deriv-folder' in self.keys():
+            if self['deriv-folder'] and self['deriv-folder'] != '':
+                self.curr_bids.is_pipeline_present(self['deriv-folder'])
+                if not self.curr_bids.curr_pipeline['isPresent']:
+                    raise ValueError(
+                        'The derivatives folder {} selected doesn"t exists in the Bids Dataset.\n'.format(
+                            self['deriv-folder']))
+                #self.read_deriv_fold = subject_to_analyse[self['tag']]['deriv-folder']
+            elif self['deriv-folder'] == '' and self['optional']:
+                return
+            else:
+                raise ValueError('You have to select a derivatives folder for the input {}'.format(self['tag']))
         if self['type'] == 'file':
             for sub in subject_to_analyse['sub']:
                 in_out[sub][idx] = self.get_subject_files(subject_to_analyse[self['tag']], sub)
@@ -1196,73 +1275,104 @@ class InputArguments(Parameters):
             for sub in subject_to_analyse['sub']:
                 path_key['sub'] = sub
                 chemin = []
+                if self.deriv_input:
+                    chemin.append('derivatives\\' + self['deriv-folder'])
+                    path_key['modality'] = path_key['modality'] + 'Process'
                 for key, val in path_key.items():
                     if val and key != 'modality':
                         chemin.append(key+'-'+val)
                     elif val and key == 'modality':
                         if val not in bids.ModalityType.get_list_subclasses_names():
                             for mod in bids.ModalityType.get_list_subclasses_names():
-                                if val in eval('bids.'+mod+'.allowed_modalities'):
+                                if val.split('Process')[0] in eval('bids.'+mod+'.allowed_modalities'):
                                     val = mod
                         chemin.append(val.lower())
                 in_out[sub][idx] = [os.path.join(self.bids_directory, '\\'.join(chemin))]
 
-    def command_arg(self, subject_list, curr_bids):
-        f_list = []
-        if 'value_selected' in self.keys():
-            modality = self['value_selected']
-        else:
-            modality = self['modality']
-        if not modality:
-            pass
-            #return 'ERROR: Don"t know on each modality we should process'
-        else:
-            subject_list['modality'] = modality
+    # def command_arg(self, subject_list, curr_bids):
+    #     f_list = []
+    #     if 'value_selected' in self.keys():
+    #         modality = self['value_selected']
+    #     else:
+    #         modality = self['modality']
+    #     if not modality:
+    #         pass
+    #         #return 'ERROR: Don"t know on each modality we should process'
+    #     else:
+    #         subject_list['modality'] = modality
+    #
+    #     if self['type'] == 'file':
+    #         f_list = self.get_subject_files(modality, subject_list, curr_bids)
+    #     elif self['type'] == 'sub':
+    #         f_list = subject_list['sub']
+    #     elif self['type'] == 'dir':
+    #         f_list = curr_bids.cwdir
+    #     else:
+    #         raise ValueError('The selected type is not conform')
+    #     input_to_return = InputArguments()
+    #     input_to_return[self['tag']] = f_list
+    #     input_to_return.multiplesubject = self.multiplesubject
+    #
+    #     return input_to_return #{self['tag']: f_list}
 
-        if self['type'] == 'file':
-            f_list = self.get_subject_files(modality, subject_list, curr_bids)
-        elif self['type'] == 'sub':
-            f_list = subject_list['sub']
-        elif self['type'] == 'dir':
-            f_list = curr_bids.cwdir
-        else:
-            raise ValueError('The selected type is not conform')
-        input_to_return = InputArguments()
-        input_to_return[self['tag']] = f_list
-        input_to_return.multiplesubject = self.multiplesubject
-
-        return input_to_return #{self['tag']: f_list}
-
-    def get_subject_files(self, subject, sub_id):#, modality, subject_list, curr_bids):
+    def get_subject_files(self, subject, sub_id, deriv_reader=None):#, modality, subject_list, curr_bids):
         input_files = []
+        if 'modality' not in subject.keys():
+            subject['modality'] = self['modality']
         modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elt in subject['modality']]
         if not modality:
             modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if any(elmt in subject['modality'] for elmt in eval('bids.' + elt + '.allowed_modalities'))]
-        #curr_bids = bids.BidsDataset(self.bids_directory)['Subject']
-        for sub in self.curr_bids['Subject']:
-            if sub['sub'] == sub_id:
-                for mod in sub:
-                    if mod in modality:
-                        for elt in sub[mod]:
-                            is_equal = []
-                            for key in elt:
-                                if key in subject.keys() and subject[key]:
-                                    if elt[key] in subject[key]:
-                                        is_equal.append(True)
-                                    elif key == 'modality':
+        if self.deriv_input:
+            self.curr_bids.is_pipeline_present(self['deriv-folder'])
+            for sub in self.curr_bids.curr_pipeline['Pipeline']['SubjectProcess']:
+                if sub['sub'] == sub_id:
+                    for mod in sub:
+                        if mod in modality:
+                            for elt in sub[mod]:
+                                is_equal = []
+                                for key in elt:
+                                    if key in subject.keys() and subject[key]:
                                         if elt[key] in subject[key]:
                                             is_equal.append(True)
-                                        elif elt[key].capitalize() in subject[key]:
+                                        elif key == 'modality':
+                                            pass
+                                        else:
+                                            is_equal.append(False)
+                                    elif key == 'fileLoc':
+                                        if elt[key].endswith(self['filetype']):
                                             is_equal.append(True)
                                         else:
                                             is_equal.append(False)
-                                    else:
-                                        is_equal.append(False)
-                            is_equal = list(set(is_equal))
-                            if not is_equal:
-                                pass
-                            elif len(is_equal) == 1 and is_equal[0]:
-                                input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+                                is_equal = list(set(is_equal))
+                                if not is_equal:
+                                    pass
+                                elif len(is_equal) == 1 and is_equal[0]:
+                                    input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+        else:
+            for sub in self.curr_bids['Subject']:
+                if sub['sub'] == sub_id:
+                    for mod in sub:
+                        if mod in modality:
+                            for elt in sub[mod]:
+                                is_equal = []
+                                for key in elt:
+                                    if key in subject.keys() and subject[key]:
+                                        if elt[key] in subject[key]:
+                                            is_equal.append(True)
+                                        elif key == 'modality':
+                                            if elt[key] in subject[key]:
+                                                is_equal.append(True)
+                                            elif elt[key].capitalize() in subject[key]:
+                                                is_equal.append(True)
+                                            else:
+                                                is_equal.append(False)
+                                        else:
+                                            is_equal.append(False)
+                                is_equal = list(set(is_equal))
+                                if not is_equal:
+                                    pass
+                                elif len(is_equal) == 1 and is_equal[0]:
+                                    input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
 
         return input_files
 
@@ -1428,12 +1538,17 @@ class Arguments(Parameters):
     bids_value = ['readbids', 'type']
 
     def copy_values(self, input_dict):
+        keylist = list(input_dict.keys())
+        if keylist != self.unit_value and keylist != self.read_value and keylist != self.list_value and keylist != self.file_value and keylist != self.bool_value and keylist != self.bids_value:
+            raise EOFError(
+                'The keys in Parameters of your JSON file are not conform.\n Please modify it according to the given template.\n')
         for key in input_dict:
             self[key] = input_dict[key]
 
     def create_parameter_to_inform(self, param_vars, key=None):
         param_vars[key] = {}
         keys = list(self.keys())
+        readbids = None
         if keys == self.unit_value:
             param_vars[key]['attribut'] = 'StringVar'
             param_vars[key]['value'] = str(self['default']+self['unit'])
@@ -1452,8 +1567,10 @@ class Arguments(Parameters):
             param_vars[key]['attribut'] = 'Bool'
             param_vars[key]['value'] = self['default']
         elif keys == self.bids_value:
-            param_vars[key]['attribut'] = 'Label'
-            param_vars[key]['value'] = self['type']
+            # param_vars[key]['attribut'] = 'Label'
+            # param_vars[key]['value'] = self['type']
+            readbids = self['type']
+            del param_vars[key]
         elif keys == self.read_value:
             if self['multipleselection']:
                 st_type = 'Variable'
@@ -1462,6 +1579,10 @@ class Arguments(Parameters):
             param_vars[key]['attribut'] = st_type
             reading_type = self['read'].strip('*')
             param_vars[key]['value'] = {'file': reading_type, 'elements': self['elementstoread']}
+        else:
+            raise EOFError('The keys in Parameters of your JSON file are not conform.\n Please modify it according to the template given.\n')
+
+        return readbids
 
     def update_values(self, input_dict):
         if not input_dict:
@@ -1490,7 +1611,7 @@ class Arguments(Parameters):
 
 class SubjectToAnalyse(Parameters):
     #required_keys = 'sub'
-    keylist = ['ses', 'task', 'acq', 'proc', 'run']
+    keylist = ['ses', 'task', 'acq', 'proc', 'run', 'modality']
 
     def __init__(self, sub_list, input_dict=None):
         if isinstance(sub_list, list):
@@ -1504,10 +1625,21 @@ class SubjectToAnalyse(Parameters):
                     if isinstance(val[clef], list):
                         self[key][clef] = val[clef]
                     else:
-                        self[key][clef]  = [val[clef]]
+                        self[key][clef] = [val[clef]]
         else:
             for key in self.keylist:
                 self[key] = []
+
+    # def check_subjects_param(self):
+    #     input_keys = [key for key in self.keys()if key != 'sub']
+    #     flag_list = any(key == 'modality' for key in input_keys)
+    #     for sub in self['sub']:
+    #         self.curr_bids.is_subject_present(sub)
+    #         if not flag_list:
+    #             for elt in input_keys:
+    #                 mod_type = input_keys[elt]['modality'][0]
+    #                 if mod_type
+
 
     def copy_values(self, input_dict):
         for key in input_dict:
@@ -1523,6 +1655,70 @@ class SubjectToAnalyse(Parameters):
         with open(filename, 'w+') as f:
             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
             f.write(json_str)
+
+
+def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
+    warn_txt = ''
+    err_txt = ''
+    sub2remove = []
+    deriv_folder = None
+    for key in input_vars:
+        keylist = []
+        if input_vars[key] is None:
+            continue
+        if 'modality' not in input_vars[key].keys() and param is None:
+            warn_txt += 'No modality has been mentionned for the input {}. Bids pipeline will select the one by default.\n'.format(key)
+            input_vars[key]['modality'] = bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
+        elif 'modality' not in input_vars[key].keys() and param[key]:
+            input_vars[key]['modality'] = param[key]['modality']
+        if 'deriv-folder' in input_vars[key].keys():
+            deriv_folder = input_vars[key]['deriv-folder']
+            if deriv_folder == '':
+                continue
+        if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
+            mod = []
+            for elmt in input_vars[key]['modality']:
+                if elmt in bids.ModalityType.get_list_subclasses_names():
+                    mod.append(elmt)
+                else:
+                    val = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elmt in eval('bids.' + elt + '.allowed_modalities')]
+                    if deriv_folder:
+                        val = [va for va in val if va in bids.Process.get_list_subclasses_names()]
+                    else:
+                        val = [va for va in val if va not in bids.Process.get_list_subclasses_names()]
+                    mod.extend(val)
+            mod = list(set(mod))
+        else:
+            mod = input_vars[key]['modality']
+        if len(mod) > 1:
+            err_txt += 'There is too many modalities selected in the input {}\n.'.format(key)
+            return warn_txt, err_txt
+        keylist = [clef for clef in input_vars[key] if (clef != 'modality' and clef != 'deriv-folder')]
+        for clef in keylist:
+            for sid in sub_id:
+                if deriv_folder:
+                    curr_bids.is_pipeline_present(deriv_folder)
+                    curr_bids.curr_pipeline['Pipeline'].is_subject_present(sid, True)
+                    if curr_bids.curr_pipeline['Pipeline'].curr_subject['isPresent']:
+                        if not mod[-1].endswith('Process'):
+                            mod[-1] = mod[-1]+'Process'
+                        elmt = [val[clef] for val in curr_bids.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][mod[-1]]]
+                    else:
+                        elmt=[]
+                else:
+                    curr_bids.is_subject_present(sid)
+                    elmt = [val[clef] for val in curr_bids.curr_subject['Subject'][mod[-1]]]
+                if not any(elt in elmt for elt in input_vars[key][clef]):
+                    warn_txt += 'This subject {} doesn"t have the required parameters for the analysis.\n The {} is missing.\n'.format(sid, clef)
+                    sub2remove.append(sid)
+        if sub2remove:
+            for sub in sub2remove:
+                warn_txt += 'This subject {} will be removed from the subject selection.'.format(sub)
+                sub_id.remove(sub)
+        if not sub_id:
+            err_txt += 'There is no more subject in the selection.\n Please modify your parameters'
+
+    return warn_txt, err_txt
 
 
 def main(argv):
