@@ -64,6 +64,12 @@ class DerivativesSetting(object):
             it_exist, variant_list = check_pipeline_variant(pip_list, pip_name)
             if it_exist:
                 for elt in variant_list:
+                    # empty_dirs = self.empty_dirs(elt, recursive=True)
+                    # if empty_dirs:
+                    #     directory_name = elt
+                    #     desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+                    #     desc_data['Name'] = directory_name
+                    #     break
                     dataset_file = os.path.join(self.path, elt, DatasetDescPipeline.filename)
                     if not os.path.exists(dataset_file):
                         dataset_file = None
@@ -93,6 +99,7 @@ class DerivativesSetting(object):
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
         os.makedirs(directory_path, exist_ok=True)
+        desc_data.write_file(jsonfilename=os.path.join(directory_path, DatasetDescPipeline.filename))
         return directory_path, directory_name, desc_data
 
     def pipeline_is_present(self, pip_name):
@@ -264,19 +271,25 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
             else:
                 is_same.append(False)
         is_same = all(is_same)
-        sub_in = []
-        elt_in = []
+        sub_not_in = []
+        elt_not_in = []
         for key in subject_list:
             if key in self['SourceDataset'].keys():
                 if isinstance(subject_list[key], dict):
                     for elt in subject_list[key]:
-                        elt_in.append(any(el in self['SourceDataset'][key][elt] for el in subject_list[key][elt]))
+                        elt_not_in.append(any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]))
                 else:
-                    sub_in.append(any(elt in self['SourceDataset'][key] for elt in subject_list[key]))
+                    sub_not_in.append(all(elt not in self['SourceDataset'][key] for elt in subject_list[key]))
             else:
-                elt_in.append(True)
+                elt_not_in.append(False)
         #subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
-        subject_inside = all(sub_in and elt_in)
+        if all(sub_not_in):
+            subject_inside = False
+        elif any(elt_not_in):
+            subject_inside = False
+        else:
+            subject_inside = True
+        #subject_inside = all(sub_not_in and elt_in)
 
         return is_same, subject_inside
 
@@ -524,7 +537,7 @@ class PipelineSetting(dict):
             if warn:
                 self.log_error += 'Warning: ' + warn
             if err:
-                raise ValueError(err)
+                raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected']['sub'], input_dict=results['input_param'])
             dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
             output_directory, output_name, dataset_desc = dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
@@ -1664,8 +1677,12 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
     deriv_folder = None
     for key in input_vars:
         keylist = []
-        if input_vars[key] is None:
+        if input_vars[key] is None or not input_vars[key]:
             continue
+        #make sure everything is list
+        for elt in input_vars[key]:
+            if isinstance(input_vars[key][elt], str):
+                input_vars[key][elt] = [input_vars[key][elt]]
         if 'modality' not in input_vars[key].keys() and param is None:
             warn_txt += 'No modality has been mentionned for the input {}. Bids pipeline will select the one by default.\n'.format(key)
             input_vars[key]['modality'] = bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
@@ -1714,7 +1731,8 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
         if sub2remove:
             for sub in sub2remove:
                 warn_txt += 'This subject {} will be removed from the subject selection.'.format(sub)
-                sub_id.remove(sub)
+                if sub in sub_id:
+                    sub_id.remove(sub)
         if not sub_id:
             err_txt += 'There is no more subject in the selection.\n Please modify your parameters'
 

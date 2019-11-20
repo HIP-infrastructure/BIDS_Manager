@@ -1,5 +1,7 @@
 import unittest
 import os
+import shutil
+import datetime
 import pipeline_class as pip
 import ins_bids_class as bids
 
@@ -204,15 +206,73 @@ class ParameterTest(unittest.TestCase):
         self.assertIsInstance(cmd_arg, pip.Matlab)
         self.assertEqual(cmd_line, cmd_tmp)
 
+    def test_validity_input_parameters(self):
+        warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
+                                                  self.results['subject_selected']['sub'],
+                                                  self.results['input_param'])
+        self.assertEqual(err, '')
+        #Test if multiple modality as entry
+        self.results['input_param']['--input_ieeg'] = {'modality': ['Ieeg', 'Eeg'], 'ses': '01', 'run': '01'}
+        warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
+                                                      self.results['subject_selected']['sub'],
+                                                      self.results['input_param'])
+        self.assertEqual(err, 'There is too many modalities selected in the input --input_ieeg\n.')
+        #Test if subjects are removed because don't have the required input
+        self.results['input_param']['--input_ieeg'] = {'modality': ['Ieeg'], 'ses': '01', 'run': '02'}
+        warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
+                                                      self.results['subject_selected']['sub'],
+                                                      self.results['input_param'])
+        self.assertEqual(self.results['subject_selected']['sub'], ['01', '02'])
+
 
 class DerivativesTest(unittest.TestCase):
+    def setUp(self):
+        self.results = {}
+        self.results['subject_selected'] = {'sub': ['01', '02']}
+        self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '20', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
+        self.results['input_param'] = {}
+        self.results['input_param']['--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
+        self.subject = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        #self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 
     def test_create_output_directory(self):
+        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory'):
+            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2'):
+            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
+        __bids_dataset__.parse_bids()
         dev = pip.DerivativesSetting(__bids_dataset__['Derivatives'][0])
-        output_directory, output_name = dev.create_pipeline_directory('testing_input_directory', {}, {})
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory', self.results['analysis_param'], self.subject)
         self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
-        output_directory, output_name = dev.create_pipeline_directory('testing', {}, {})
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing-v1')
+        dev.pipelines.append(bids.Pipeline())
+        dev.pipelines[-1]['name'] = 'testing_input_directory'
+        dev.pipelines[-1]['DatasetDescJSON'] = dataset_desc
+        #Add subject with same parameter
+        new_subject = pip.SubjectToAnalyse(['03'], input_dict=self.results['input_param'])
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory', self.results['analysis_param'], new_subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        sub_in = dataset_desc['SourceDataset']['sub']
+        sub_in.sort()
+        self.assertEqual(sub_in, ['01', '02', '03'])
+        #Create new directory
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
+                                                                                    self.results['analysis_param'],
+                                                                                    self.subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
+
+
+class RunSoftwareTest(unittest.TestCase):
+    def setUp(self):
+        self.soft = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        self.results = {}
+        self.results['analysis_param'] = {'Mode': 'automatic', '--participants': True, '--criteriaparticipants': ['age','sex']}
+        self.results['input_param'] = {'': {}}
+        self.results['subject_selected'] = {'sub': ['01', '02', '03']}
+
+    def test_run_analysis(self):
+        log_analysis = self.soft.set_everything_for_analysis(self.results)
+        self.assertIn(' has been analyzed with no error\n', log_analysis)
 
 
 def suite_init():
@@ -221,12 +281,16 @@ def suite_init():
     suite.addTest(PipelineTest('test_init'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected
-    # suite.addTest(ParameterTest('test_multiple_input_output'))
-    # suite.addTest(ParameterTest('test_bids_directory_input'))
-    # suite.addTest(ParameterTest('test_input_directory'))
-    # suite.addTest(ParameterTest('test_infile_outdir'))
-    # suite.addTest(ParameterTest('test_instance_parameter'))
-    #suite.addTest(DerivativesTest('test_create_output_directory'))
+    suite.addTest(ParameterTest('test_multiple_input_output'))
+    suite.addTest(ParameterTest('test_bids_directory_input'))
+    suite.addTest(ParameterTest('test_input_directory'))
+    suite.addTest(ParameterTest('test_infile_outdir'))
+    suite.addTest(ParameterTest('test_instance_parameter'))
+    suite.addTest(ParameterTest('test_validity_input_parameters'))
+    #test the derivatives folder creation
+    suite.addTest(DerivativesTest('test_create_output_directory'))
+    #Test run analysis
+    suite.addTest(RunSoftwareTest('test_run_analysis'))
     return suite
 
 

@@ -2502,9 +2502,9 @@ class MetaBrick(BidsBrick):
                             not in ParticipantsTSV.header:
                         ParticipantsTSV.header.append(key + self.requirements.keywords[0])
                         ParticipantsTSV.required_fields.append(key + self.requirements.keywords[0])
-
-                        if key in Electrophy.get_list_subclasses_names() and key + self.requirements.keywords[1] \
-                                not in ParticipantsTSV.header:
+                        #To modify when we will know how to check the integrity of Eeg and Meg
+                        if key == 'Ieeg' and key + self.requirements.keywords[1] \
+                                not in ParticipantsTSV.header: #in Electrophy.get_list_subclasses_names()
                             ParticipantsTSV.header.append(key + self.requirements.keywords[1])
                             ParticipantsTSV.required_fields.append(key + self.requirements.keywords[1])
                     elif key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
