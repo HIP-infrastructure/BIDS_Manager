@@ -8,7 +8,7 @@ import sys
 import subprocess
 import shutil
 from tkinter import messagebox, filedialog
-
+from sys import exc_info
 
 class DerivativesSetting(object):
     path = None
@@ -95,7 +95,7 @@ class DerivativesSetting(object):
                 desc_data['Name'] = directory_name
         else:
             directory_name = pip_name
-            desc_data = DatasetDescPipeline(param_var, subject_list)
+            desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
         os.makedirs(directory_path, exist_ok=True)
@@ -390,113 +390,6 @@ class PipelineSetting(dict):
         if not all(key in self.keys() for key in self.keylist):
             raise EOFError("JSON is not conform.")
 
-    def create_parameter_to_inform(self):
-        def read_file(file, elements):
-            param = []
-            name, ext = os.path.splitext(file)
-            if ext == '.csv':
-                split_value = ', '
-            else:
-                split_value = '\t'
-            f = open(file, 'r')
-            f_cont = f.readlines()
-            if elements == 'header':
-                header = f_cont[0].split(split_value)
-                for val in header:
-                    param.append(val)
-                f.close()
-                return param
-            elif elements.isnumeric():
-                idx = int(elements)
-            elif elements:
-                line = f_cont[0].split('\n')[0]
-                header = line.split(split_value)
-                idx = header.index(elements)
-            else:
-                idx = 0
-            for line in f_cont[1::]:
-                line = line.split('\n')[0]
-                trial_type = line.split(split_value)
-                param.append(trial_type[idx])
-            f.close()
-            return param
-
-        def compare_listes(liste_final, liste_file):
-            is_same = True
-            sX = set(liste_final)
-            sY = set(liste_file)
-            set_common = sX - sY
-            if not set_common == sX:
-                is_same = False
-            for elt in liste_file:
-                if elt not in liste_final:
-                    liste_final.append(elt)
-            return is_same
-
-#Should I give only the value presents in all subjects or indicate that there is not all value for all subjects ???
-        param_vars = {}
-        input_vars = {}
-        keys_2_remove = []
-        error_log = ''
-        self['Parameters'].create_parameter_to_inform(param_vars)
-        for key in param_vars:
-            if key.startswith('Input'):
-                if param_vars[key]:
-                    input_vars[key] = param_vars[key]
-                keys_2_remove.append(key)
-            elif isinstance(param_vars[key]['value'], bool):
-                pass
-            elif not param_vars[key]['value']:
-                pass
-            elif 'file' in param_vars[key]['value']:
-                reading_file = param_vars[key]['value']['file']
-                elements = param_vars[key]['value']['elements']
-                mark_to_remove = ['?', '***', '*']
-                param = []
-                is_same = True
-                for subject in os.listdir(self.curr_bids.cwdir):
-                    if subject.endswith(reading_file) and os.path.isfile(os.path.join(self.curr_bids.cwdir, subject)):
-                        file_param = read_file(os.path.join(self.curr_bids.cwdir, subject), elements)
-                        if not param:
-                            param = [elt for elt in file_param]
-                        else:
-                            is_same = compare_listes(param, file_param)
-                        break
-                    elif subject.startswith('sub') and os.path.isdir(os.path.join(self.curr_bids.cwdir, subject)):
-                        for session in os.listdir(os.path.join(self.curr_bids.cwdir, subject)):
-                            if os.path.isdir(os.path.join(self.curr_bids.cwdir, subject, session)):
-                                for mod in os.listdir(os.path.join(self.curr_bids.cwdir, subject, session)):
-                                    if os.path.isdir(os.path.join(self.curr_bids.cwdir, subject, session, mod)):
-                                        with os.scandir(os.path.join(self.curr_bids.cwdir, subject, session, mod)) as it:
-                                            for entry in it:
-                                                if entry.name.endswith(reading_file):
-                                                    file_param = read_file(entry.path, elements)
-                                                    if not param:
-                                                        param = [elt for elt in file_param]
-                                                    else:
-                                                        is_same = compare_listes(param, file_param)
-                                    elif os.path.isfile(os.path.join(self.curr_bids.cwdir, subject, session, mod)) and mod.endswith(reading_file):
-                                        file_param = read_file(os.path.join(self.curr_bids.cwdir, subject, session, mod), elements)
-                                        if not param:
-                                            param = [elt for elt in file_param]
-                                        else:
-                                            is_same = compare_listes(param, file_param)
-                param = list(set(param))
-                param.sort()
-                if not param:
-                    raise EOFError("All the dataset is not ready for this analysis.\n There is no file format {0} in your Bids database.".format(reading_file))
-                elif not is_same:
-                    error_log += 'WARNING: Not all files have the same elements.'
-
-                param_vars[key]['value'] = [par for par in param if not par in mark_to_remove]
-        for key in keys_2_remove:
-            del param_vars[key]
-
-        if self['Parameters'].arg_readbids:
-            input_vars['arg_readbids'] = self['Parameters'].arg_readbids
-
-        return param_vars, input_vars, error_log
-
     def set_everything_for_analysis(self, results):
 
         def list_for_str_format(order, idx):
@@ -510,12 +403,9 @@ class PipelineSetting(dict):
                 else:
                     use_list.append(elt)
             return use_list
-        # subject_list = results['subject_selected']
-        #input_param = results['input_param']
-        # for inp, value in input_param.items():
-        #     subject_to_analyse.copy_values(value)
-        #Check if the param are dict or file
+
         param_vars = results['analysis_param']
+        output_name = ''
         if isinstance(param_vars, str):
             file, ext = os.path.splitext(param_vars)
             if not ext == '.json':
@@ -531,14 +421,14 @@ class PipelineSetting(dict):
             self['Parameters'].update_values(param_vars, results['input_param'])
             #Verify the validity of the input value
             warn, err = verify_subject_has_parameters(self.curr_bids,
-                                                      results['subject_selected']['sub'],
+                                                      results['subject_selected'],
                                                       results['input_param'],
                                                       self['Parameters']['Input'])
             if warn:
                 self.log_error += 'Warning: ' + warn
             if err:
                 raise ValueError(err+warn)
-            subject_to_analyse = SubjectToAnalyse(results['subject_selected']['sub'], input_dict=results['input_param'])
+            subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
             dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
             output_directory, output_name, dataset_desc = dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
             participants = bids.ParticipantsProcessTSV()
@@ -546,9 +436,6 @@ class PipelineSetting(dict):
 
             # Check if the subjects have all the required values
             self['Parameters'].write_file(output_directory)
-            # subject_to_analyse = SubjectToAnalyse(subject_list)
-            # for inp, value in input_param.items():
-            #     subject_to_analyse.copy_values(value)
 
             dataset_desc['PipelineDescription']['fileLoc'] = os.path.join(output_directory, Parameters.filename)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
@@ -556,17 +443,19 @@ class PipelineSetting(dict):
             #Get the value for the command_line
             cmd_arg, cmd_line, order, input_dict, output_dict = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
         except (EOFError, TypeError, ValueError, SystemError) as er:
-            self.log_error += str(er)
+            exc_type, exc_obj, exc_tb = exc_info()
+            err_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            self.log_error += 'Error type: ' + str(exc_type) + ', scriptname: ' + err_name + ', line number, ' + str(
+                exc_tb.tb_lineno) + ': ' + str(er)
             self.write_error_system()
-            return self.log_error
+            return self.log_error, output_name
 
         if not order:
             proc = subprocess.Popen(cmd_line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
             self.write_json_associated(order, output_directory, cmd_arg)
-            for sub in subject_to_analyse['sub']:
-                participants.append({'participant_id': sub})
+            #pass
         elif order:
             taille, idx_in, in_out = input_dict.get_input_values(subject_to_analyse, order)
             if output_dict:
@@ -586,13 +475,19 @@ class PipelineSetting(dict):
                     else:
                         log_error.append(error_proc[1])
                     idx = idx + 1
-                if len(log_error) != taille[sub]:
-                    participants.append({'participant_id': sub})
+                # if len(log_error) != taille[sub]:
+                #     participants.append({'participant_id': sub})
         else:
             self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
-            return self.log_error
+            return self.log_error, output_name
         empty_dir = dev.empty_dirs(output_name, recursive=True)
         if not empty_dir:
+            sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
+            sub2remove = [sub for sub in subject_to_analyse['sub'] if sub not in sub_analysed]
+            for subid in sub2remove:
+                subject_to_analyse['sub'].remove(subid)
+            for sub in subject_to_analyse['sub']:
+                participants.append({'participant_id': sub})
             participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
             dataset_desc.update(subject_to_analyse)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, DatasetDescPipeline.filename))
@@ -603,7 +498,7 @@ class PipelineSetting(dict):
             self.log_error += str(datetime.datetime.now()) + ': ' + 'Warning: The folder {0} has no results so your analysis may not succeed. The folder {0} will be erased.\n'.format(output_name)
             shutil.rmtree(output_directory)
 
-        return self.log_error
+        return self.log_error, output_name
 
     def create_command_to_run_analysis(self, output_directory, subject_to_analyse):
         #Take the mode into account for now, only automatic
@@ -742,18 +637,9 @@ class Parameters(dict):
                 self[key].copy_values(input_dict[key])
             else:
                 self[key] = Arguments()
-                self[key].copy_values(input_dict[key])
-
-    def create_parameter_to_inform(self, param_vars, key=None):
-        bool_list = []
-        for key, value in self.items():
-            if key in Parameters.get_list_subclasses_names() + ParametersSide.get_list_subclasses_names():
-                value.create_parameter_to_inform(param_vars, key=key)
-            elif isinstance(value, Arguments):
-                readbids = value.create_parameter_to_inform(param_vars, key=key)
-                if readbids is not None:
+                readbids = self[key].copy_values(input_dict[key])
+                if readbids:
                     self.arg_readbids.append(readbids)
-
 
     def update_values(self, input_dict, input_param=None):
         keylist = list(self.keys())
@@ -1016,15 +902,6 @@ class Docker(Parameters):
         cnt_tot = 0
         order = {}
         for clef in self:
-            # if clef == 'Input':
-            #     for elt in input_dict:
-            #         if elt['multiplesubject'] and elt['type'] == 'dir':
-            #             cmd_line += elt['tag'] + ' ' + self.bids_directory
-            #         else:
-            #             order[elt['tag']] = cnt_tot
-            #             cmd_line += elt['tag'] + ' {' + str(cnt_tot) + '} '
-            #             cnt_tot += 1
-            # el
             if isinstance(self[clef], bool):
                 cmd_line += ' ' + clef
             elif isinstance(self[clef], list):
@@ -1119,15 +996,6 @@ class ParametersSide(list):
 
 class Mode(ParametersSide):
 
-    def create_parameter_to_inform(self, param_vars, key=None):
-        param_vars[key] = {}
-        if len(self) > 1:
-            param_vars[key]['attribut'] = 'Listbox'
-            param_vars[key]['value'] = self
-        elif len(self) == 1:
-            param_vars[key]['attribut'] = 'Label'
-            param_vars[key]['value'] = self[-1]
-
     def update_values(self, input_dict):
         key2remove = []
         for elt in self:
@@ -1145,12 +1013,6 @@ class Input(ParametersSide):
             mod_dict = InputArguments()
             mod_dict.copy_values(elt)
             self.append(mod_dict)
-
-    def create_parameter_to_inform(self, param_vars, key=None):
-        for input in self:
-            key = 'Input_' + input['tag']
-            param_vars[key] = {}
-            input.create_parameter_to_inform(param_vars, key=key)
 
     def update_values(self, input_dict, tag, input_param=None):
         for elt in self:
@@ -1238,23 +1100,6 @@ class InputArguments(Parameters):
         if self['multiplesubject'] and self['type'] == 'file':
             raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
 
-    def create_parameter_to_inform(self, param_vars, key=None):
-        if self.deriv_input: #self.read_deriv_fold is not None:
-            param_vars[key]['deriv-folder'] = dict()
-            param_vars[key]['deriv-folder']['attribut'] = 'Listbox'
-            deriv_list = [elt['name'] for elt in self.curr_bids['Derivatives'][-1]['Pipeline'] if elt['name'] not in ['log', 'parsing', 'parsing_old']]
-            param_vars[key]['deriv-folder']['value'] = deriv_list
-        if self['modality']:
-            param_vars[key]['modality'] = dict()
-            if len(self['modality']) > 1:
-                param_vars[key]['modality']['attribut'] = 'Listbox'
-                param_vars[key]['modality']['value'] = self['modality']
-            else:
-                param_vars[key]['modality']['value'] = self['modality'][-1]
-                param_vars[key]['modality']['attribut'] = 'Label'
-        else:
-            return
-
     def update_values(self, input_dict):
         for key in input_dict:
             if key in self.keys() and key == 'deriv-folder':
@@ -1276,10 +1121,10 @@ class InputArguments(Parameters):
                 raise ValueError('You have to select a derivatives folder for the input {}'.format(self['tag']))
         if self['type'] == 'file':
             for sub in subject_to_analyse['sub']:
-                in_out[sub][idx] = self.get_subject_files(subject_to_analyse[self['tag']], sub)
+                in_out[sub][idx] = self.get_subject_files(subject_to_analyse['Input_'+self['tag']], sub)
         elif self['type'] == 'dir':
             path_key = {key: '' for key in self.path_key}
-            for key, val in subject_to_analyse[self['tag']].items():
+            for key, val in subject_to_analyse['Input_'+self['tag']].items():
                 if key in self.path_key:
                     if isinstance(val, list) and len(val) == 1:
                         path_key[key] = val[0]
@@ -1301,32 +1146,6 @@ class InputArguments(Parameters):
                                     val = mod
                         chemin.append(val.lower())
                 in_out[sub][idx] = [os.path.join(self.bids_directory, '\\'.join(chemin))]
-
-    # def command_arg(self, subject_list, curr_bids):
-    #     f_list = []
-    #     if 'value_selected' in self.keys():
-    #         modality = self['value_selected']
-    #     else:
-    #         modality = self['modality']
-    #     if not modality:
-    #         pass
-    #         #return 'ERROR: Don"t know on each modality we should process'
-    #     else:
-    #         subject_list['modality'] = modality
-    #
-    #     if self['type'] == 'file':
-    #         f_list = self.get_subject_files(modality, subject_list, curr_bids)
-    #     elif self['type'] == 'sub':
-    #         f_list = subject_list['sub']
-    #     elif self['type'] == 'dir':
-    #         f_list = curr_bids.cwdir
-    #     else:
-    #         raise ValueError('The selected type is not conform')
-    #     input_to_return = InputArguments()
-    #     input_to_return[self['tag']] = f_list
-    #     input_to_return.multiplesubject = self.multiplesubject
-    #
-    #     return input_to_return #{self['tag']: f_list}
 
     def get_subject_files(self, subject, sub_id, deriv_reader=None):#, modality, subject_list, curr_bids):
         input_files = []
@@ -1403,10 +1222,6 @@ class Output(Parameters):
                 self[key] = input_dict[key]
         if self['multiplesubject'] and self['type'] == 'file':
             raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
-
-    def create_parameter_to_inform(self, param_vars, key=None):
-        if self['multiplesubject']:
-            self.multiplesubject = True
 
     def update_values(self, input_dict):
         self['value_selected'] = input_dict
@@ -1552,49 +1367,14 @@ class Arguments(Parameters):
 
     def copy_values(self, input_dict):
         keylist = list(input_dict.keys())
+        readbids = []
         if keylist != self.unit_value and keylist != self.read_value and keylist != self.list_value and keylist != self.file_value and keylist != self.bool_value and keylist != self.bids_value:
             raise EOFError(
                 'The keys in Parameters of your JSON file are not conform.\n Please modify it according to the given template.\n')
         for key in input_dict:
             self[key] = input_dict[key]
-
-    def create_parameter_to_inform(self, param_vars, key=None):
-        param_vars[key] = {}
-        keys = list(self.keys())
-        readbids = None
-        if keys == self.unit_value:
-            param_vars[key]['attribut'] = 'StringVar'
-            param_vars[key]['value'] = str(self['default']+self['unit'])
-            param_vars[key]['unit'] = self['unit']
-        elif keys == self.list_value:
-            if self['multipleselection']:
-                st_type = 'Variable'
-            else:
-                st_type = 'Listbox'
-            param_vars[key]['attribut'] = st_type
-            param_vars[key]['value'] = self['possible_value']
-        elif keys == self.file_value: #A revoir
-            param_vars[key]['attribut'] = 'File'
-            param_vars[key]['value'] = [self['extension']]
-        elif keys == self.bool_value:
-            param_vars[key]['attribut'] = 'Bool'
-            param_vars[key]['value'] = self['default']
-        elif keys == self.bids_value:
-            # param_vars[key]['attribut'] = 'Label'
-            # param_vars[key]['value'] = self['type']
-            readbids = self['type']
-            del param_vars[key]
-        elif keys == self.read_value:
-            if self['multipleselection']:
-                st_type = 'Variable'
-            else:
-                st_type = 'Listbox'
-            param_vars[key]['attribut'] = st_type
-            reading_type = self['read'].strip('*')
-            param_vars[key]['value'] = {'file': reading_type, 'elements': self['elementstoread']}
-        else:
-            raise EOFError('The keys in Parameters of your JSON file are not conform.\n Please modify it according to the template given.\n')
-
+            if key == self.bids_value:
+                readbids.append(input_dict[key]['type'])
         return readbids
 
     def update_values(self, input_dict):
@@ -1643,17 +1423,6 @@ class SubjectToAnalyse(Parameters):
             for key in self.keylist:
                 self[key] = []
 
-    # def check_subjects_param(self):
-    #     input_keys = [key for key in self.keys()if key != 'sub']
-    #     flag_list = any(key == 'modality' for key in input_keys)
-    #     for sub in self['sub']:
-    #         self.curr_bids.is_subject_present(sub)
-    #         if not flag_list:
-    #             for elt in input_keys:
-    #                 mod_type = input_keys[elt]['modality'][0]
-    #                 if mod_type
-
-
     def copy_values(self, input_dict):
         for key in input_dict:
             if key not in self.keys():
@@ -1690,7 +1459,7 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
             input_vars[key]['modality'] = param[key]['modality']
         if 'deriv-folder' in input_vars[key].keys():
             deriv_folder = input_vars[key]['deriv-folder']
-            if deriv_folder == '':
+            if deriv_folder == '' or deriv_folder == ['Previous analysis results'] or deriv_folder == ['']:
                 continue
         if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
             mod = []
@@ -1708,35 +1477,381 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
         else:
             mod = input_vars[key]['modality']
         if len(mod) > 1:
-            err_txt += 'There is too many modalities selected in the input {}\n.'.format(key)
+            err_txt += 'Modalities selected in the input {} are too differents\n.'.format(key)
             return warn_txt, err_txt
+        else:
+            mod = mod[-1]
         keylist = [clef for clef in input_vars[key] if (clef != 'modality' and clef != 'deriv-folder')]
+
         for clef in keylist:
             for sid in sub_id:
                 if deriv_folder:
                     curr_bids.is_pipeline_present(deriv_folder)
+                    if not curr_bids.curr_pipeline['isPresent']:
+                        err_txt += "The derivative folder selected {0} in {1} is not present in the bids dataset.\n".format(deriv_folder, key)
+                        return warn_txt, err_txt
                     curr_bids.curr_pipeline['Pipeline'].is_subject_present(sid, True)
                     if curr_bids.curr_pipeline['Pipeline'].curr_subject['isPresent']:
-                        if not mod[-1].endswith('Process'):
-                            mod[-1] = mod[-1]+'Process'
-                        elmt = [val[clef] for val in curr_bids.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][mod[-1]]]
+                        if not mod.endswith('Process'):
+                            mod = mod+'Process'
+                        elmt = [val[clef] for val in curr_bids.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][mod]]
                     else:
                         elmt=[]
                 else:
                     curr_bids.is_subject_present(sid)
-                    elmt = [val[clef] for val in curr_bids.curr_subject['Subject'][mod[-1]]]
+                    elmt = [val[clef] for val in curr_bids.curr_subject['Subject'][mod]]
                 if not any(elt in elmt for elt in input_vars[key][clef]):
-                    warn_txt += 'This subject {} doesn"t have the required parameters for the analysis.\n The {} is missing.\n'.format(sid, clef)
+                    warn_txt += 'The subject {0} doesn"t have the required {1} for the analysis.\n The {2} is missing.\n'.format(sid, key, clef)
                     sub2remove.append(sid)
         if sub2remove:
             for sub in sub2remove:
-                warn_txt += 'This subject {} will be removed from the subject selection.'.format(sub)
                 if sub in sub_id:
+                    warn_txt += 'The subject {} will be removed from the subject selection.\n'.format(sub)
                     sub_id.remove(sub)
         if not sub_id:
-            err_txt += 'There is no more subject in the selection.\n Please modify your parameters'
+            err_txt += 'There is no more subject in the selection.\n Please modify your parameters.\n'
+            return warn_txt, err_txt
 
     return warn_txt, err_txt
+
+
+class Interface(dict):
+
+    def __init__(self, bids_data):
+        self.bids_data = bids_data
+        self.subject = [sub['sub'] for sub in self.bids_data['Subject']]
+        self.vars_interface()
+
+    def copy_values(self, input_dict):
+        for key in input_dict:
+            self[key] = input_dict[key]
+
+    def vars_interface(self):
+        def check_numerical_value(element):
+            is_numerical = False
+            punctuation = ',.?!:'
+            temp = element.translate(str.maketrans('', '', punctuation))
+            temp = temp.strip('YymM ')
+            if temp.isnumeric():
+                is_numerical = True
+            return is_numerical
+
+        participant_dict = self.bids_data['ParticipantsTSV']
+        display_dict = dict()
+        req_keys = self.bids_data.requirements['Requirements']['Subject']['keys']
+        for key, value in req_keys.items():
+            if value:
+                display_dict[key] = value
+            elif 'age' in key:
+                display_dict[key] = value
+            elif 'duration' in key:
+                display_dict[key] = value
+        criteria = participant_dict.header
+        key_list = display_dict.keys()
+        for key in key_list:
+            idx = criteria.index(key)
+            is_string = False
+            display_value = []
+            for val_part in participant_dict[1::]:
+                is_number = check_numerical_value(val_part[idx])
+                if is_number and display_dict[key]:
+                    display_value.append(val_part[idx])
+                elif is_number:
+                    display_value.append('min_' + key)
+                    display_value.append('max_' + key)
+                    is_string = True
+                else:
+                    l_elt = val_part[idx].split(', ')
+                    for l in l_elt:
+                        display_value.append(l)
+            display_value = list(set(display_value))
+            if is_string:
+                self[key] = {}
+                display_value = sorted(display_value, reverse=True)
+                self[key]['attribut'] = 'StringVar'
+                self[key]['value'] = [value for value in display_value]
+            elif display_value:
+                display_value = list(set(display_value).intersection(set(display_dict[key])))
+                if len(display_value) == 1 and not 'n/a' in display_value:
+                    self[key] = {}
+                    self[key]['attribut'] = 'Label'
+                    self[key]['value'] = [value for value in display_value]
+                elif len(display_value) > 1:
+                    self[key] = {}
+                    self[key]['attribut'] = 'Variable'
+                    self[key]['value'] = [value for value in display_value]
+
+    def get_parameter(self):
+        res_dict = dict()
+        for key in self:
+            att_type = self[key]['attribut']
+            val_temp = self[key]['value']
+            if att_type == 'Variable':
+                for val in self[key]['results']:
+                    if val.get():
+                        idx = self[key]['results'].index(val)
+                        try:
+                            res_dict[key].append(val_temp[idx])
+                        except:
+                            res_dict[key] = []
+                            res_dict[key].append(val_temp[idx])
+            elif att_type == 'StringVar':
+                num_value = False
+                if isinstance(val_temp, list):
+                    for id_var in val_temp:
+                        if id_var.get().isalnum():
+                            if id_var._name.startswith('min'):
+                                minA = int(id_var.get())
+                                num_value = True
+                            elif id_var._name.startswith('max'):
+                                maxA = int(id_var.get())
+                                num_value = True
+                            else:
+                                res_dict[key] = id_var.get()
+                    if num_value:
+                        res_dict[key] = range(minA, maxA)
+                else:
+                    res_dict[key] = val_temp.get()
+            elif att_type == 'Listbox':
+                res_dict[key] = val_temp.get()
+            elif att_type == 'Bool':
+                if val_temp.get() == True:
+                    res_dict[key] = True
+            elif att_type == 'Label':
+                res_dict[key] = val_temp
+            elif att_type == 'File':
+                if val_temp:
+                    res_dict[key] = val_temp[1:]
+
+        return res_dict
+
+    def get_subject_list(self, input_dict):
+        subject_list = []
+        for elt in self.bids_data['ParticipantsTSV'][1::]:
+            elt_in = []
+            for key, value in input_dict.items():
+                idx_key = self.bids_data['ParticipantsTSV'].header.index(key)
+                if isinstance(value, range):
+                    elt[idx_key] = elt[idx_key].replace(',', '.')
+                    age_p = round(float(elt[idx_key].rstrip('YyMm ')))
+                    if age_p in value:
+                        elt_in.append(True)
+                elif isinstance(value, list):
+                    for val in value:
+                        if val in elt[idx_key]:
+                            elt_in.append(True)
+                        else:
+                            elt_in.append(False)
+                elif isinstance(value, str):
+                    if value in elt[idx_key]:
+                        elt_in.append(True)
+                    else:
+                        elt_in.append(False)
+            elt_in = list(set(elt_in))
+            if len(elt_in) == 1 and elt_in[0] is True:
+                subject_list.append(elt[0])
+        return subject_list
+
+
+class ParameterInterface(Interface):
+    def __init__(self, bids_data, parameter_soft=None):
+        self.bids_data = bids_data
+        if parameter_soft:
+            self.parameters = {key: value for key, value in parameter_soft.items() if key not in ['Input', 'Output', 'Callname', 'command_line_base', 'Intermediate']}
+            self.vars_interface()
+
+    def vars_interface(self):
+        for key in self.parameters:
+            self[key] = {}
+            if key == 'Mode':
+                if len(self.parameters[key]) > 1:
+                    self[key]['attribut'] = 'Listbox'
+                    self[key]['value'] = self.parameters[key]
+                elif len(self.parameters[key]) == 1:
+                    self[key]['attribut'] = 'Label'
+                    self[key]['value'] = self.parameters[key][-1]
+            else:
+                keys = list(self.parameters[key].keys())
+                if keys == Arguments.unit_value:
+                    self[key]['attribut'] = 'StringVar'
+                    self[key]['value'] = str(self.parameters[key]['default'] + self.parameters[key]['unit'])
+                    self[key]['unit'] = self.parameters[key]['unit']
+                elif keys == Arguments.list_value:
+                    if self.parameters[key]['multipleselection']:
+                        st_type = 'Variable'
+                    else:
+                        st_type = 'Listbox'
+                    self[key]['attribut'] = st_type
+                    self[key]['value'] = self.parameters[key]['possible_value']
+                elif keys == Arguments.file_value:  # A revoir
+                    self[key]['attribut'] = 'File'
+                    self[key]['value'] = [self.parameters[key]['extension']]
+                elif keys == Arguments.bool_value:
+                    self[key]['attribut'] = 'Bool'
+                    self[key]['value'] = self.parameters[key]['default']
+                elif keys == Arguments.read_value:
+                    if self.parameters[key]['multipleselection']:
+                        st_type = 'Variable'
+                    else:
+                        st_type = 'Listbox'
+                    self[key]['attribut'] = st_type
+                    self[key]['value'] = self.reading_file(key)
+                elif keys == Arguments.bids_value:
+                    del self[key]
+                else:
+                    raise EOFError(
+                        'The keys in Parameters of your JSON file are not conform.\n Please modify it according to the template given.\n')
+
+    def reading_file(self, key):
+        def read_file(file, elements):
+            param = []
+            name, ext = os.path.splitext(file)
+            if ext == '.csv':
+                split_value = ', '
+            else:
+                split_value = '\t'
+            f = open(file, 'r')
+            f_cont = f.readlines()
+            if elements == 'header':
+                header = f_cont[0].split(split_value)
+                for val in header:
+                    param.append(val)
+                f.close()
+                return param
+            elif elements.isnumeric():
+                idx = int(elements)
+            elif elements:
+                line = f_cont[0].split('\n')[0]
+                header = line.split(split_value)
+                idx = header.index(elements)
+            else:
+                idx = 0
+            for line in f_cont[1::]:
+                line = line.split('\n')[0]
+                trial_type = line.split(split_value)
+                param.append(trial_type[idx])
+            f.close()
+            return param
+
+        def compare_listes(liste_final, liste_file):
+            is_same = True
+            sX = set(liste_final)
+            sY = set(liste_file)
+            set_common = sX - sY
+            if not set_common == sX:
+                is_same = False
+            for elt in liste_file:
+                if elt not in liste_final:
+                    liste_final.append(elt)
+            return is_same
+
+        reading_file = self.parameters[key]['read'].strip('*')
+        elements = self.parameters[key]['elementstoread']
+        mark_to_remove = ['?', '***', '*']
+        param = []
+        is_same = True
+        for subject in os.listdir(self.bids_data.cwdir):
+            if subject.endswith(reading_file) and os.path.isfile(os.path.join(self.bids_data.cwdir, subject)):
+                file_param = read_file(os.path.join(self.bids_data.cwdir, subject), elements)
+                if not param:
+                    param = [elt for elt in file_param]
+                else:
+                    is_same = compare_listes(param, file_param)
+                break
+            elif subject.startswith('sub') and os.path.isdir(os.path.join(self.bids_data.cwdir, subject)):
+                for session in os.listdir(os.path.join(self.bids_data.cwdir, subject)):
+                    if os.path.isdir(os.path.join(self.bids_data.cwdir, subject, session)):
+                        for mod in os.listdir(os.path.join(self.bids_data.cwdir, subject, session)):
+                            if os.path.isdir(os.path.join(self.bids_data.cwdir, subject, session, mod)):
+                                with os.scandir(os.path.join(self.bids_data.cwdir, subject, session, mod)) as it:
+                                    for entry in it:
+                                        if entry.name.endswith(reading_file):
+                                            file_param = read_file(entry.path, elements)
+                                            if not param:
+                                                param = [elt for elt in file_param]
+                                            else:
+                                                is_same = compare_listes(param, file_param)
+                            elif os.path.isfile(
+                                    os.path.join(self.bids_data.cwdir, subject, session, mod)) and mod.endswith(
+                                    reading_file):
+                                file_param = read_file(os.path.join(self.bids_data.cwdir, subject, session, mod),
+                                                       elements)
+                                if not param:
+                                    param = [elt for elt in file_param]
+                                else:
+                                    is_same = compare_listes(param, file_param)
+        param = list(set(param))
+        param.sort()
+        return [par for par in param if not par in mark_to_remove]
+
+
+class InputParameterInterface(Interface):
+    def __init__(self, bids_data, parameter_soft_input=None):
+        self.bids_data = bids_data
+        if parameter_soft_input:
+            self.parameters = parameter_soft_input
+            mod_list = bids.Electrophy.get_list_subclasses_names() + bids.Imaging.get_list_subclasses_names()
+            keylist = [elt for key in mod_list for elt in eval('bids.' + key + '.keylist') if not (
+                    elt.endswith('JSON') or elt.endswith('TSV') or elt.endswith('Loc') or elt.endswith(
+                'modality') or elt == 'sub')]
+            self.keylist = list(set(keylist))
+            self.vars_interface()
+
+    def vars_interface(self):
+        if self.parameters is not None:
+            if self.parameters.deriv_input:
+                self['deriv-folder'] = dict()
+                self['deriv-folder']['attribut'] = 'Listbox'
+                deriv_list = [elt for elt in os.listdir(os.path.join(self.bids_data.cwdir, 'derivatives'))if
+                                  elt not in ['log', 'parsing', 'parsing_old', 'log_old']]
+                self['deriv-folder']['value'] = deriv_list
+            self['modality'] = dict()
+            if self.parameters['modality']:
+                if len(self.parameters['modality']) > 1:
+                    self['modality']['attribut'] = 'Listbox'
+                    self['modality']['value'] = self.parameters['modality']
+                else:
+                    self['modality']['value'] = self.parameters['modality'][-1]
+                    self['modality']['attribut'] = 'Label'
+            else:
+                self['modality']['attribut'] = 'Listbox'
+                self['modality']['value'] = bids.Electrophy.get_list_subclasses_names() + bids.Imaging.get_list_subclasses_names()
+        else:
+            self = {'modality': {}}
+            self['modality']['attribut'] = 'Listbox'
+            self['modality']['value'] = bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
+
+        if self['modality']['attribut'] == 'Label':
+            modality = [self['modality']['value']]
+        else:
+            modality = self['modality']['value']
+        for sub in self.bids_data['Subject']:
+            for mod in sub:
+                if mod and mod in modality:
+                    keys = [elt for elt in self.keylist if elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
+                    if mod in bids.Imaging.get_list_subclasses_names():
+                        keys.append('modality')
+                    for key in keys:
+                        value = [elt[key] for elt in sub[mod]]
+                        value = sorted(list(set(value)))
+                        if '' in value:
+                            value.remove('')
+                        if value and value[0] is not '':
+                            if key == 'modality':
+                                if self[key]['attribut'] == 'Label':
+                                    self[key]['value'] = value
+                            elif not key in self:
+                                self[key] = {}
+                                self[key]['value'] = value
+                                self[key]['attribut'] = 'IntVar'
+                            else:
+                                self[key]['value'].extend(value)
+                            self[key]['value'] = sorted(
+                                list(set(self[key]['value'])))
+                            if len(self[key]['value']) > 1:
+                                self[key]['attribut'] = 'Variable'
+                            elif len(self[key]['value']) == 1:
+                                self[key]['attribut'] = 'Label'
 
 
 def main(argv):
