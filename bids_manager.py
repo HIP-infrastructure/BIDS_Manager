@@ -900,7 +900,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             except (EOFError, KeyError) as err:
                 if isinstance(err, KeyError):
                     err = err.args[0]
-                self.update_text(err)
+                self.update_text(str(err))
                 self.make_available()
                 return
             output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=soft_analyse)
@@ -2174,7 +2174,7 @@ class BidsSelectDialog(TemplateDialog):
                 self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
                 for elt in analysis_dict['Parameters']['Input']:
-                    self.parameter_interface['Input']['Input_'+elt['tag']] = pip.InputParameterInterface(self.bids_data,elt)
+                    self.parameter_interface['Input']['Input_'+elt['tag']] = pip.InputParameterInterface(self.bids_data, elt)
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
@@ -2304,6 +2304,7 @@ class BidsSelectDialog(TemplateDialog):
         frame_param_check.pack(side=TOP)
         frame_param_select = Frame(frame_parameters_criteria)
         frame_param_select.pack(side=TOP)
+        self.param_file[self.soft_name] = ['.json']
         param_file = Button(frame_param_check, text='Filename path', command=lambda: self.ask4file(self.param_file[self.soft_name]))
         import_param_button = Checkbutton(frame_param_check, text='Select your script with parameters values',
                                           variable=self.param_script[self.soft_name],
@@ -2351,7 +2352,7 @@ class BidsSelectDialog(TemplateDialog):
             if not self.param_script[key].get():
                 self.results[key]['analysis_param'] = self.parameter_list[key]['Parameters'].get_parameter()
             else:
-                self.results[key]['analysis_param'] = self.param_file[key]
+                self.results[key]['analysis_param'] = self.param_file[key][-1]
             warn, err = pip.verify_subject_has_parameters(self.bids_data,
                                                           self.results[key]['subject_selected'],
                                                           self.results[key]['input_param'])

@@ -266,10 +266,13 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
             no_subject = False
             return is_same, no_subject
         for key in keylist:
-            if self['PipelineDescription'][key] == param_vars[key]:
-                is_same.append(True)
+            if key in self['PipelineDescription']:
+                if self['PipelineDescription'][key] == param_vars[key]:
+                    is_same.append(True)
+                else:
+                    is_same.append(False)
             else:
-                is_same.append(False)
+                return False, False
         is_same = all(is_same)
         sub_not_in = []
         elt_not_in = []
@@ -486,6 +489,7 @@ class PipelineSetting(dict):
             sub2remove = [sub for sub in subject_to_analyse['sub'] if sub not in sub_analysed]
             for subid in sub2remove:
                 subject_to_analyse['sub'].remove(subid)
+                self.log_error += 'The {} subject has finally not be analysed.\n'.format(subid)
             for sub in subject_to_analyse['sub']:
                 participants.append({'participant_id': sub})
             participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
@@ -596,8 +600,8 @@ class PipelineSetting(dict):
     def write_error_system(self, output_directory=None):
         if not output_directory:
             output_directory = os.path.join(self.cwdir, 'derivatives', 'log')
-
-        log_file = os.path.join(output_directory, 'log_error_analyse.log')
+        time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        log_file = os.path.join(output_directory, 'log_error_analyse_' + time_format + '.log')
         #os.makedirs(log_file, exist_ok=True)
         with open(log_file, 'w+') as f:
             f.write(self.log_error)
@@ -735,7 +739,7 @@ class Parameters(dict):
                         if not elt.deriv_input:
                             cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
                         elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ''):
-                            cmd_line += ' ' + elt['tag'] +  ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'])
+                            cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'])
                     else:
                         if elt.deriv_input:
                             if elt['deriv-folder'] == '' and not elt['optional']:
@@ -822,8 +826,12 @@ class AnyWave(Parameters):
         del self['Input']
         del self['Output']
         with open(jsonfilename, 'w') as json_file:
+            if 'modality' in self and isinstance(self['modality'], list):
+                self['modality'] = self['modality'][-1]
+                if self['modality'] == 'Ieeg':
+                    self['modality'] = 'SEEG'
             json.dump(self, json_file)
-        cmd_line = ' "' + jsonfilename + '"'
+        cmd_line = ' ' + jsonfilename
 
         order = {}
         #Handle the input and output
@@ -856,7 +864,7 @@ class AnyWave(Parameters):
         # read log in Documents
         home = os.path.expanduser('~')
         if getpass.getuser() == 'jegou':
-            self.anywave_directory = r'Z:\Mes documents\AnyWave\Log'
+            self.anywave_directory = r'Z:\AnyWave\Log'
         else:
             self.anywave_directory = os.path.join(home, 'Documents', 'AnyWave', 'Log')
         temp_time = 0
@@ -976,6 +984,21 @@ class Matlab(Parameters):
         cmd_line = '(' + ', '.join(cmd_line) + ')'
 
         return cmd_line, order
+
+
+class Python(Parameters):
+
+    def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
+        if not cmd_line_set:
+            cmd_base = 'python ' + self.curr_path + ''
+        else:
+            cmd_base = 'python ' + self.curr_path + cmd_line_set
+        cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
+        cmd = cmd_base + cmd_line
+        return cmd, order
+
+    #def chaine_parameters(self, output_directory, input_dict, output_dict):
+
 
 
 class ParametersSide(list):
@@ -1160,35 +1183,14 @@ class InputArguments(Parameters):
                 if sub['sub'] == sub_id:
                     for mod in sub:
                         if mod in modality:
+                            keylist = [elt for elt in eval('bids.' + mod + '.keylist') if
+                                       elt in list(subject.keys()) and elt != 'modality']
+                            if mod in bids.ImagingProcess.get_list_subclasses_names():
+                                keylist.append('modality')
                             for elt in sub[mod]:
-                                is_equal = []
-                                for key in elt:
-                                    if key in subject.keys() and subject[key]:
-                                        if elt[key] in subject[key]:
-                                            is_equal.append(True)
-                                        elif key == 'modality':
-                                            pass
-                                        else:
-                                            is_equal.append(False)
-                                    elif key == 'fileLoc':
-                                        if elt[key].endswith(self['filetype']):
-                                            is_equal.append(True)
-                                        else:
-                                            is_equal.append(False)
-                                is_equal = list(set(is_equal))
-                                if not is_equal:
-                                    pass
-                                elif len(is_equal) == 1 and is_equal[0]:
-                                    input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
-        else:
-            for sub in self.curr_bids['Subject']:
-                if sub['sub'] == sub_id:
-                    for mod in sub:
-                        if mod in modality:
-                            for elt in sub[mod]:
-                                is_equal = []
-                                for key in elt:
-                                    if key in subject.keys() and subject[key]:
+                                is_equal = [True]
+                                for key in keylist:
+                                    if subject[key]:
                                         if elt[key] in subject[key]:
                                             is_equal.append(True)
                                         elif key == 'modality':
@@ -1196,14 +1198,45 @@ class InputArguments(Parameters):
                                                 is_equal.append(True)
                                             elif elt[key].capitalize() in subject[key]:
                                                 is_equal.append(True)
+                                            elif elt[key] in eval('bids.'+mod+'.allowed_modalities'):
+                                                is_equal.append(True)
                                             else:
                                                 is_equal.append(False)
                                         else:
                                             is_equal.append(False)
-                                is_equal = list(set(is_equal))
-                                if not is_equal:
-                                    pass
-                                elif len(is_equal) == 1 and is_equal[0]:
+                                    elif key == 'fileLoc':
+                                        if elt[key].endswith(self['filetype']):
+                                            is_equal.append(True)
+                                        else:
+                                            is_equal.append(False)
+                                if all(is_equal):
+                                    input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+        else:
+            for sub in self.curr_bids['Subject']:
+                if sub['sub'] == sub_id:
+                    for mod in sub:
+                        if mod in modality:
+                            keylist = [elt for elt in eval('bids.' + mod + '.keylist') if elt in list(subject.keys()) and elt != 'modality']
+                            if mod in bids.Imaging.get_list_subclasses_names():
+                                keylist.append('modality')
+                            for elt in sub[mod]:
+                                is_equal = [True]
+                                for key in keylist:
+                                    if subject[key]:
+                                        if elt[key] in subject[key]:
+                                            is_equal.append(True)
+                                        elif key == 'modality':
+                                            if elt[key] in subject[key]:
+                                                is_equal.append(True)
+                                            elif elt[key].capitalize() in subject[key]:
+                                                is_equal.append(True)
+                                            elif elt[key] in eval('bids.'+mod+'.allowed_modalities'):
+                                                is_equal.append(True)
+                                            else:
+                                                is_equal.append(False)
+                                        else:
+                                            is_equal.append(False)
+                                if all(is_equal):
                                     input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
 
         return input_files
@@ -1454,9 +1487,15 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
                 input_vars[key][elt] = [input_vars[key][elt]]
         if 'modality' not in input_vars[key].keys() and param is None:
             warn_txt += 'No modality has been mentionned for the input {}. Bids pipeline will select the one by default.\n'.format(key)
-            input_vars[key]['modality'] = bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
-        elif 'modality' not in input_vars[key].keys() and param[key]:
-            input_vars[key]['modality'] = param[key]['modality']
+            #input_vars[key]['modality'] = bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
+            continue
+        elif 'modality' not in input_vars[key].keys() and param:
+            idx = [param.index(elt) for elt in param if
+                   elt['tag'] == key.split('_')[1]][0]
+            if param[idx]['modality']:
+                input_vars[key]['modality'] = param[idx]['modality']
+            else:
+                continue
         if 'deriv-folder' in input_vars[key].keys():
             deriv_folder = input_vars[key]['deriv-folder']
             if deriv_folder == '' or deriv_folder == ['Previous analysis results'] or deriv_folder == ['']:

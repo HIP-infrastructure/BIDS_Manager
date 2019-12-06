@@ -44,9 +44,15 @@ class PipelineTest(unittest.TestCase):
     def test_get_arguments(self):
         with self.assertRaises(EOFError):
             soft = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
-            param_vars, in_vars, error_log = soft.create_parameter_to_inform()
+            param_vars = pip.ParameterInterface(__bids_dataset__, soft['Parameters'])
+            in_vars = {}
+            for inp in soft['Parameters']['Input']:
+                in_vars['Input_'+inp['tag']] = pip.InputParameterInterface(__bids_dataset__, inp)
         soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
-        param_vars, in_vars, error_log = soft_analyse.create_parameter_to_inform()
+        param_vars = pip.ParameterInterface(__bids_dataset__, soft_analyse['Parameters'])
+        in_vars = {}
+        for inp in soft_analyse['Parameters']['Input']:
+            in_vars['Input_' + inp['tag']] = pip.InputParameterInterface(__bids_dataset__, inp)
         param_tmp = dict()
         in_tmp = dict()
         keys = ['Mode', '--participants', 'Input_--input_ieeg', 'Input_--input_anat', '--duration', '--criteria', '--criteriadata', '--task', '--file']
@@ -61,14 +67,15 @@ class PipelineTest(unittest.TestCase):
                 param_tmp[elt]['value'] = False
             elif cnt == 2:
                 in_tmp[elt] = dict()
-                in_tmp[elt]['modality'] = dict()
-                in_tmp[elt]['modality']['value'] = "Ieeg"
-                in_tmp[elt]['modality']['attribut'] = 'Label'
+                in_tmp[elt]['modality'] = {'value': 'Ieeg', 'attribut': 'Label'}
+                in_tmp[elt]['run'] = {'value': ['01', '02', '03'], 'attribut': 'Variable'}
+                in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
+                in_tmp[elt]['task'] = {'value': ['ccep'], 'attribut': 'Label'}
             elif cnt == 3:
                 in_tmp[elt] = dict()
-                in_tmp[elt]['modality'] = dict()
-                in_tmp[elt]['modality']['value'] = "Anat"
-                in_tmp[elt]['modality']['attribut'] = 'Label'
+                in_tmp[elt]['modality'] = {'value': ['CT', 'T1w'], 'attribut': 'Variable'}
+                in_tmp[elt]['acq'] = {'value': ['postimp', 'preimp'], 'attribut': 'Variable'}
+                in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
             elif cnt == 4:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'StringVar'
@@ -82,11 +89,6 @@ class PipelineTest(unittest.TestCase):
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'Variable'
                 param_tmp[elt]['value'] = ['ses', 'task', 'modality']
-            elif cnt == 7:
-                in_tmp['arg_readbids'] = ['acq']
-            #     param_tmp[elt] = dict()
-            #     param_tmp[elt]['attribut'] = 'Label'
-            #     param_tmp[elt]['value'] = 'acq'
             elif cnt == 8:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'File'
@@ -102,18 +104,18 @@ class ParameterTest(unittest.TestCase):
 
     def setUp(self):
         self.results = {}
-        self.results['subject_selected'] = {'sub': ['01', '02', '03']}
+        self.results['subject_selected'] = ['01', '02', '03']
         self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '20', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
         self.results['input_param'] = {}
-        self.results['input_param']['--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        self.results['input_param']['--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
         self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 
     def test_multiple_input_output(self):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'])
-        subjects = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
-        subjects_results = {'sub': ['01', '02', '03'], '--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run': ['01']}, '--input_anat': {'modality': ['T1w'], 'acq': ['preimp']}}
+        subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
+        subjects_results = {'sub': ['01', '02', '03'], 'Input_--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run': ['01']}, 'Input_--input_anat': {'modality': ['T1w'], 'acq': ['preimp']}}
         self.assertEqual(subjects, subjects_results)
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = 'D:/Data/testing --input_ieeg {0} --input_anat {1} --output_file {2} --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'
@@ -135,20 +137,20 @@ class ParameterTest(unittest.TestCase):
 
     def test_bids_directory_input(self):
         self.results['input_param'] = {}
-        self.results['input_param']['--input_dir'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_dir'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_dir', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'])
-        subjects = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertFalse(order)
 
     def test_input_directory(self):
         self.results['input_param'] = {}
-        self.results['input_param']['--input_dir'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_dir'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_directory', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'])
-        subjects = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertIsNotNone(order)
@@ -158,8 +160,8 @@ class ParameterTest(unittest.TestCase):
             in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg'.format(sub)], [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
         self.results['input_param'] = {}
-        self.results['input_param']['--input_dir'] = {'modality': 'T1w', 'acq': ['preimp']}
-        subjects_anat = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        self.results['input_param']['Input_--input_dir'] = {'modality': 'T1w', 'acq': ['preimp']}
+        subjects_anat = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         taille, idx_in, in_out_anat = input_dict.get_input_values(subjects_anat, order)
         output_dict.get_output_values(in_out_anat, taille, order, self.output_dir, idx_in)
         for sub in in_out_anat:
@@ -169,10 +171,10 @@ class ParameterTest(unittest.TestCase):
 
     def test_infile_outdir(self):
         self.results['input_param'] = {}
-        self.results['input_param']['--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_infile_outdir', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'])
-        subjects = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertIsNotNone(order)
@@ -185,12 +187,12 @@ class ParameterTest(unittest.TestCase):
 
     def test_instance_parameter(self):
         self.results['input_param'] = {}
-        self.results['input_param']['--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01'}
-        subjects = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01'}
+        subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         #assert intermediate instance
         analyse = pip.PipelineSetting(__bids_dataset__, 'h2')
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'C:/anywave_september/AnyWave.exe --run "D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json" --input_file {0} --output_dir {1}'
+        cmd_tmp = 'C:/anywave_december_2019/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1}'
         self.assertIsInstance(cmd_arg, pip.AnyWave)
         self.assertEqual(cmd_line, cmd_tmp)
 
@@ -208,32 +210,32 @@ class ParameterTest(unittest.TestCase):
 
     def test_validity_input_parameters(self):
         warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
-                                                  self.results['subject_selected']['sub'],
+                                                  self.results['subject_selected'],
                                                   self.results['input_param'])
         self.assertEqual(err, '')
         #Test if multiple modality as entry
-        self.results['input_param']['--input_ieeg'] = {'modality': ['Ieeg', 'Eeg'], 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': ['Ieeg', 'Eeg'], 'ses': '01', 'run': '01'}
         warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
-                                                      self.results['subject_selected']['sub'],
+                                                      self.results['subject_selected'],
                                                       self.results['input_param'])
-        self.assertEqual(err, 'There is too many modalities selected in the input --input_ieeg\n.')
+        self.assertEqual(err, 'Modalities selected in the input Input_--input_ieeg are too differents\n.')
         #Test if subjects are removed because don't have the required input
-        self.results['input_param']['--input_ieeg'] = {'modality': ['Ieeg'], 'ses': '01', 'run': '02'}
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': ['Ieeg'], 'ses': '01', 'run': '02'}
         warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
-                                                      self.results['subject_selected']['sub'],
+                                                      self.results['subject_selected'],
                                                       self.results['input_param'])
-        self.assertEqual(self.results['subject_selected']['sub'], ['01', '02'])
+        self.assertEqual(self.results['subject_selected'], ['01', '02'])
 
 
 class DerivativesTest(unittest.TestCase):
     def setUp(self):
         self.results = {}
-        self.results['subject_selected'] = {'sub': ['01', '02']}
+        self.results['subject_selected'] = ['01', '02']
         self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '20', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
         self.results['input_param'] = {}
-        self.results['input_param']['--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        self.results['input_param']['--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
-        self.subject = pip.SubjectToAnalyse(self.results['subject_selected']['sub'], input_dict=self.results['input_param'])
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
+        self.subject = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         #self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 
     def test_create_output_directory(self):
@@ -267,11 +269,11 @@ class RunSoftwareTest(unittest.TestCase):
         self.soft = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         self.results = {}
         self.results['analysis_param'] = {'Mode': 'automatic', '--participants': True, '--criteriaparticipants': ['age','sex']}
-        self.results['input_param'] = {'': {}}
-        self.results['subject_selected'] = {'sub': ['01', '02', '03']}
+        self.results['input_param'] = {'Input_': {}}
+        self.results['subject_selected'] = ['01', '02', '03']
 
     def test_run_analysis(self):
-        log_analysis = self.soft.set_everything_for_analysis(self.results)
+        log_analysis, output_name = self.soft.set_everything_for_analysis(self.results)
         self.assertIn(' has been analyzed with no error\n', log_analysis)
 
 
