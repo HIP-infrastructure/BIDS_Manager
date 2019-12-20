@@ -10,6 +10,7 @@ import shutil
 from tkinter import messagebox, filedialog
 from sys import exc_info
 
+
 class DerivativesSetting(object):
     path = None
     pipelines = []
@@ -82,7 +83,7 @@ class DerivativesSetting(object):
                             desc_data.update(subject_list)
                         break
                 if not directory_name:
-                    directory_name = pip_name + '-v' + str(len(variant_list) + 1)
+                    directory_name = pip_name.lower() + '-v' + str(len(variant_list) + 1)
                     desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                     desc_data['Name'] = directory_name
             # if it_exist and not variant_list:
@@ -90,11 +91,11 @@ class DerivativesSetting(object):
             # elif it_exist and variant_list:
             #     directory_name = pip_name + '-v' + str(len(variant_list)+1)
             else:
-                directory_name = pip_name
+                directory_name = pip_name.lower()
                 desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                 desc_data['Name'] = directory_name
         else:
-            directory_name = pip_name
+            directory_name = pip_name.lower()
             desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)

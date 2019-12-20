@@ -920,8 +920,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
     def subject_selection(self):
         output_dict = BidsSelectDialog(self, self.curr_bids)
-        self.update_text('Subjects selected \n' + '\n'.join(
-            output_dict.results['subject_selected']['sub']) + '\nThe analysis is ready to be run')
+        self.update_text('Subjects corresponding to the selection are:\n' + '\n'.join(
+            output_dict.results['subject_selected']))
 
     def createtablestats(self):
         self.make_idle('Create your statistical table')
@@ -1375,21 +1375,34 @@ class BidsTSVDialog(TemplateDialog):
         self.clear_table()
         self.idx_col += column_step
         start_col = self.idx_col*self.max_columns
-        end_col = start_col+self.max_columns
+        if self.idx_col > 1:
+            start_col = start_col - (self.idx_col - 1)
+
+        end_col = start_col+self.max_columns - 1
         start_idx = 1+self.idx * self.max_lines
         end_idx = start_idx + self.max_lines
         self.next_col_btn.config(state=NORMAL)
         self.prev_col_btn.config(state=NORMAL)
+        if start_col == 0:
+            self.prev_col_btn.config(state=DISABLED)
+            end_col = start_col + self.max_columns
+            self.key_button = {}
         if end_idx > self.n_lines+1:
             end_idx = self.n_lines+1
         if end_col > self.n_columns:
             end_col = self.n_columns
             self.next_col_btn.config(state=DISABLED)
-        if start_col ==0:
-            self.prev_col_btn.config(state=DISABLED)
-        self.key_button = {key: '' for key in self.main_brick.header[start_col:end_col]}
+        if start_col > 0:
+            self.key_button = {self.main_brick.header[0]: ''}
+        self.key_button.update({key: '' for key in self.main_brick.header[start_col:end_col]})
         self.make_header(parent)
-        self.table2show = [line[start_col:end_col] for line in self.main_brick[start_idx:end_idx]]
+        self.table2show = []
+        for line in self.main_brick[start_idx:end_idx]:
+            if start_col > 0:
+                self.table2show.append([line[0]])
+            else:
+                self.table2show.append([])
+            self.table2show[-1].extend(line[start_col:end_col])
         self.update_table()
 
     def ok(self, event=None):
@@ -2239,24 +2252,25 @@ class BidsSelectDialog(TemplateDialog):
         enable(Frame_subject_criteria, 'disabled')
         frame_subject.pack(side=TOP)
 
-        frame_add_soft = Frame(parent)
-        frame_add_soft.pack(side=TOP)
         frame_okcancel = Frame(parent)
         frame_okcancel.pack(side=BOTTOM)
-        frame_multi_soft = VerticalScrollbarFrame(parent)
-        if not self.batch:
-            self.create_frame_parameters(frame_multi_soft)
-        else:
-            width = round((self.monitor_width * 3) / 4)
-            height = round((self.monitor_height * 3) / 4)
-            self.geometry('{}x{}'.format(width, height))
-            frame_multi_soft.frame.config(height=height / 3)
-            soft_list_button = ttk.Combobox(frame_add_soft, values=self.soft_list)
-            soft_list_button.grid(row=0, column=0)
-            add_soft = Button(frame_add_soft, text='+', command=lambda: self.create_frame_parameters(frame_multi_soft, soft_name=self.soft_list[soft_list_button.current()]))
-            add_soft.grid(row=0, column=1)
-        frame_multi_soft.frame.pack(side=TOP)
-        frame_multi_soft.update_scrollbar()
+        if self.batch or self.soft_name:
+            frame_add_soft = Frame(parent)
+            frame_add_soft.pack(side=TOP)
+            frame_multi_soft = VerticalScrollbarFrame(parent)
+            if not self.batch:
+                self.create_frame_parameters(frame_multi_soft)
+            else:
+                width = round((self.monitor_width * 3) / 4)
+                height = round((self.monitor_height * 3) / 4)
+                self.geometry('{}x{}'.format(width, height))
+                frame_multi_soft.frame.config(height=height / 3)
+                soft_list_button = ttk.Combobox(frame_add_soft, values=self.soft_list)
+                soft_list_button.grid(row=0, column=0)
+                add_soft = Button(frame_add_soft, text='+', command=lambda: self.create_frame_parameters(frame_multi_soft, soft_name=self.soft_list[soft_list_button.current()]))
+                add_soft.grid(row=0, column=1)
+            frame_multi_soft.frame.pack(side=TOP)
+            frame_multi_soft.update_scrollbar()
 
         #row_okcancel = max(length, cntR, cntC)+1
         self.ok_cancel_button(frame_okcancel)
@@ -2339,30 +2353,33 @@ class BidsSelectDialog(TemplateDialog):
                 select_sub.append(self.select_subject.get(index))
         elif self.Crit_sub.get():
             res_dict = self.subject_interface.get_parameter()
-            select_sub = self.subject_interface.get_subject_list(self, res_dict)
+            select_sub = self.subject_interface.get_subject_list(res_dict)
         else:
             messagebox.showerror('Error Subjects', 'Please select subjects to analyse')
             return
         if not select_sub:
             select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
-        for key in self.parameter_list:
-            self.results[key]['subject_selected'] = select_sub
-            for inp in self.parameter_list[key]['Input']:
-                self.results[key]['input_param'][inp] = self.parameter_list[key]['Input'][inp].get_parameter()
-            if not self.param_script[key].get():
-                self.results[key]['analysis_param'] = self.parameter_list[key]['Parameters'].get_parameter()
-            else:
-                self.results[key]['analysis_param'] = self.param_file[key][-1]
-            warn, err = pip.verify_subject_has_parameters(self.bids_data,
-                                                          self.results[key]['subject_selected'],
-                                                          self.results[key]['input_param'])
-            if err:
-                messagebox.showerror('Error parameters {}'.format(key), warn + err)
-                return
-            elif warn:
-                flag = messagebox.askyesno('Warning {}'.format(key), 'Your parameter selection has created warnings.\n'+warn+'Do you want to modify your selection?')
-                if flag:
+        if self.parameter_list:
+            for key in self.parameter_list:
+                self.results[key]['subject_selected'] = select_sub
+                for inp in self.parameter_list[key]['Input']:
+                    self.results[key]['input_param'][inp] = self.parameter_list[key]['Input'][inp].get_parameter()
+                if not self.param_script[key].get():
+                    self.results[key]['analysis_param'] = self.parameter_list[key]['Parameters'].get_parameter()
+                else:
+                    self.results[key]['analysis_param'] = self.param_file[key][-1]
+                warn, err = pip.verify_subject_has_parameters(self.bids_data,
+                                                              self.results[key]['subject_selected'],
+                                                              self.results[key]['input_param'])
+                if err:
+                    messagebox.showerror('Error parameters {}'.format(key), warn + err)
                     return
+                elif warn:
+                    flag = messagebox.askyesno('Warning {}'.format(key), 'Your parameter selection has created warnings.\n'+warn+'Do you want to modify your selection?')
+                    if flag:
+                        return
+        else:
+            self.results['subject_selected'] = select_sub
         self.destroy()
 
     def cancel(self):
@@ -2580,6 +2597,7 @@ class RequirementsDialog(TemplateDialog):
             enable(frame_modality.frame, 'disabled')
 
         self.ok_cancel_button(Frame_path)
+        self.attributes("-topmost", True)
 
     def subject_info_button(self, parent, key=None, val=None, req=False):
         self.info_key_label.append(StringVar())
@@ -2638,7 +2656,6 @@ class RequirementsDialog(TemplateDialog):
                 butt2removed.append(idx_button)
                 idx_val_removed.append(idx_val)
                 num = 0
-                butt2removed = list(set(butt2removed))
                 for val in butt2removed:
                     if idx_button > val:
                         id_rv = butt2removed.index(val)
@@ -2785,7 +2802,7 @@ class RequirementsDialog(TemplateDialog):
         #self.remove_lines_command(0, 0)
         for key, value in req_dict['Requirements']['Subject']['keys'].items():
             req=False
-            if key in req_dict['Requirements']['Subject']['required_keys']:
+            if 'required_keys' in req_dict['Requirements']['Subject'] and key in req_dict['Requirements']['Subject']['required_keys']:
                 req=True
             self.subject_info_button(frame_subject.frame, key=key, val=value, req=req)
         frame_subject.frame.update_idletasks()
@@ -2800,8 +2817,9 @@ class RequirementsDialog(TemplateDialog):
             if mod not in ['Subject']:
                 self.add_lines_command(frame_modality.frame, canvas=frame_modality.canvas, mod=mod,
                                                required=False, dict_val=req_dict['Requirements'][mod]['keys'])
-        self.elec_name = req_dict['Converters']['Electrophy']['path']
-        self.imag_name = req_dict['Converters']['Imaging']['path']
+        if 'Converters' in req_dict:
+            self.elec_name = req_dict['Converters']['Electrophy']['path']
+            self.imag_name = req_dict['Converters']['Imaging']['path']
 
     def ok(self):
         self.error_str = ''
@@ -2939,8 +2957,9 @@ class RequirementsDialog(TemplateDialog):
                                     key_dict[key].append(val)
                             key_dict[key] = list(set(key_dict[key]))
                         else:
-                            if key in verif_type[mod] and key != 'run':
-                                self.error_str += 'Be carefull, in {0} required {1} is mentionned but not in possible modalities.\n'.format(mod, key)
+                            if mod in verif_type:
+                                if key in verif_type[mod] and key != 'run':
+                                    self.error_str += 'Be carefull, in {0} required {1} is mentionned but not in possible modalities.\n'.format(mod, key)
                     if any(mod not in list(self.modality_name) for mod in verif_type):
                         self.error_str += 'Error: Some required modalities (2nd column) are not in possible modalities (3rd column).\n'
                     req_dict['Requirements'][mod]['keys'] = key_dict

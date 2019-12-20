@@ -3387,7 +3387,7 @@ class BidsDataset(MetaBrick):
                         pipDataset['DatasetDescJSON'].write_file(jsonfilename=os.path.join(pipDataset.dirname, 'dataset_description.json'))
                     if pipDataset['ParticipantsProcessTSV']:
                         pipDataset['ParticipantsProcessTSV'].write_file(tsv_full_filename=os.path.join(pipDataset.dirname, 'participants.tsv'))
-                    self.save_as_json()
+                    #self.save_as_json()
 
             if copy_data2import.is_empty():
                 if all(file.endswith('.json') or file.endswith('.tsv') or file.endswith('.flt') or file.endswith('.mtg')
