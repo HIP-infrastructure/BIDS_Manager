@@ -73,9 +73,10 @@ class PipelineTest(unittest.TestCase):
                 in_tmp[elt]['task'] = {'value': ['ccep'], 'attribut': 'Label'}
             elif cnt == 3:
                 in_tmp[elt] = dict()
-                in_tmp[elt]['modality'] = {'value': ['CT', 'T1w'], 'attribut': 'Variable'}
+                in_tmp[elt]['modality'] = {'value': 'Anat', 'attribut': 'Label'}
                 in_tmp[elt]['acq'] = {'value': ['postimp', 'preimp'], 'attribut': 'Variable'}
                 in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
+                in_tmp[elt]['mod'] = {'value': ['CT', 'T1w'], 'attribut': 'Variable'}
             elif cnt == 4:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'StringVar'
@@ -108,14 +109,15 @@ class ParameterTest(unittest.TestCase):
         self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '20', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        self.results['input_param']['Input_--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
         self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 
     def test_multiple_input_output(self):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        subjects_results = {'sub': ['01', '02', '03'], 'Input_--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run': ['01']}, 'Input_--input_anat': {'modality': ['T1w'], 'acq': ['preimp']}}
+        subjects_results = {'sub': ['01', '02', '03'], 'Input_--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run':
+            ['01']}, 'Input_--input_anat': {'modality': ['Anat'], 'acq': ['preimp'], 'mod': ['T1w']}}
         self.assertEqual(subjects, subjects_results)
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = 'D:/Data/testing --input_ieeg {0} --input_anat {1} --output_file {2} --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'
@@ -160,7 +162,7 @@ class ParameterTest(unittest.TestCase):
             in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg'.format(sub)], [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
         self.results['input_param'] = {}
-        self.results['input_param']['Input_--input_dir'] = {'modality': 'T1w', 'acq': ['preimp']}
+        self.results['input_param']['Input_--input_dir'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
         subjects_anat = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         taille, idx_in, in_out_anat = input_dict.get_input_values(subjects_anat, order)
         output_dict.get_output_values(in_out_anat, taille, order, self.output_dir, idx_in)
@@ -218,8 +220,9 @@ class ParameterTest(unittest.TestCase):
         warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
                                                       self.results['subject_selected'],
                                                       self.results['input_param'])
-        self.assertEqual(err, 'Modalities selected in the input Input_--input_ieeg are too differents\n.')
+        self.assertEqual(err, 'There is no more subject in the selection.\n Please modify your parameters.\n')#'Modalities selected in the input Input_--input_ieeg are too differents\n.')
         #Test if subjects are removed because don't have the required input
+        self.results['subject_selected'] = ['01', '02', '03']
         self.results['input_param']['Input_--input_ieeg'] = {'modality': ['Ieeg'], 'ses': '01', 'run': '02'}
         warn, err = pip.verify_subject_has_parameters(__bids_dataset__,
                                                       self.results['subject_selected'],
@@ -234,7 +237,7 @@ class DerivativesTest(unittest.TestCase):
         self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '20', '--criteria': ['Stim', 'stim'], '--criteriadata': 'ses', '--task': 'acq'}
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        self.results['input_param']['Input_--input_anat'] = {'modality': 'T1w', 'acq': ['preimp']}
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
         self.subject = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         #self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 

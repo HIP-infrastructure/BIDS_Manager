@@ -659,8 +659,9 @@ class Parameters(dict):
         if input_param:
             input_tag = [elt['tag'] for elt in self['Input']]
             for inp in input_param:
-                if inp in input_tag:
-                    idx = input_tag.index(inp)
+                inp_tag = inp.split('Input_')[1]
+                if inp_tag in input_tag:
+                    idx = input_tag.index(inp_tag)
                     self['Input'][idx].update_values(input_param[inp])
 
     def check_presence_of_software(self, curr_path):
@@ -739,13 +740,13 @@ class Parameters(dict):
                     if elt['multiplesubject'] and elt['type'] == 'dir':
                         if not elt.deriv_input:
                             cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
-                        elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ''):
-                            cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'])
+                        elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ['']):
+                            cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'][0])
                     else:
                         if elt.deriv_input:
-                            if elt['deriv-folder'] == '' and not elt['optional']:
+                            if elt['deriv-folder'] == [''] and not elt['optional']:
                                 raise ValueError('The derivative folder for this paramater {} should be mentionned.\n'.format(elt['tag']))
-                            elif elt['deriv-folder'] != '':
+                            elif elt['deriv-folder'] != ['']:
                                 order[elt['tag']] = cnt_tot
                                 cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                                 cnt_tot += 1
@@ -1132,14 +1133,14 @@ class InputArguments(Parameters):
 
     def get_input_values(self, subject_to_analyse, in_out, idx):#sub, input_param=None):
         if self.deriv_input: #'deriv-folder' in self.keys():
-            if self['deriv-folder'] and self['deriv-folder'] != '':
-                self.curr_bids.is_pipeline_present(self['deriv-folder'])
+            if self['deriv-folder'] and self['deriv-folder'] != ['']:
+                self.curr_bids.is_pipeline_present(self['deriv-folder'][0])
                 if not self.curr_bids.curr_pipeline['isPresent']:
                     raise ValueError(
                         'The derivatives folder {} selected doesn"t exists in the Bids Dataset.\n'.format(
                             self['deriv-folder']))
                 #self.read_deriv_fold = subject_to_analyse[self['tag']]['deriv-folder']
-            elif self['deriv-folder'] == '' and self['optional']:
+            elif self['deriv-folder'] == [''] and not self['optional']:
                 return
             else:
                 raise ValueError('You have to select a derivatives folder for the input {}'.format(self['tag']))
@@ -1148,97 +1149,85 @@ class InputArguments(Parameters):
                 in_out[sub][idx] = self.get_subject_files(subject_to_analyse['Input_'+self['tag']], sub)
         elif self['type'] == 'dir':
             path_key = {key: '' for key in self.path_key}
-            for key, val in subject_to_analyse['Input_'+self['tag']].items():
-                if key in self.path_key:
+            for key in path_key:
+                if key in subject_to_analyse['Input_'+self['tag']]:
+                    val = subject_to_analyse['Input_'+self['tag']][key]
                     if isinstance(val, list) and len(val) == 1:
                         path_key[key] = val[0]
-                    elif isinstance(val, str):
-                        path_key[key] = val.lower()
+
+                    # elif isinstance(val, str):
+                    #     path_key[key] = val.lower()
+            #que faire si plusieurs session sont selectionner ?
             for sub in subject_to_analyse['sub']:
                 path_key['sub'] = sub
                 chemin = []
                 if self.deriv_input:
-                    chemin.append('derivatives\\' + self['deriv-folder'])
+                    chemin.append('derivatives\\' + self['deriv-folder'][0])
                     path_key['modality'] = path_key['modality'] + 'Process'
                 for key, val in path_key.items():
                     if val and key != 'modality':
                         chemin.append(key+'-'+val)
                     elif val and key == 'modality':
-                        if val not in bids.ModalityType.get_list_subclasses_names():
-                            for mod in bids.ModalityType.get_list_subclasses_names():
-                                if val.split('Process')[0] in eval('bids.'+mod+'.allowed_modalities'):
-                                    val = mod
                         chemin.append(val.lower())
+                    # elif not val:
+                    #     break
                 in_out[sub][idx] = [os.path.join(self.bids_directory, '\\'.join(chemin))]
 
     def get_subject_files(self, subject, sub_id, deriv_reader=None):#, modality, subject_list, curr_bids):
         input_files = []
         if 'modality' not in subject.keys():
             subject['modality'] = self['modality']
-        modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elt in subject['modality']]
-        if not modality:
-            modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if any(elmt in subject['modality'] for elmt in eval('bids.' + elt + '.allowed_modalities'))]
+        # modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elt in subject['modality']]
+        # if not modality:
+        #     modality = [elt for elt in bids.ModalityType.get_list_subclasses_names() if any(elmt in subject['modality'] for elmt in eval('bids.' + elt + '.allowed_modalities'))]
         if self.deriv_input:
-            self.curr_bids.is_pipeline_present(self['deriv-folder'])
+            self.curr_bids.is_pipeline_present(self['deriv-folder'][0])
             for sub in self.curr_bids.curr_pipeline['Pipeline']['SubjectProcess']:
                 if sub['sub'] == sub_id:
-                    for mod in sub:
-                        if mod in modality:
-                            keylist = [elt for elt in eval('bids.' + mod + '.keylist') if
-                                       elt in list(subject.keys()) and elt != 'modality']
-                            if mod in bids.ImagingProcess.get_list_subclasses_names():
-                                keylist.append('modality')
-                            for elt in sub[mod]:
-                                is_equal = [True]
-                                for key in keylist:
-                                    if subject[key]:
-                                        if elt[key] in subject[key]:
-                                            is_equal.append(True)
-                                        elif key == 'modality':
-                                            if elt[key] in subject[key]:
-                                                is_equal.append(True)
-                                            elif elt[key].capitalize() in subject[key]:
-                                                is_equal.append(True)
-                                            elif elt[key] in eval('bids.'+mod+'.allowed_modalities'):
-                                                is_equal.append(True)
-                                            else:
-                                                is_equal.append(False)
-                                        else:
-                                            is_equal.append(False)
-                                    elif key == 'fileLoc':
-                                        if elt[key].endswith(self['filetype']):
-                                            is_equal.append(True)
-                                        else:
-                                            is_equal.append(False)
-                                if all(is_equal):
-                                    input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+                    for mod in subject['modality']:
+                        if not mod.endswith('Process'):
+                            mod = mod + 'Process'
+                        for elt in sub[mod]:
+                            is_equal = [True]
+                            for key in subject:
+                                if key == 'modality' or key == 'deriv-folder':
+                                    continue
+                                elif key == 'mod':
+                                    if elt['modality'] in subject[key]:
+                                        is_equal.append(True)
+                                    else:
+                                        is_equal.append(False)
+                                elif elt[key] in subject[key]:
+                                    is_equal.append(True)
+                                else:
+                                    is_equal.append(False)
+                                # elif key == 'fileLoc':
+                                #     if elt[key].endswith(self['filetype']):
+                                #         is_equal.append(True)
+                                #     else:
+                                #         is_equal.append(False)
+                            if all(is_equal) and elt['fileLoc'].endswith(self['filetype']):
+                                input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
         else:
             for sub in self.curr_bids['Subject']:
                 if sub['sub'] == sub_id:
-                    for mod in sub:
-                        if mod in modality:
-                            keylist = [elt for elt in eval('bids.' + mod + '.keylist') if elt in list(subject.keys()) and elt != 'modality']
-                            if mod in bids.Imaging.get_list_subclasses_names():
-                                keylist.append('modality')
-                            for elt in sub[mod]:
-                                is_equal = [True]
-                                for key in keylist:
-                                    if subject[key]:
-                                        if elt[key] in subject[key]:
-                                            is_equal.append(True)
-                                        elif key == 'modality':
-                                            if elt[key] in subject[key]:
-                                                is_equal.append(True)
-                                            elif elt[key].capitalize() in subject[key]:
-                                                is_equal.append(True)
-                                            elif elt[key] in eval('bids.'+mod+'.allowed_modalities'):
-                                                is_equal.append(True)
-                                            else:
-                                                is_equal.append(False)
-                                        else:
-                                            is_equal.append(False)
-                                if all(is_equal):
-                                    input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+                    for mod in subject['modality']:
+                        for elt in sub[mod]:
+                            is_equal = [True]
+                            for key in subject:
+                                if key == 'modality':
+                                    continue
+                                elif key == 'mod':
+                                    if elt['modality'] in subject[key]:
+                                        is_equal.append(True)
+                                    else:
+                                        is_equal.append(False)
+                                elif elt[key] in subject[key]:
+                                    is_equal.append(True)
+                                else:
+                                    is_equal.append(False)
+                            if all(is_equal):
+                                input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
 
         return input_files
 
@@ -1491,36 +1480,41 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
             #input_vars[key]['modality'] = bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names()
             continue
         elif 'modality' not in input_vars[key].keys() and param:
+            #Verifie le multiple selection
             idx = [param.index(elt) for elt in param if
                    elt['tag'] == key.split('_')[1]][0]
             if param[idx]['modality']:
                 input_vars[key]['modality'] = param[idx]['modality']
+                mod = input_vars[key]['modality'][-1]
             else:
                 continue
+        else:
+            mod = input_vars[key]['modality'][-1]
         if 'deriv-folder' in input_vars[key].keys():
-            deriv_folder = input_vars[key]['deriv-folder']
-            if deriv_folder == '' or deriv_folder == ['Previous analysis results'] or deriv_folder == ['']:
+            deriv_folder = input_vars[key]['deriv-folder'][-1]
+            if deriv_folder == '' or deriv_folder == ['Previous analysis results']:# or deriv_folder == ['']:
                 continue
-        if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
-            mod = []
-            for elmt in input_vars[key]['modality']:
-                if elmt in bids.ModalityType.get_list_subclasses_names():
-                    mod.append(elmt)
-                else:
-                    val = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elmt in eval('bids.' + elt + '.allowed_modalities')]
-                    if deriv_folder:
-                        val = [va for va in val if va in bids.Process.get_list_subclasses_names()]
-                    else:
-                        val = [va for va in val if va not in bids.Process.get_list_subclasses_names()]
-                    mod.extend(val)
-            mod = list(set(mod))
-        else:
-            mod = input_vars[key]['modality']
-        if len(mod) > 1:
-            err_txt += 'Modalities selected in the input {} are too differents\n.'.format(key)
-            return warn_txt, err_txt
-        else:
-            mod = mod[-1]
+        # if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
+        #     mod = []
+        #     for elmt in input_vars[key]['modality']:
+        #         if elmt in bids.ModalityType.get_list_subclasses_names():
+        #             mod.append(elmt)
+        #         else:
+        #             val = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elmt in eval('bids.' + elt + '.allowed_modalities')]
+        #             if deriv_folder:
+        #                 val = [va for va in val if va in bids.Process.get_list_subclasses_names()]
+        #             else:
+        #                 val = [va for va in val if va not in bids.Process.get_list_subclasses_names()]
+        #             mod.extend(val)
+        #     mod = list(set(mod))
+        # else:
+        #     mod = input_vars[key]['modality']
+
+        # if len(mod) > 1:
+        #     err_txt += 'Modalities selected in the input {} are too differents\n.'.format(key)
+        #     return warn_txt, err_txt
+        # else:
+        #     mod = mod[-1]
         keylist = [clef for clef in input_vars[key] if (clef != 'modality' and clef != 'deriv-folder')]
 
         for clef in keylist:
@@ -1535,11 +1529,16 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
                         if not mod.endswith('Process'):
                             mod = mod+'Process'
                         elmt = [val[clef] for val in curr_bids.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][mod]]
+                        if clef == 'mod':
+                            elmt = [val['modality'] for val in
+                                    curr_bids.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][mod]]
                     else:
                         elmt=[]
                 else:
                     curr_bids.is_subject_present(sid)
                     elmt = [val[clef] for val in curr_bids.curr_subject['Subject'][mod]]
+                    if clef == 'mod':
+                        elmt = [val['modality'] for val in curr_bids.curr_subject['Subject'][mod]]
                 if not any(elt in elmt for elt in input_vars[key][clef]):
                     warn_txt += 'The subject {0} doesn"t have the required {1} for the analysis.\n The {2} is missing.\n'.format(sid, key, clef)
                     sub2remove.append(sid)
@@ -1831,9 +1830,11 @@ class InputParameterInterface(Interface):
         if parameter_soft_input:
             self.parameters = parameter_soft_input
             mod_list = bids.Electrophy.get_list_subclasses_names() + bids.Imaging.get_list_subclasses_names()
+            if self.parameters.deriv_input:
+                mod_list = bids.ElectrophyProcess.get_list_subclasses_names() + bids.ImagingProcess.get_list_subclasses_names()
             keylist = [elt for key in mod_list for elt in eval('bids.' + key + '.keylist') if not (
                     elt.endswith('JSON') or elt.endswith('TSV') or elt.endswith('Loc') or elt.endswith(
-                'modality') or elt == 'sub')]
+                'modality') or elt == 'sub' or elt.endswith('Labels'))]
             self.keylist = list(set(keylist))
             self.vars_interface()
 
@@ -1843,7 +1844,7 @@ class InputParameterInterface(Interface):
                 self['deriv-folder'] = dict()
                 self['deriv-folder']['attribut'] = 'Listbox'
                 deriv_list = [elt for elt in os.listdir(os.path.join(self.bids_data.cwdir, 'derivatives'))if
-                                  elt not in ['log', 'parsing', 'parsing_old', 'log_old']]
+                                  elt not in ['log', 'parsing', 'parsing_old', 'log_old'] and os.path.isdir(os.path.join(self.bids_data.cwdir, 'derivatives',elt))]
                 self['deriv-folder']['value'] = deriv_list
             self['modality'] = dict()
             if self.parameters['modality']:
@@ -1865,33 +1866,56 @@ class InputParameterInterface(Interface):
             modality = [self['modality']['value']]
         else:
             modality = self['modality']['value']
-        for sub in self.bids_data['Subject']:
-            for mod in sub:
-                if mod and mod in modality:
-                    keys = [elt for elt in self.keylist if elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
-                    if mod in bids.Imaging.get_list_subclasses_names():
-                        keys.append('modality')
-                    for key in keys:
-                        value = [elt[key] for elt in sub[mod]]
-                        value = sorted(list(set(value)))
-                        if '' in value:
-                            value.remove('')
-                        if value and value[0] is not '':
-                            if key == 'modality':
-                                if self[key]['attribut'] == 'Label':
-                                    self[key]['value'] = value
-                            elif not key in self:
-                                self[key] = {}
-                                self[key]['value'] = value
-                                self[key]['attribut'] = 'IntVar'
-                            else:
-                                self[key]['value'].extend(value)
-                            self[key]['value'] = sorted(
-                                list(set(self[key]['value'])))
-                            if len(self[key]['value']) > 1:
-                                self[key]['attribut'] = 'Variable'
-                            elif len(self[key]['value']) == 1:
-                                self[key]['attribut'] = 'Label'
+        if not self.parameters.deriv_input:
+            for sub in self.bids_data['Subject']:
+                for mod in sub:
+                    if mod and mod in modality:
+                        keys = [elt for elt in self.keylist if elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
+                        if mod in bids.Imaging.get_list_subclasses_names() and 'mod' not in keys:
+                            keys.append('mod')
+                        self.get_values(mod, keys, sub)
+        else:
+            for pip in self.bids_data['Derivatives'][0]['Pipeline']:
+                sub_list = [sub for sub in pip['SubjectProcess']]
+                for sub in sub_list:
+                    for mod in sub:
+                        if mod and mod.split('Process')[0] in modality:
+                            keys = [elt for elt in self.keylist if
+                                    elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
+                            if mod in bids.ImagingProcess.get_list_subclasses_names() and 'mod' not in keys:
+                                keys.append('mod')
+                            self.get_values(mod, keys, sub)
+            clefs = [key for key in self]
+            for key in clefs:
+                if self[key]['attribut'] == 'Label' and key != 'modality':
+                    del self[key]
+
+    def get_values(self, mod, keys, sub):
+        for key in keys:
+            value = [elt[key] for elt in sub[mod]]
+            if key == 'mod':
+                value = [elt['modality'] for elt in sub[mod]]
+            value = sorted(list(set(value)))
+            if '' in value:
+                value.remove('')
+            if value and value[0] is not '':
+                # if key == 'modality':
+                #     if self[key]['attribut'] == 'Label':
+                #         self[key]['value'] = value
+                #     else:
+                #         self[key]['value'].extend(value)
+                if not key in self:
+                    self[key] = {}
+                    self[key]['value'] = value
+                    self[key]['attribut'] = 'IntVar'
+                else:
+                    self[key]['value'].extend(value)
+                self[key]['value'] = sorted(
+                        list(set(self[key]['value'])))
+                if len(self[key]['value']) > 1:
+                    self[key]['attribut'] = 'Variable'
+                elif len(self[key]['value']) == 1:
+                    self[key]['attribut'] = 'Label'
 
 
 def main(argv):
