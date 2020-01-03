@@ -743,7 +743,7 @@ class Parameters(dict):
         order = {}
         for clef in self:
             if clef == 'Input':
-                for elt in input_dict:
+                for cn, elt in enumerate(input_dict):
                     if elt['multiplesubject'] and elt['type'] == 'dir':
                         if not elt.deriv_input:
                             cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
@@ -758,7 +758,10 @@ class Parameters(dict):
                                 cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                                 cnt_tot += 1
                         else:
-                            order[elt['tag']] = cnt_tot
+                            if not elt['tag']:
+                                order['in'+str(cn)] = cnt_tot
+                            else:
+                                order[elt['tag']] = cnt_tot
                             cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                             cnt_tot += 1
             elif clef == 'Output':
@@ -829,7 +832,7 @@ class AnyWave(Parameters):
         cmd = cmd_base + cmd_line
         return cmd, order
 
-    def chaine_parameters(self, output_directory, input, output):
+    def chaine_parameters(self, output_directory, input_dict, output_dict):
         jsonfilename = os.path.join(self.derivatives_directory, self['plugin'] + '_parameters' + '.json')
 
         del self['Input']
@@ -845,25 +848,39 @@ class AnyWave(Parameters):
         order = {}
         #Handle the input and output
         cnt_tot = 0
-        for cn, elt in enumerate(input):
+        for cn, elt in enumerate(input_dict):
             if elt['multiplesubject'] and elt['type'] == 'dir':
-                cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
+                if not elt.deriv_input:
+                    cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
+                elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ['']):
+                    cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives',
+                                                                      elt['deriv-folder'][0])
             else:
                 if not elt['tag']:
                     order['in' + str(cn)] = cnt_tot
                 else:
                     order[elt['tag']] = cnt_tot
-                cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
-                cnt_tot += 1
+                if elt.deriv_input:
+                    if elt['deriv-folder'] == [''] and not elt['optional']:
+                        raise ValueError(
+                            'The derivative folder for this paramater {} should be mentionned.\n'.format(elt['tag']))
+                    elif elt['deriv-folder'] != ['']:
+                        cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
+                        cnt_tot += 1
+                    else:
+                        del order[-1]
+                else:
+                    cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
+                    cnt_tot += 1
 
-        if output['multiplesubject'] and output['directory']:
-            cmd_line += ' ' + output['tag'] + ' ' + output_directory
+        if output_dict['multiplesubject'] and output_dict['directory']:
+            cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
         else:
-            if not output['tag']:
+            if not output_dict['tag']:
                 order['out'] = cnt_tot
             else:
-                order[output['tag']] = cnt_tot
-            cmd_line += ' ' + output['tag'] + ' {' + str(cnt_tot) + '}'
+                order[output_dict['tag']] = cnt_tot
+            cmd_line += ' ' + output_dict['tag'] + ' {' + str(cnt_tot) + '}'
             cnt_tot += 1
 
         return cmd_line, order
@@ -915,7 +932,7 @@ class Docker(Parameters):
         return cmd, order
 
     def chaine_parameters(self, input_dict, output_dict):
-        cmd_line =''
+        cmd_line = ''
         cnt_tot = 0
         order = {}
         for clef in self:
@@ -954,20 +971,38 @@ class Matlab(Parameters):
         cmd_line = []
         cnt_tot = 0
         order = {}
+
         for clef in self:
             if clef == 'Input':
                 for cn, elt in enumerate(input_dict):
                     if elt['multiplesubject'] and elt['type'] == 'dir':
                         if elt['tag']:
                             cmd_line.append("'" + elt['tag'] + "'")
-                        cmd_line.append("'" + self.bids_directory + "' ")
+                        if not elt.deriv_input:
+                            cmd_line.append("'" + self.bids_directory + "' ")
+                        elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ['']):
+                            cmd_line.append("'" + os.path.join(self.bids_directory, 'derivatives',
+                                                                              elt['deriv-folder'][0]) + "' ")
                     else:
                         if not elt['tag']:
                             order['in'+str(cn)] = cnt_tot
                         else:
+                            cmd_line.append("'" + elt['tag'] + "'")
                             order[elt['tag']] = cnt_tot
-                        cmd_line.append("'{" + str(cnt_tot) + "}'")
-                        cnt_tot += 1
+                        if elt.deriv_input:
+                            if elt['deriv-folder'] == [''] and not elt['optional']:
+                                raise ValueError(
+                                    'The derivative folder for this paramater {} should be mentionned.\n'.format(
+                                        elt['tag']))
+                            elif elt['deriv-folder'] != ['']:
+                                cmd_line.append("'{" + str(cnt_tot) + "}'")
+                                cnt_tot += 1
+                            else:
+                                del cmd_line[-1]
+                                del order[-1]
+                        else:
+                            cmd_line.append("'{" + str(cnt_tot) + "}'")
+                            cnt_tot += 1
             elif clef == 'Output':
                 if output_dict['multiplesubject'] and output_dict['directory']:
                     if output_dict['tag']:
@@ -978,6 +1013,7 @@ class Matlab(Parameters):
                         order['out'] = cnt_tot
                     else:
                         order[output_dict['tag']] = cnt_tot
+                        cmd_line.append("'"+output_dict['tag']+"'")
                     cmd_line.append("'{" + str(cnt_tot) + "}'")
                     cnt_tot += 1
             elif isinstance(self[clef], list):
