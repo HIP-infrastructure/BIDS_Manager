@@ -1132,6 +1132,14 @@ class InputArguments(Parameters):
         #self['value_selected'] = input_dict
 
     def get_input_values(self, subject_to_analyse, in_out, idx):#sub, input_param=None):
+        def check_dir_existence(bids_directory, chemin):
+            chemin_final = os.path.join(self.bids_directory, '\\'.join(chemin))
+            if os.path.exists(chemin_final):
+                return chemin_final
+            else:
+                del chemin[-1]
+                return check_dir_existence(bids_directory, chemin)
+
         if self.deriv_input: #'deriv-folder' in self.keys():
             if self['deriv-folder'] and self['deriv-folder'] != ['']:
                 self.curr_bids.is_pipeline_present(self['deriv-folder'][0])
@@ -1171,7 +1179,8 @@ class InputArguments(Parameters):
                         chemin.append(val.lower())
                     # elif not val:
                     #     break
-                in_out[sub][idx] = [os.path.join(self.bids_directory, '\\'.join(chemin))]
+                #check the existence of the directory
+                in_out[sub][idx] = [check_dir_existence(self.bids_directory, chemin)]
 
     def get_subject_files(self, subject, sub_id, deriv_reader=None):#, modality, subject_list, curr_bids):
         input_files = []
