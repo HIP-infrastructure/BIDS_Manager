@@ -667,16 +667,23 @@ class Parameters(dict):
     def check_presence_of_software(self, curr_path):
         def type_of_software(name, intermediaire):
             if not intermediaire:
-                return name
+                ext = '.exe'
             elif intermediaire == 'Docker':
-                return ''
-            else:
-                return intermediaire
+                ext = ''
+                name = ''
+            elif intermediaire == 'Python':
+                ext = '.py'
+            elif intermediaire == 'Matlab':
+                ext = '.m'
+            elif intermediaire == 'AnyWave':
+                ext = '.exe'
+                name = AnyWave
+            return name, ext
 
-        def select_pipeline_path(name):
+        def select_pipeline_path(name, ext):
             messagebox.showerror('PathError', 'The current pipeline path is not valid')
             filename = filedialog.askopenfilename(title='Please select ' + name + ' file',
-                                                  filetypes=[('exe files', '.exe'), ('m files', '.m'), ('py files', '.py')])
+                                                  filetypes=[('files', ext)])
             if not name in filename:
                 messagebox.showerror('PathError', 'The selected file is not the good one for this pipeline')
                 return 'ERROR: The path is not valid'
@@ -686,16 +693,16 @@ class Parameters(dict):
         interm = None
         if 'Intermediate' in self.keys():
             interm = self['Intermediate']
-        name = type_of_software(self['Callname'], interm)
+        name, ext = type_of_software(self['Callname'], interm)
         if not name:
             return ''
         if curr_path:
             if not os.path.exists(curr_path):
-                curr_path = select_pipeline_path(name)
+                curr_path = select_pipeline_path(name, ext)
             elif not name in curr_path:
-                curr_path = select_pipeline_path(name)
+                curr_path = select_pipeline_path(name, ext)
         else:
-            curr_path = select_pipeline_path(name)
+            curr_path = select_pipeline_path(name, ext)
         return curr_path
 
     def command_arg(self, key, cmd_dict, subject_list):
@@ -1000,7 +1007,6 @@ class Python(Parameters):
         return cmd, order
 
     #def chaine_parameters(self, output_directory, input_dict, output_dict):
-
 
 
 class ParametersSide(list):
