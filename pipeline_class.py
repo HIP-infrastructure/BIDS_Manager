@@ -1307,6 +1307,9 @@ class Output(Parameters):
             soft_name = soft_name.split('-v')[0]
             dirname, filename = os.path.split(filename)
             trash, dirname = dirname.split(bids_directory + '\\')
+            if 'derivatives' in dirname:
+                idx = dirname.find('sub-')
+                dirname = dirname[idx::]
             file_elt = filename.split('_')
             if isinstance(extension, list):
                 for ext in extension:
@@ -1329,6 +1332,9 @@ class Output(Parameters):
                 trash, dirname = dirname.split(bids_directory + '\\')
             else:
                 trash, dirname = filename.split(bids_directory+'\\')
+            if 'derivatives' in dirname:
+                idx = dirname.find('sub-')
+                dirname = dirname[idx::]
             out_dir = [os.path.join(output_dir, dirname)]
             os.makedirs(out_dir[0], exist_ok=True)
             return out_dir
