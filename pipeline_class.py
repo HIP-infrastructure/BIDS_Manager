@@ -768,7 +768,10 @@ class Parameters(dict):
                 if output_dict['multiplesubject'] and output_dict['directory']:
                     cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
                 else:
-                    order[output_dict['tag']] = cnt_tot
+                    if not elt['tag']:
+                        order['out'] = cnt_tot
+                    else:
+                        order[output_dict['tag']] = cnt_tot
                     cmd_line += ' ' + output_dict['tag'] + ' {' + str(cnt_tot) + '}'
                     cnt_tot += 1
                 #cmd_line += determine_input_output_type(output_dict, cnt_tot, order)
