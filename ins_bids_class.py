@@ -1,12 +1,26 @@
 #!/usr/bin/python3
 # -*-coding:Utf-8 -*
 
-"""
-    This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
-    (with changes by Aude Jegou <aude.jegou@univ-amu.fr)
-    This module is concerned by managing BIDS directory.
-    v0.1.12 June 2019
-"""
+#     BIDS Manager collect, organise and manage data in BIDS format.
+#     Copyright © 2018-2020 Aix-Marseille University, INSERM, INS
+#
+#     This file is part of BIDS Manager.
+#
+#     BIDS Manager is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     any later version
+#
+#     BIDS Manager is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with BIDS Manager.  If not, see <https://www.gnu.org/licenses/>
+#
+#     Authors: Nicolas Roehri, 2018-2019
+#              Aude Jegou, 2019-2020
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -816,7 +830,7 @@ class BidsBrick(dict):
                 input_cmd = '--input_dir "'
                 bids_format = ''
                 conv_ext = ['']
-            elif os.path.isfile(os.path.join(Data2Import.dirname, self['fileLoc'])) and isinstance(self, Ieeg):
+            elif os.path.isfile(os.path.join(Data2Import.dirname, self['fileLoc'])) and (isinstance(self, Ieeg) or isinstance(self, Eeg)):
                 input_cmd = '--input_file "'
                 bids_format = ' --bids_format vhdr'
 
@@ -1758,6 +1772,7 @@ class AnatProcess(ImagingProcess):
                 self['Morphometrics'] = Morphometrics()
                 self['Morphometrics'].read_file(self['fileLoc'])
 
+
 class AnatProcessJSON(ImagingProcessJSON):
     pass
 
@@ -1904,7 +1919,7 @@ class Meg(Electrophy):
     # keybln = BidsBrick.create_keytype(keylist)
     required_keys = Imaging.required_keys + ['task', 'modality']
     allowed_modalities = ['meg']
-    allowed_file_formats = ['.ctf', '.ds', '.fif', '4D', '.kdf', '.raw', '.mhd', '.sqd', '.con', '.ave', '.mrk']
+    allowed_file_formats = ['.ctf', '.ds', '.fif', '.kdf', '.raw', '.mhd', '.sqd', '.con', '.ave', '.mrk', '']
     readable_file_formats = allowed_file_formats
     channel_type = ['MEG']
     required_protocol_keys = []
@@ -2001,10 +2016,15 @@ class Scans(BidsBrick):
         if mod_dict[mod_dict.classname()+'JSON']:  # check if object has a JSON
             mod_json = mod_dict[mod_dict.classname()+'JSON']
             # check if JSON has recording time information otherwise mark default one
-            if 'RecordingISODate' in mod_json.keylist and mod_json['RecordingISODate']:
-                scan_time = mod_dict[mod_dict.classname() + 'JSON']['RecordingISODate']
-            elif 'AcquisitionTime' in mod_json.keylist and mod_json['AcquisitionTime']:
-                scan_time = '1900-01-01T' + mod_dict[mod_dict.classname()+'JSON']['AcquisitionTime']
+            if 'RecordingISODate' in mod_json.keys() and mod_json['RecordingISODate']:
+                scan_time = mod_json['RecordingISODate']
+            elif 'AcquisitionTime' in mod_json.keys() and mod_json['AcquisitionTime']:
+                scan_time = '1900-01-01T' + mod_json['AcquisitionTime']
+            elif 'AcquisitionDateTime' in mod_json.keys() and mod_json['AcquisitionDateTime']:
+                try:
+                    scan_time = str(datetime.strptime(mod_json['AcquisitionDateTime'], '%Y%m%d%H%M%S.%f'))
+                except:
+                    scan_time = '1900-01-01T00:00:00'
         # if bids_dir['DatasetDescJSON']['Name'] == 'FTract' and mod_type == 'Anat':
         #     ind_pre = bids_dir['ParticipantsTSV'][0].index('pre_iEEG_date')
         #     ind_post = bids_dir['ParticipantsTSV'][0].index('post_resection_MRI_date')
@@ -2734,6 +2754,9 @@ class BidsDataset(MetaBrick):
                             mod_dir = mod_dir + 'Process'
                         subinfo[mod_dir] = getattr(modules[__name__], mod_dir)()
                         subinfo[mod_dir][-1]['fileLoc'] = file.path
+                        if mod_dir == 'Meg':
+                            subinfo[mod_dir][-1].get_attributes_from_filename()
+                            subinfo[mod_dir][-1].get_sidecar_files()
 
             for scan in subinfo['Scans']:
                 scan['ScansTSV'].write_file(os.path.join(BidsDataset.dirname, scan['fileLoc']))

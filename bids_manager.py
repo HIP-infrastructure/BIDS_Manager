@@ -1,11 +1,27 @@
 #!/usr/bin/python3
+# -*-coding:Utf-8 -*
 
-"""
-    This module was written by Nicolas Roehri <nicolas.roehri@etu.uni-amu.fr>
-    (with minor changes by Aude Jegou <aude.jegou@univ-amu.fr>)
-    This module is GUI to explore bids dataset.
-    v0.2.1 July 2019
-"""
+#     BIDS Manager collect, organise and manage data in BIDS format.
+#     Copyright © 2018-2020 Aix Marseille University, INSERM, INS
+#
+#     This file is part of BIDS Manager. This file generates/manages the graphical
+#     interface of BIDS Manager
+#
+#     BIDS Manager is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     any later version
+#
+#     BIDS Manager is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with BIDS Manager.  If not, see <https://www.gnu.org/licenses/>
+#
+#     Authors: Nicolas Roehri, 2018-2019
+#              Aude Jegou, 2019-2020
 
 from __future__ import division
 from __future__ import print_function
@@ -24,6 +40,7 @@ import statistics_class as st
 import os
 import json
 import platform
+from generic_uploader.generic_uploader import call_generic_uplader
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, S, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, YES, Variable, Canvas, font
@@ -101,6 +118,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                                command=lambda: self.solve_issues('ImportIssue'), state=DISABLED)
         issue_menu.add_command(label='Solve channel issues',
                                command=lambda: self.solve_issues('ElectrodeIssue'), state=DISABLED)
+        #fill up the about menu
+        about_menu.add_command(label='License', command=self.read_license)
+        about_menu.add_command(label='How to cite the paper', command=self.cite_paper)
         # fill up the pipeline menu
 
         with os.scandir(self.folder_software) as it:
@@ -118,6 +138,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         menu_bar.add_cascade(label="Issues", underline=0, menu=issue_menu)
         menu_bar.add_cascade(label="Pipelines", underline=0, menu=pipeline_menu)
         menu_bar.add_cascade(label="Statistics", underline=0, menu=statistic_menu)
+        menu_bar.add_cascade(label='About', underline=0, menu=about_menu)
 
         # area to print logs
         self.main_frame['text'] = DisplayText(master=self.master)
@@ -272,6 +293,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                                      required_keys=input_dict.required_keys,
                                      title='Fill up the ' + input_dict.__class__.__name__ + 'attributes').apply()
         elif isinstance(input_dict, bids.DatasetDescJSON):
+            messagebox.showwarning('Warning !!', 'If you change the Name of the dataset, it will change the anonymisation key!')
             temp_dict = input_dict.__class__()
             temp_dict.copy_values(input_dict, simplify_flag=False)
             output_dict = FormDialog(root, temp_dict,
@@ -820,23 +842,28 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 return
         #Run the Generic Uploader
         self.make_idle('Generic Uploader is running')
-        cmd = os.path.join(os.getcwd(), 'generic_uploader.exe') + ' "' + self.curr_bids.dirname + '" '
-        x = os.system(cmd)
-        if x != 0:
+        try:
+            call_generic_uplader(self.curr_bids)
+        except:
             self.update_text('Generic uploader crashed')
             self.make_available()
             return
-        self.make_idle('Data are ready to be imported')
         dirname = os.path.dirname(self.curr_bids.dirname)
         self.upload_dir = os.path.join(dirname, 'TempFolder4Upload')
+        if not os.path.exists(self.upload_dir):
+            self.update_text('The importation has been cancel because there is no data to import.')
+            self.make_available()
+            return
+        self.make_idle('Data are ready to be imported.')
         if not os.listdir(self.upload_dir):
-            self.update_text('There is nothing to import')
+            self.update_text('There is nothing to import.')
         elif os.path.isfile(os.path.join(self.upload_dir, bids.Data2Import.filename)):
             is_ready = self.verify_data2import(self.upload_dir)
             if is_ready:
                 self.curr_bids.import_data(self.curr_data2import)
                 self.curr_data2import = None
         else:
+            data_imported = 0
             with os.scandir(self.upload_dir) as it:
                 for entry in it:
                     if entry.is_dir() and self.curr_bids['DatasetDescJSON']['Name'] in entry.name:
@@ -845,6 +872,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                             if is_ready:
                                 self.curr_bids.import_data(self.curr_data2import)
                                 self.curr_data2import = None
+                                data_imported += 1
+            if data_imported == 0:
+                self.update_text('There is nothing to import.')
         self.make_available()
 
     def verify_data2import(self, upload_dir):
@@ -865,6 +895,22 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             filename = os.path.join(self.curr_bids.dirname, 'code', 'requirements.json')
             RequirementsDialog(self, self.curr_bids.dirname, filename)
             self.curr_bids.requirements = bids.Requirements(filename)
+
+    def read_license(self):
+        notice_license = 'BIDS Manager  Copyright (C) 2018-2020  Aix-Marseille University, INSERM, INS.\n' \
+        'This program is free software: you can redistribute it and/or modify it under the terms of the\n' \
+         'GNU General Public License as published by the Free Software Foundation, either version 3 of the License,\n' \
+         'or any later version.\n' \
+        'You should have received a copy of the GNU General Public License along with this program.\n' \
+                           'If not, see <http://www.gnu.org/licenses/>.'
+
+        messagebox.showinfo('License', notice_license)
+
+    def cite_paper(self):
+        citation = 'Roehri, N., Villalon, S. M., Jegou, A., Colombet, B., Giusiano, B., Ponz, A., & Bénar, C. G. (2020)\n' \
+                   'Transfer , collection and organisation of electrophysiological and imaging data for multicenter studies.\n'\
+                    'submitted.'
+        messagebox.showinfo('Citation', citation)
 
     def run_analysis(self, nameS):
 
@@ -2492,6 +2538,7 @@ class RequirementsDialog(TemplateDialog):
         super().__init__(parent)
 
     def ask4path(self, file_type, display=None):
+        self.attributes("-topmost", False)
         if file_type == 'req':
             self.req_name = filedialog.askopenfilename(title='Select requirements type',
                                                        filetypes=[('req.', "*.json")])
@@ -2508,6 +2555,7 @@ class RequirementsDialog(TemplateDialog):
             if display:
                 display.delete(0, END)
                 display.insert(END, self.imag_name)
+        self.attributes("-topmost", True)
 
     def body(self, parent):
         width = round((self.monitor_width * 3)/4)
@@ -2528,55 +2576,55 @@ class RequirementsDialog(TemplateDialog):
             placement.pack(side=TOP)
             loadbar = Frame(parent)
             addbar = Frame(loadbar)
-            load_req_button = Checkbutton(loadbar, text='Load your Requirements to do modifications', variable=self.load_add, command=lambda: enable_frames([addbar, frame_subject_info.frame, frame_required.frame, frame_modality.frame], self.load_add))
+            load_req_button = Checkbutton(loadbar, text='Load your Requirements to do modifications', variable=self.load_add, command=lambda: enable_frames([addbar, self.frame_subject_info.frame, self.frame_required.frame, self.frame_modality.frame], self.load_add))
             load_req_button.pack(side=LEFT)
             entry_load = Entry(addbar, state=DISABLED)
-            req_load = Button(addbar, text='Filename path', command=lambda: self.read_modify_gui(frame_subject_info, frame_required, frame_modality, filename=None, entry_load=entry_load), state=DISABLED)
+            req_load = Button(addbar, text='Filename path', command=lambda: self.read_modify_gui(filename=None, entry_load=entry_load), state=DISABLED)
             req_load.pack(side=LEFT)
             entry_load.pack(side=LEFT)
             addbar.pack(side=LEFT)
             loadbar.pack(side=TOP)
-            create_req_button = Checkbutton(parent, text='Create your Requirements', variable=self.create_req, command=lambda: enable_frames([frame_subject_info.frame, frame_required.frame, frame_modality.frame], self.create_req))
+            create_req_button = Checkbutton(parent, text='Create your Requirements', variable=self.create_req, command=lambda: enable_frames([self.frame_subject_info.frame, self.frame_required.frame, self.frame_modality.frame], self.create_req))
             create_req_button.pack(side=TOP)
 
 
         Frame_path = Frame(parent)
-        Frame_path .pack(side=LEFT, fill=BOTH)
+        Frame_path.pack(side=LEFT, fill=BOTH)
         Label(Frame_path, text='Indicate the path of the converters').pack(side=TOP, anchor=N)
 
         #Scrollbar the subject's frame
-        frame_subject_info = VerticalScrollbarFrame(parent)
-        Label(frame_subject_info.frame, text='Indicate the subjects information you need', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
-        Label(frame_subject_info.frame, text='Label').grid(row=1, column=0)
-        Label(frame_subject_info.frame, text='Possible Values').grid(row=1, column=1)
+        self.frame_subject_info = VerticalScrollbarFrame(parent)
+        Label(self.frame_subject_info.frame, text='Indicate the subjects information you need', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
+        Label(self.frame_subject_info.frame, text='Label').grid(row=1, column=0)
+        Label(self.frame_subject_info.frame, text='Possible Values').grid(row=1, column=1)
 
         # Scrollbar the frame with canvas
-        frame_required = VerticalScrollbarFrame(parent)
-        Label(frame_required.frame, text='Indicate the modality required in the dataset', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
+        self.frame_required = VerticalScrollbarFrame(parent)
+        Label(self.frame_required.frame, text='Indicate the modality required in the dataset', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
 
         #Scrollbar the modality's frame
-        frame_modality = VerticalScrollbarFrame(parent)
-        Label(frame_modality.frame, text='Indicate the different possible values for all modalities', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
-        frame_modality.frame.pack(side=LEFT, fill=BOTH, expand=True)
+        self.frame_modality = VerticalScrollbarFrame(parent)
+        Label(self.frame_modality.frame, text='Indicate the different possible values for all modalities', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
+        self.frame_modality.frame.pack(side=LEFT, fill=BOTH, expand=True)
 
         #initiate the first button
-        #self.subject_info_button(frame_subject_info.frame)
-        l4 = Button(frame_subject_info.frame, text='+', command=lambda: self.add_lines_command(frame_subject_info.frame, canvas=frame_subject_info.canvas))
+        #self.subject_info_button(self.frame_subject_info.frame)
+        l4 = Button(self.frame_subject_info.frame, text='+', command=lambda: self.add_lines_command())
         l4.grid(row=1, column=2)
-        frame_subject_info.update_scrollbar()
+        self.frame_subject_info.update_scrollbar()
 
         #initiate the modality button
-        m1 = ttk.Combobox(frame_required.frame, values=self.modality_list)
+        m1 = ttk.Combobox(self.frame_required.frame, values=self.modality_list)
         m1.grid(row=1, column=0)
-        m2 = Button(frame_required.frame, text='+', command=lambda: self.add_lines_command(frame_required.frame, canvas=frame_required.canvas, mod=self.modality_list[m1.current()], required=True))
+        m2 = Button(self.frame_required.frame, text='+', command=lambda: self.add_lines_command(mod=self.modality_list[m1.current()], required=True))
         m2.grid(row=1, column=1)
-        frame_required.update_scrollbar()
+        self.frame_required.update_scrollbar()
 
-        m3 = ttk.Combobox(frame_modality.frame, values=self.modality_list)
+        m3 = ttk.Combobox(self.frame_modality.frame, values=self.modality_list)
         m3.grid(row=1, column=0)
-        m4 = Button(frame_modality.frame, text='+', command=lambda: self.add_lines_command(frame_modality.frame, canvas=frame_modality.canvas, mod=self.modality_list[m3.current()]))
+        m4 = Button(self.frame_modality.frame, text='+', command=lambda: self.add_lines_command(mod=self.modality_list[m3.current()]))
         m4.grid(row=1, column=1)
-        frame_modality.update_scrollbar()
+        self.frame_modality.update_scrollbar()
 
         #path in frame path
         Label(Frame_path, text='Select the Electrophisiology converters').pack(anchor='w')
@@ -2589,17 +2637,17 @@ class RequirementsDialog(TemplateDialog):
         entry_imag.pack()
 
         if self.modif_file:
-            self.read_modify_gui(frame_subject_info, frame_required, frame_modality, filename=self.modif_file)
+            self.read_modify_gui(filename=self.modif_file)
             self.load_add.set(1)
         else:
-            enable(frame_subject_info.frame, 'disabled')
-            enable(frame_required.frame, 'disabled')
-            enable(frame_modality.frame, 'disabled')
+            enable(self.frame_subject_info.frame, 'disabled')
+            enable(self.frame_required.frame, 'disabled')
+            enable(self.frame_modality.frame, 'disabled')
 
         self.ok_cancel_button(Frame_path)
         self.attributes("-topmost", True)
 
-    def subject_info_button(self, parent, key=None, val=None, req=False):
+    def subject_info_button(self, key=None, val=None, req=False):
         self.info_key_label.append(StringVar())
         if key:
             self.info_key_label[-1].set(key)
@@ -2613,19 +2661,19 @@ class RequirementsDialog(TemplateDialog):
         if req:
             self.req_button[-1].set(1)
         cnt = len(self.info_key_label) + 1
-        l1 = Entry(parent, textvariable=self.info_key_label[-1])
+        l1 = Entry(self.frame_subject_info.frame, textvariable=self.info_key_label[-1])
         l1.grid(row=cnt, column=0)
         self.info_button.append(l1)
         idx_beg = len(self.info_button) - 1
-        l2 = Entry(parent, textvariable=self.info_value_label[-1])
+        l2 = Entry(self.frame_subject_info.frame, textvariable=self.info_value_label[-1])
         l2.grid(row=cnt, column=1)
         self.info_button.append(l2)
-        l3 = Checkbutton(parent, text='required', variable=self.req_button[-1])
+        l3 = Checkbutton(self.frame_subject_info.frame, text='required', variable=self.req_button[-1])
         l3.grid(row=cnt, column=2)
         self.info_button.append(l3)
         idx_beg = self.info_button.index(l1)
         idx_val = len(self.info_key_label)-1
-        l5 = Button(parent, text='-', command=lambda: self.remove_lines_command(idx_beg, idx_val))
+        l5 = Button(self.frame_subject_info.frame, text='-', command=lambda: self.remove_lines_command(idx_beg, idx_val))
         l5.grid(row=cnt, column=3)
         self.info_button.append(l5)
 
@@ -2646,22 +2694,21 @@ class RequirementsDialog(TemplateDialog):
                 req = ''
             keys = eval('self.modality_'+req+'key')
             button = eval('self.modality_'+req+'button')
-            name = eval('self.modality_'+req+'name')
-            value = eval('self.modality_'+req+'value')
             label = eval('self.modality_'+req+'label')
-            butt2removed = eval('self.mod_'+req+'butt_removed')
-            idx_val_removed = eval('self.mod_'+req+'removed')
+            butt2removed = eval('self.mod_' + req + 'butt_removed')
+            idx_val_removed = eval('self.mod_' + req + 'removed')
             try:
                 number_line = len(keys[idx_val])
                 butt2removed.append(idx_button)
-                idx_val_removed.append(idx_val)
-                num = 0
-                for val in butt2removed:
-                    if idx_button > val:
-                        id_rv = butt2removed.index(val)
-                        cnt = len(keys[idx_val_removed[id_rv]]) + 1
-                        num = num + cnt
-                idx_button = idx_button - num
+                num = -1
+                for i in range(0, len(keys), 1):
+                    num = num + len(keys[i]) + 1
+                    if idx_val > i and i in idx_val_removed:
+                        num = num - len(keys[i]) - 1
+                    elif idx_val <= i:
+                        break
+                if idx_button != num:
+                    idx_button = num
                 idx_button = idx_button - number_line
                 idx = 1
                 while idx <= number_line + 1:
@@ -2671,8 +2718,11 @@ class RequirementsDialog(TemplateDialog):
                 for key in keys[idx_val].keys():
                     keys[idx_val][key].grid_forget()
                 label[idx_val].grid_forget()
+                idx_val_removed.append(idx_val)
             except IndexError:
+                self.attributes("-topmost", False)
                 messagebox.showerror('Error', 'There are no buttons to delete')
+                self.attributes("-topmost", True)
         else:
             idx = 1
             num = 0
@@ -2687,7 +2737,7 @@ class RequirementsDialog(TemplateDialog):
                 idx += 1
             self.info_val_removed.append(idx_val)
 
-    def add_lines_command(self, parent, canvas=None, mod=None, required=False, dict_val=None):
+    def add_lines_command(self, mod=None, required=False, dict_val=None, flag_first=True):
 
         def number_line(list_cnt):
             number = 0
@@ -2702,97 +2752,105 @@ class RequirementsDialog(TemplateDialog):
             return number, autre_num
 
         if mod:
-            if mod in bids.GlobalSidecars.get_list_subclasses_names():
-                key_label = eval('bids.'+mod+'.keylist')
-                key_photo = [lab for lab in bids.Photo.keylist if not lab in key_label]
-                if 'modality' in key_label:
-                    idx = key_label.index('modality')
-                    for elt in key_photo:
-                        key_label.insert(idx, elt)
-                        idx +=1
+            if required and flag_first:
+                parent_list = [self.frame_required, self.frame_modality]
+            elif required and not flag_first:
+                parent_list = [self.frame_required]
             else:
-                key_label = eval('bids.'+mod+'.keylist')
-            if required:
-                line_num, init_num = number_line(self.modality_required_value)
-            else:
-                line_num, init_num = number_line(self.modality_value)
-            required_key = {}
-            required_value = {}
-            for elt in key_label:
-                if elt not in bids.BidsJSON.get_list_subclasses_names() + bids.BidsTSV.get_list_subclasses_names() + bids.BidsBrick.required_keys + ['fileLoc']:
-                    if elt == 'modality':
-                        mod_list = eval('bids.'+mod+'.allowed_modalities')
-                        if required:
-                            required_value[elt] = mod_list
-                            required_key[elt] = ''
+                parent_list = [self.frame_modality]
+            required_value = {nbr: {} for nbr in range(0, len(parent_list), 1)}
+            required_key = {nbr: {} for nbr in range(0, len(parent_list), 1)}
+            m = {nbr: '' for nbr in range(0, len(parent_list), 1)}
+            idx_val = {nbr: 0 for nbr in range(0, len(parent_list), 1)}
+            idx_butt = {nbr: 0 for nbr in range(0, len(parent_list), 1)}
+            required_dict = {nbr: required for nbr in range(0, len(parent_list), 1)}
+            for nbr, parent in enumerate(parent_list):
+                if mod in bids.GlobalSidecars.get_list_subclasses_names():
+                    key_label = eval('bids.'+mod+'.keylist')
+                    key_photo = [lab for lab in bids.Photo.keylist if not lab in key_label]
+                    if 'modality' in key_label:
+                        idx = key_label.index('modality')
+                        for elt in key_photo:
+                            key_label.insert(idx, elt)
+                            idx +=1
+                else:
+                    key_label = eval('bids.'+mod+'.keylist')
+
+                for elt in key_label:
+                    if elt not in bids.BidsJSON.get_list_subclasses_names() + bids.BidsTSV.get_list_subclasses_names() + bids.BidsBrick.required_keys + ['fileLoc']:
+                        if elt == 'modality':
+                            mod_list = eval('bids.'+mod+'.allowed_modalities')
+                            if required:
+                                required_value[nbr][elt] = mod_list
+                                required_key[nbr][elt] = ''
+                        else:
+                            required_value[nbr][elt] = StringVar()
+                            required_key[nbr][elt] = ''
+                            if dict_val:
+                                val = ''
+                                if 'type' in dict_val and elt in dict_val['type']:
+                                    val = dict_val['type'][elt]
+                                elif elt in dict_val:
+                                    val = dict_val[elt]
+                                if isinstance(val, list):
+                                    val = ', '.join(val)
+                                required_value[nbr][elt].set(val)
+
+                if required and parent == self.frame_required:
+                    line_num, init_num = number_line(self.modality_required_value)
+                    req = 'required_'
+                    required_value[nbr]['amount'] = StringVar()
+                    if dict_val and dict_val['amount']:
+                        required_value[nbr]['amount'].set(str(dict_val['amount']))
                     else:
-                        required_value[elt] = StringVar()
-                        required_key[elt] = ''
-                        if dict_val:
-                            val = ''
-                            if 'type' in dict_val and elt in dict_val['type']:
-                                val = dict_val['type'][elt]
-                            elif elt in dict_val:
-                                val = dict_val[elt]
-                            if isinstance(val, list):
-                                val = ', '.join(val)
-                            required_value[elt].set(val)
-            if required:
-                required_value['amount'] = StringVar()
-                if dict_val and dict_val['amount']:
-                    required_value['amount'].set(str(dict_val['amount']))
+                        required_value[nbr]['amount'].set('1')
+                    required_key[nbr]['amount'] = ''
                 else:
-                    required_value['amount'].set('1')
-                required_key['amount'] = ''
+                    line_num, init_num = number_line(self.modality_value)
+                    req = ''
+                    required_dict[nbr] = False
+                    if 'modality' in required_key[nbr]:
+                        del required_key[nbr]['modality']
+                        del required_value[nbr]['modality']
 
-            lab = Label(parent, text=mod+':')
-            lab.grid(row=line_num+init_num)
-            for cnt, key in enumerate(required_value.keys()):
-                required_key[key] = Label(parent, text=key)
-                required_key[key].grid(row=line_num + cnt + init_num+1, sticky=W)
-                if key == 'modality':
-                    l = Listbox(parent, exportselection=0, selectmode=MULTIPLE, height=3)
-                    for item in required_value[key]:
-                        l.insert(END, item)
-                    if dict_val and key in dict_val['type']:
-                        val = dict_val['type'][key]
-                        if val != '_':
-                            idx = required_value[key].index(val)
-                            l.selection_set(idx)
-                    required_value[key] = l
-                else:
-                    l = Entry(parent, textvariable=required_value[key])
-                l.grid(row=line_num + cnt + init_num+1, column=1)
-                if required:
-                    self.modality_required_button.append(l)
-                else:
-                    self.modality_button.append(l)
-            if required:
-                self.modality_required_value.append(required_value)
-                self.modality_required_key.append(required_key)
-                self.modality_required_name.append(mod)
-                self.modality_required_label.append(lab)
-                idx_val = len(self.modality_required_label) - 1
-                idx_butt = len(self.modality_required_button)
-                m5 = Button(parent, text='-', command=lambda: self.remove_lines_command(idx_butt, idx_val, mod=True, required=True))
-                m5.grid(row=line_num + init_num, column=2)
-                self.modality_required_button.append(m5)
-            else:
-                self.modality_value.append(required_value)
-                self.modality_key.append(required_key)
-                self.modality_name.append(mod)
-                self.modality_label.append(lab)
-                idx_val = len(self.modality_label) - 1
-                idx_butt = len(self.modality_button)
-                m6 = Button(parent, text='-', command=lambda: self.remove_lines_command(idx_butt, idx_val, mod=True))
-                m6.grid(row=line_num + init_num, column=2)
-                self.modality_button.append(m6)
+                lab = Label(parent.frame, text=mod+':')
+                lab.grid(row=line_num + init_num)
+                for cnt, key in enumerate(required_key[nbr].keys()):
+                    required_key[nbr][key] = Label(parent.frame, text=key)
+                    required_key[nbr][key].grid(row=line_num + cnt + init_num+1, sticky=W)
+                    if key == 'modality':
+                        l = Listbox(parent.frame, exportselection=0, selectmode=MULTIPLE, height=3)
+                        for item in required_value[nbr][key]:
+                            l.insert(END, item)
+                        if dict_val and key in dict_val['type']:
+                            val = dict_val['type'][key]
+                            if val != '_':
+                                idx = required_value[nbr][key].index(val)
+                                l.selection_set(idx)
+                                required_value[nbr][key] = l
+                    else:
+                        l = Entry(parent.frame, textvariable=required_value[nbr][key])
+                    l.grid(row=line_num + cnt + init_num+1, column=1)
+                    eval('self.modality_' + req + 'button.append(l)')
+
+                eval('self.modality_' + req + 'value.append(required_value[nbr])')
+                eval('self.modality_' + req + 'key.append(required_key[nbr])')
+                eval('self.modality_' + req + 'name.append(mod)')
+                eval('self.modality_' + req + 'label.append(lab)')
+                idx_val[nbr] = len(eval('self.modality_' + req + 'label')) - 1
+                idx_butt[nbr] = len(eval('self.modality_' + req + 'button'))
+                m[nbr] = Button(parent.frame, text='-', command=lambda but=idx_butt[nbr], val=idx_val[nbr], mod_bool=True, req_bool=required_dict[nbr]: self.remove_lines_command(but, val, mod=mod_bool, required=req_bool))
+                m[nbr].grid(row=line_num + init_num, column=2)
+                eval('self.modality_' + req + 'button.append(m[nbr])')
+
         else:
-            self.subject_info_button(parent)
-        parent.update_idletasks()
-        canvas.config(scrollregion=canvas.bbox("all"))
+            self.subject_info_button()
+            parent_list = [self.frame_subject_info]
+        for parent in parent_list:
+            parent.frame.update_idletasks()
+            parent.canvas.config(scrollregion=parent.canvas.bbox("all"))
 
-    def read_modify_gui(self, frame_subject, frame_required, frame_modality, filename=None, entry_load=None):
+    def read_modify_gui(self, filename=None, entry_load=None):
         if not filename:
             self.ask4path(file_type='req', display=entry_load)
             filename = self.req_name
@@ -2804,19 +2862,18 @@ class RequirementsDialog(TemplateDialog):
             req=False
             if 'required_keys' in req_dict['Requirements']['Subject'] and key in req_dict['Requirements']['Subject']['required_keys']:
                 req=True
-            self.subject_info_button(frame_subject.frame, key=key, val=value, req=req)
-        frame_subject.frame.update_idletasks()
-        frame_subject.canvas.config(scrollregion=frame_subject.canvas.bbox("all"))
+            self.subject_info_button(key=key, val=value, req=req)
+        self.frame_subject_info.frame.update_idletasks()
+        self.frame_subject_info.canvas.config(scrollregion=self.frame_subject_info.canvas.bbox("all"))
         #fill the required modality
         for mod in req_dict['Requirements']['Subject']:
             if mod not in ['keys', 'required_keys']:
                 for elt in req_dict['Requirements']['Subject'][mod]:
-                    self.add_lines_command(frame_required.frame, canvas=frame_required.canvas, mod=mod, required=True, dict_val=elt)
+                    self.add_lines_command(mod=mod, required=True, dict_val=elt, flag_first=False)
         #fill the possible modalities
         for mod in req_dict['Requirements']:
             if mod not in ['Subject']:
-                self.add_lines_command(frame_modality.frame, canvas=frame_modality.canvas, mod=mod,
-                                               required=False, dict_val=req_dict['Requirements'][mod]['keys'])
+                self.add_lines_command(mod=mod, required=False, dict_val=req_dict['Requirements'][mod]['keys'], flag_first=False)
         if 'Converters' in req_dict:
             self.elec_name = req_dict['Converters']['Electrophy']['path']
             self.imag_name = req_dict['Converters']['Imaging']['path']
@@ -2881,10 +2938,16 @@ class RequirementsDialog(TemplateDialog):
                 if ',' not in value:
                     keys[key] = value
                 else:
-                    list_val = value.split(', ')
-                    if len(list_val) < 2:
-                        list_val = value.split(',')
-                    keys[key] = [val for val in list_val]
+                    list_val = value.split(',')
+                    keys[key] = []
+                    for val in list_val:
+                        if ' ' in val:
+                            keys[key].append(val.replace(' ', ''))
+                        else:
+                            keys[key].append(val)
+                    # if len(list_val) < 2:
+                    #     list_val = value.split(',')
+                    #keys[key] = [val.replace(' ', '') for val in list_val]
                 if self.req_button[i].get():
                     required_keys.append(key)
 
@@ -2952,9 +3015,12 @@ class RequirementsDialog(TemplateDialog):
                             if ',' not in value:
                                 key_dict[key].append(value)
                             else:
-                                list_val = value.split(', ')
+                                list_val = value.split(',')
                                 for val in list_val:
-                                    key_dict[key].append(val)
+                                    if ' ' in val:
+                                        key_dict[key].append(val.replace(' ', ''))
+                                    else:
+                                        key_dict[key].append(val)
                             key_dict[key] = list(set(key_dict[key]))
                         else:
                             if mod in verif_type:
@@ -2968,7 +3034,9 @@ class RequirementsDialog(TemplateDialog):
             pass
 
         if self.error_str:
+            self.attributes("-topmost", False)
             messagebox.showerror('Error', self.error_str)
+            self.attributes("-topmost", True)
         else:
             bids.BidsDataset.converters['Imaging']['path'] = self.imag_name
             req_dict['Converters']['Imaging']['path'] = self.imag_name
@@ -2978,6 +3046,7 @@ class RequirementsDialog(TemplateDialog):
             req_dict['Converters']['Electrophy']['ext'] = ['.vhdr', '.vmrk', '.eeg']
             bids.BidsDataset.dirname = self.bids_dir
             if self.modif_file:
+                self.attributes("-topmost", False)
                 flag = messagebox.askyesno('Modify Requirements', 'Do you really want to change your requirements file?')
                 if flag:
                     req_dict.save_as_json()
@@ -3254,7 +3323,6 @@ def enable(frame, state):
         except:
             pass
 
-
 def enable_frames(frame, button):
     button_value = button.get()
     if button_value == 1:
@@ -3269,7 +3337,6 @@ def enable_frames(frame, button):
                 enable(fr, 'disabled')
         else:
             enable(frame, 'disabled')
-
 
 def make_splash():
     if bids.BidsBrick.curr_user.lower() == 'ponz':
@@ -3315,6 +3382,12 @@ if __name__ == '__main__':
     for line in splsh:
         print(line)
         sleep(0.05)
+    sleep(0.05)
+    notice_license = 'BIDS Manager  Copyright (C) 2018-2020  Aix-Marseille University, INSERM, INS.\n' \
+                     'This program is free software: you can redistribute it and/or modify it under the terms of the\n' \
+                     ' GNU General Public License as published by the Free Software Foundation, either version 3 of the License,\n' \
+                     ' or any later version.\n'
+    print(notice_license)
     sleep(0.2)
     root = Tk()
     width = root.winfo_screenwidth()
