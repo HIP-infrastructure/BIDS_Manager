@@ -8,6 +8,7 @@ import sys
 import subprocess
 import shutil
 from tkinter import messagebox, filedialog
+from convert_process_file import go_throught_dir_to_convert
 from sys import exc_info
 
 
@@ -497,6 +498,10 @@ class PipelineSetting(dict):
             dataset_desc.update(subject_to_analyse)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, DatasetDescPipeline.filename))
             self.write_error_system(output_directory)
+            try:
+                go_throught_dir_to_convert(output_directory)
+            except:
+                pass
             dev.parse_pipeline(output_directory, output_name)
             self.curr_bids.save_as_json()
         else:

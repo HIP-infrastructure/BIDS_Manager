@@ -10,35 +10,44 @@ __channel_name__ = ['channel', 'channels', 'electrode_name', 'electrodes_name', 
 
 
 def go_throught_dir_to_convert(dirname):
+    log_error=''
     if not os.path.exists(dirname):
         raise ('The directroy doesn"t exists')
     with os.scandir(dirname) as it:
         for entry in it:
             if (entry.name.startswith('sub-') or entry.name.startswith('ses-')) and entry.is_dir():
-                go_throught_dir_to_convert(entry.path)
+                log_error = go_throught_dir_to_convert(entry.path)
             elif entry.name in __modality_type__ and entry.is_dir():
                 file_list = os.listdir(entry.path)
                 ext_list = [os.path.splitext(os.path.join(entry.path, file))[1] for file in file_list]
                 ext_list = list(set(ext_list))
                 if '.tsv' in ext_list:
-                    return
+                    return ''
                 elif '.mat' in ext_list and ('.xls' and '.xlsx') not in ext_list:
                     mat_file = [file for file in file_list if '.mat' in file]
                     for file in mat_file:
                         filename = os.path.join(entry.path, file)
                         json_dict, tsv_dict = convert_mat_file(filename)
-                        write_file_after_convert(json_dict, tsv_dict)
-                    return
+                        log_error = write_file_after_convert(json_dict, tsv_dict)
+                    return log_error
                 elif ('.xls' and '.xlsx') in ext_list:
                     xls_file = [file for file in file_list if '.xls' in file]
                     for file in xls_file:
                         filename = os.path.join(entry.path, file)
                         json_dict, tsv_dict = convert_xls_file(filename)
-                        write_file_after_convert(json_dict, tsv_dict)
-                    return
+                        log_error = write_file_after_convert(json_dict, tsv_dict)
+                    return log_error
+                else:
+                    log_error += 'Files presents in this software cannot be converted.\n'
+    return log_error
 
 
-def parse_derivatives_folder(folder, table2write, table_attributes):
+def parse_derivatives_folder(folder, table2write, table_attributes, folder_out=None):
+    log_error = ''
+    if folder_out is not None:
+        folder_out = folder_out + ['log', 'log_old', 'parsing', 'parsing_old']
+    else:
+        folder_out = ['log', 'log_old', 'parsing', 'parsing_old']
     with os.scandir(folder) as it:
         for entry in it:
             if entry.name in __modality_type__ and entry.is_dir():
@@ -52,26 +61,45 @@ def parse_derivatives_folder(folder, table2write, table_attributes):
                             if key.lower() in __channel_name__ and all(isinstance(elt, str) for elt in tsv_dict[key]):
                                 channel = tsv_dict[key]
                                 key2remove.append(key)
-                        create_table(tsv_dict, channel, key2remove, table2write, table_attributes, file)
-            elif entry.name not in ['log', 'log_old', 'parsing', 'parsing_old'] and entry.is_dir():
-                parse_derivatives_folder(entry.path, table2write, table_attributes)
+                        try:
+                            create_table(tsv_dict, channel, key2remove, table2write, table_attributes, file)
+                        except UnboundLocalError:
+                            log_error += 'The file {} cannot be present in the table.\n'.format(file)
+                            pass
+            elif entry.name not in folder_out and entry.is_dir():
+                error = parse_derivatives_folder(entry.path, table2write, table_attributes)
+                log_error += error
+    return log_error
 
 
-def write_big_table(derivatives_folder):
+def write_big_table(derivatives_folder, folder_out=None):
     #before write_table
     table2write = [[]]
     table_attributes = [[]]
     table_attributes[0] = ['sub']
-    write_big_table(derivatives_folder, table2write, table_attributes)
+    log_error = parse_derivatives_folder(derivatives_folder, table2write, table_attributes, folder_out)
     if not len(table2write) == len(table_attributes):
         print('ERROR')
     else:
         final_table = [None] * len(table2write)
+        head_length = len(table2write[0])
+        head_att = len(table_attributes[0])
         for i in range(0, len(table2write), 1):
-            final_table.extend(table_attributes[i])
-            final_table.extend(table2write[i])
+            l_tw = len(table2write[i])
+            l_ta = len(table_attributes[i])
+            if l_tw != head_length:
+                for n in range(l_tw, head_length, 1):
+                    table2write[i].append('n/a')
+            if l_ta != head_att:
+                for n in range(l_ta, head_att, 1):
+                    table_attributes[i].append('n/a')
+            if final_table[i] is None:
+                final_table[i] = []
+            final_table[i].extend(table_attributes[i])
+            final_table[i].extend(table2write[i])
     filename = 'statistical_table.tsv'
     write_table(final_table, filename, derivatives_folder)
+    return log_error
 
 
 def convert_mat_file(filename):
@@ -200,14 +228,47 @@ def read_tsv(filename):
 def create_table(tsv_dict, channel, key2remove, table2write, table_attributes=None, file=None):
     header = table2write[0]
     name = {}
+    id_same_file = None
     if 'Channel' not in header:
         header.insert(0, 'Channel')
     for key in tsv_dict:
-        if key not in key2remove and key not in header and len(tsv_dict[key]) == len(channel):
+        if key not in key2remove and key not in header and len(tsv_dict[key]) == len(channel) and key != '':
             header.append(key)
+        # create_attributes_table
+    if table_attributes:
+        name_list = os.path.basename(file).split('_')
+        name = {elt.split('-')[0]: elt.split('-')[1] for elt in name_list if '-' in elt}
+        headatt = table_attributes[0]
+        for key in name:
+            if key not in headatt:
+                headatt.append(key)
+        lines_att = ['n/a'] * len(headatt)
+        for key in headatt:
+            ida = headatt.index(key)
+            if key in name:
+                lines_att[ida] = name[key]
+        if lines_att in table_attributes:
+            id_same_file = table_attributes.index(lines_att)
     for i in range(0, len(channel), 1):
-        lines = ['n/a'] * len(header)
         chan = channel[i]
+        id_chan = header.index('Channel')
+        flag_not_inside = True
+        lines = None
+        if id_same_file is not None:
+            for j in range(id_same_file, id_same_file + len(channel), 1):
+                if table2write[j][id_chan] == chan:
+                    lines = table2write[j]
+                    flag_not_inside = False
+                    break
+            if lines is None:
+                flag_not_inside = True
+                lines = ['n/a'] * len(header)
+                table_attributes.append(lines_att)
+            elif len(lines) != len(header):
+                for n in range(len(lines), len(header), 1):
+                    lines.append('n/a')
+        else:
+            lines = ['n/a'] * len(header)
         for key in header:
             idx = header.index(key)
             if key in tsv_dict.keys():
@@ -216,22 +277,10 @@ def create_table(tsv_dict, channel, key2remove, table2write, table_attributes=No
                 lines[idx] = str(name[key])
             elif key == 'Channel':
                 lines[idx] = chan
-        table2write.append(lines)
-    # create_attributes_table
-    if table_attributes:
-        name_list = os.path.basename(file).split('_')
-        name = {elt.split('-')[0]: elt.split('-')[1] for elt in name_list if '-' in elt}
-        headatt = table_attributes[0]
-        for key in name:
-            if key not in headatt:
-                headatt.append(key)
-        for i in range(0, len(channel), 1):
-            lines = ['n/a'] * len(headatt)
-            for key in headatt:
-                ida = headatt.index(key)
-                if key in name:
-                    lines[ida] = name[key]
-            table_attributes.append(lines)
+        if flag_not_inside:
+            table2write.append(lines)
+            if table_attributes:
+                table_attributes.append(lines_att)
 
 
 def write_table(table2write, filename, path, json_dict=None):
@@ -255,6 +304,7 @@ def write_table(table2write, filename, path, json_dict=None):
 
 
 def write_file_after_convert(json_dict, tsv_dict):
+    log_error = ''
     filename = os.path.splitext(json_dict['filename'])[0] + '.tsv'
     path = os.path.dirname(filename)
     flag_multifile = all(isinstance(key, int) for key in tsv_dict.keys())
@@ -267,14 +317,17 @@ def write_file_after_convert(json_dict, tsv_dict):
                     key2remove.append(key)
             if not key2remove:
                 continue
-            table2write = [[]]
-            create_table(tsv_dict[i], channel, key2remove, table2write)
-            if 'filename' in json_dict[i]:
-                filename = os.path.splitext(json_dict[i]['filename'])[0] + '.tsv'
-            else:
-                filename = os.path.splitext(filename)[0] + '_run-' + str(i) + '.tsv'
-            if table2write[0] != ['Channel']:
-                write_table(table2write, filename, path, json_dict=json_dict[i])
+            try:
+                table2write = [[]]
+                create_table(tsv_dict[i], channel, key2remove, table2write)
+                if 'filename' in json_dict[i]:
+                    filename = os.path.splitext(json_dict[i]['filename'])[0] + '.tsv'
+                else:
+                    filename = os.path.splitext(filename)[0] + '_run-' + str(i) + '.tsv'
+                if table2write[0] != ['Channel']:
+                    write_table(table2write, filename, path, json_dict=json_dict[i])
+            except:
+                log_error += 'The table for the file {} cannot be created.\n'.format(json_dict['filename'])
 
     else:
         table2write = [[]]
@@ -282,6 +335,10 @@ def write_file_after_convert(json_dict, tsv_dict):
             if key.lower() in __channel_name__ and all(isinstance(elt, str) for elt in tsv_dict[key]):
                 channel = tsv_dict[key]
                 key2remove.append(key)
-        create_table(tsv_dict, channel, key2remove, table2write)
-        if table2write[0] != ['Channel']:
-            write_table(table2write, filename, path, json_dict)
+        try:
+            create_table(tsv_dict, channel, key2remove, table2write)
+            if table2write[0] != ['Channel']:
+                write_table(table2write, filename, path, json_dict)
+        except:
+            log_error += 'The table for the file {} cannot be created.\n'.format(json_dict['filename'])
+    return log_error

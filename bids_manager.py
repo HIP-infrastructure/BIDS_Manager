@@ -44,6 +44,7 @@ from generic_uploader.generic_uploader import call_generic_uplader
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, S, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, YES, Variable, Canvas, font
+from convert_process_file import write_big_table
 try:
     from importlib import reload
 except:
@@ -91,6 +92,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.bids_menu = bids_menu
         issue_menu = Menu(menu_bar, tearoff=0)
         self.issue_menu = issue_menu
+        about_menu = Menu(menu_bar, tearoff=0)
+        self.about_menu = about_menu
         pipeline_menu = Menu(menu_bar, tearoff=0)
         self.pipeline_menu = pipeline_menu
         statistic_menu = Menu(menu_bar, tearoff=0)
@@ -966,27 +969,22 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
     def subject_selection(self):
         output_dict = BidsSelectDialog(self, self.curr_bids)
-        self.update_text('Subjects corresponding to the selection are:\n' + '\n'.join(
+        if 'subject_selected' in output_dict.results['subject']:
+            self.update_text('Subjects corresponding to the selection are:\n' + '\n'.join(
             output_dict.results['subject_selected']))
 
     def createtablestats(self):
         self.make_idle('Create your statistical table')
         deriv_dir = os.path.join(self.curr_bids.dirname, 'derivatives')
-        select_list = TableForStatsDialog(self, deriv_dir)
-        if not select_list.results:
-            self.update_text('The creation of the statistic  table has been cancelled')
-            self.make_available()
-            return
+        reject_dir = ['parsing', 'log', 'parsing_old', 'log_old']
+        deriv_list = [entry for entry in os.listdir(deriv_dir) if
+                           not os.path.isfile(os.path.join(deriv_dir, entry)) and not entry in reject_dir]
+        multi_soft = [fold.split('-')[0] for fold in deriv_list if '-v' in fold]
+        multi_soft = list(set(multi_soft))
+        select_list = HandleMultipleSameProcess(self, deriv_list, multi_soft)
         try:
-            stat_table = st.CreateTable(deriv_dir, select_list.results)
-            type_select = SelectHowToCreateTable(self, stat_table)
-            if not type_select.results:
-                self.update_text('The creation of the statistic  table has been cancelled')
-                self.make_available()
-                return
-            error = stat_table.create_tsv_table(type_select.results)
-            if error:
-                messagebox.showerror('ERROR', error)
+            log_error = write_big_table(deriv_dir, select_list.results)
+            self.update_text(log_error)
             self.make_available()
             return
         except ValueError as err:
@@ -3059,21 +3057,19 @@ class RequirementsDialog(TemplateDialog):
         self.destroy()
 
 
-class TableForStatsDialog(TemplateDialog):
+class HandleMultipleSameProcess(TemplateDialog):
 
-    def __init__(self, parent, deriv_dir):
-        self.derivatives_dir = deriv_dir
+    def __init__(self, parent, deriv_list, similar_process):
+        self.derivatives_dir = os.path.join(parent.curr_bids.dirname, 'derivatives')
+        self.derivatives_list = deriv_list
         self.software_dir = parent.folder_software
-        reject_dir = ['parsing', 'log']
-        self.deriv_list = [entry for entry in os.listdir(deriv_dir) if not os.path.isfile(os.path.join(deriv_dir, entry)) and not entry in reject_dir]
-        self.deriv_button = {key: IntVar() for key in self.deriv_list}
-        self.deriv_extension = {key: {} for key in self.deriv_list}
-        self.display_button = {key: None for key in self.deriv_list}
-        #self.display_button = {'display_'+key: '' for key in self.deriv_list}
+        self.multi_soft = [fold for elt in similar_process for fold in deriv_list if fold.startswith(elt)]
+        self.deriv_button = {key: IntVar() for key in self.multi_soft}
+        self.display_button = {key: None for key in self.multi_soft}
         super().__init__(parent)
 
     def body(self, parent):
-        self.title('Select directories to create your statistical table')
+        self.title('Select the version that should not appear in the statistical table')
         self.geometry('1000x800')
         double_frame = Frame(parent)
         double_frame.pack(side=TOP)
@@ -3085,42 +3081,13 @@ class TableForStatsDialog(TemplateDialog):
         okcancel_frame.pack(side=BOTTOM)
         cp = 0
         for cnt, key in enumerate(self.deriv_button):
-            extension, display = self.get_outputs_extension(key)
-            if display:
-                l = Checkbutton(folder_frame, text=key,  variable=self.deriv_button[key])
-                l.grid(row=cnt+cp+1, column=0)
-                self.display_button[key] = Button(folder_frame, text='display '+key, command=lambda fm=display_frame, dname=key: self.display_dataset(fm, dname))
-                self.display_button[key].grid(row=cnt+cp+1, column=1)
-                self.deriv_extension[key] = {ext: IntVar() for ext in extension}
-                for ct, ext in enumerate(extension):
-                    e = Checkbutton(folder_frame, text=ext,  variable=self.deriv_extension[key][ext])
-                    e.grid(row=cnt+cp+2, column=ct)
-                cp += 1
+            l = Checkbutton(folder_frame, text=key,  variable=self.deriv_button[key])
+            l.grid(row=cnt+cp+1, column=0)
+            self.display_button[key] = Button(folder_frame, text='display '+key, command=lambda fm=display_frame, dname=key: self.display_dataset(fm, dname))
+            self.display_button[key].grid(row=cnt+cp+1, column=1)
+            cp += 1
         display_frame.update_scrollbar()
         self.ok_cancel_button(okcancel_frame)
-
-    def get_outputs_extension(self, jsonfilename):
-        display = True
-        jsonfile = os.path.join(self.software_dir, jsonfilename+'.json')
-        if os.path.exists(jsonfile):
-            with open(jsonfile, 'r') as file:
-                read_json = json.load(file)
-            if 'Output' in read_json['Parameters'].keys():
-                extension = read_json['Parameters']['Output']['extension']
-                if isinstance(extension, list):
-                    return extension, display
-                elif not extension in st.CreateTable.readable_extension:
-                    display = False
-                    return extension, display
-                else:
-                    extension = [extension]
-                    return extension, display
-            else:
-                extension=[]
-                return extension, display
-        else:
-            extension =[]
-            return extension, display
 
     def display_dataset(self, frame2display, deriv_name):
 
@@ -3142,65 +3109,13 @@ class TableForStatsDialog(TemplateDialog):
         frame2display.update_scrollbar()
 
     def ok(self):
-        self.results = {key: [] for key in self.deriv_button if self.deriv_button[key].get()}
-        for key in self.results:
-            self.results[key] = [ext for ext in self.deriv_extension[key] if self.deriv_extension[key][ext].get()]
-        self.destroy()
-
-
-class SelectHowToCreateTable(TemplateDialog):
-
-    def __init__(self, parent, stat_table):
-        if not isinstance(stat_table, st.CreateTable):
-            raise TypeError('The input variable should be CreatTable instance')
-        self.deriv_file = {key: stat_table[key].files_header for key in stat_table}
-        self.select_deriv = {key: {} for key in stat_table}
-        self.multiple_choice = ['Average', 'Maximum', 'All']
-        # self.header = stat_table.possibility['header']
-        # self.channels = stat_table.possibility['channels']
-        super().__init__(parent)
-
-    def body(self, parent):
-        self.title('For each derivatives, choose the files to import with his metrics?')
-        for key in self.select_deriv:
-            value_radio = len(self.deriv_file[key]) * len(self.multiple_choice)
-            values = list(range(2, value_radio + 2, 1))
-            a = 0
-            self.select_deriv[key]['frame'] = {}
-            self.select_deriv[key]['value'] = {}
-            self.select_deriv[key]['frame']['parent'] = Frame(parent, relief=RIDGE, borderwidth=2)
-            Label(self.select_deriv[key]['frame']['parent'], text=key, font=('Helvetica', '14'), fg='blue').grid(row=0, column=0)
-            Label(self.select_deriv[key]['frame']['parent'], text='What to do if multiple files:',
-                  font=('Helvetica', '14'), fg='blue').grid(row=0, column=3)
-            for cnt, elt in enumerate(self.deriv_file[key]):
-                self.select_deriv[key]['frame'][elt] = {}
-                self.select_deriv[key]['value'][elt] = {}
-                Label(self.select_deriv[key]['frame']['parent'], text=elt).grid(row=cnt+1, column=0)
-                self.select_deriv[key]['value'][elt]['header'] = CheckbuttonList(self.select_deriv[key]['frame']['parent'], self.deriv_file[key][elt], cnt+1, 1).variable_list
-                self.select_deriv[key]['value'][elt]['multi'] = []
-                for ct, val in enumerate(self.multiple_choice):
-                    self.select_deriv[key]['value'][elt]['multi'].append(IntVar())
-                    b = Radiobutton(self.select_deriv[key]['frame']['parent'],
-                                    variable=self.select_deriv[key]['value'][elt]['multi'][-1], text=val, value=values[a])
-                    b.grid(row=cnt+1, column=3+ct)
-                    # self.select_deriv[key]['button'].append(b)
-                    a +=1
-            self.select_deriv[key]['frame']['parent'].pack(side=TOP)
-        self.ok_cancel_button(parent)
-
-    def ok(self):
-        self.results = {key: {} for key in self.select_deriv}
-        for key in self.select_deriv:
-            for clef in self.deriv_file[key]:
-                self.results[key][clef] = {}
-                self.results[key][clef]['header'] = []
-                for cnt, val in enumerate(self.select_deriv[key]['value'][clef]['multi']):
-                    if val.get():
-                        self.results[key][clef]['multi'] = self.multiple_choice[cnt]
-                for cnt, val in enumerate(self.select_deriv[key]['value'][clef]['header']):
-                    if val.get():
-                        self.results[key][clef]['header'].append(self.deriv_file[key][clef][cnt])
-        self.destroy()
+        self.results = [key for key in self.deriv_button if self.deriv_button[key].get()]
+        if not self.results:
+            flag = messagebox.askyesno('Warning !!', 'All processing versions will be used to create the statistics table.\nDo you want to continue?')
+            if flag:
+                self.destroy()
+        else:
+            self.destroy()
 
 
 class VerticalScrollbarFrame(Frame):
