@@ -3299,8 +3299,8 @@ if __name__ == '__main__':
     sleep(0.05)
     notice_license = 'BIDS Manager  Copyright (C) 2018-2020  Aix-Marseille University, INSERM, INS.\n' \
                      'This program is free software: you can redistribute it and/or modify it under the terms of the\n' \
-                     ' GNU General Public License as published by the Free Software Foundation, either version 3 of the License,\n' \
-                     ' or any later version.\n'
+                     'GNU General Public License as published by the Free Software Foundation, either version 3 of the License,\n' \
+                     'or any later version.\n'
     print(notice_license)
     sleep(0.2)
     root = Tk()
