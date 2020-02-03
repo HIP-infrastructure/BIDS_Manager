@@ -135,7 +135,6 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
         #sattistic menu
         statistic_menu.add_command(label='Create statistic table', command= lambda: self.createtablestats(), state=DISABLED)
-        statistic_menu.add_command(label='stats', state=DISABLED)
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
         menu_bar.add_cascade(label="Issues", underline=0, menu=issue_menu)
@@ -969,7 +968,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
     def subject_selection(self):
         output_dict = BidsSelectDialog(self, self.curr_bids)
-        if 'subject_selected' in output_dict.results['subject']:
+        if 'subject_selected' in output_dict.results:
             self.update_text('Subjects corresponding to the selection are:\n' + '\n'.join(
             output_dict.results['subject_selected']))
 
