@@ -12,6 +12,19 @@ from convert_process_file import go_throught_dir_to_convert
 from sys import exc_info
 
 
+def save_batch(bids_dir, batch_dict):
+    batch_dir = os.path.join(bids_dir, 'derivatives', 'bids_pipeline', 'batch')
+    os.makedirs(batch_dir, exist_ok=True)
+    author = getpass.getuser()
+    date = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    date.replace(' ', 'T')
+    filename = 'batch_' + author + '_' + date + '.json'
+    if any(batch_dict[key] for key in batch_dict):
+        with open(os.path.join(batch_dir, filename), 'w+') as file:
+            json_str = json.dumps(batch_dict, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+            file.write(json_str)
+
+
 class DerivativesSetting(object):
     path = None
     pipelines = []
@@ -236,7 +249,7 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
         else:
             self['PipelineDescription'] = {}
             self['Author'] = getpass.getuser()
-            self['Date'] = str(datetime.datetime.now())
+            self['Date'] = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             if param_vars and subject_list:
                 for key in param_vars:
                     if key == 'Callname':
@@ -317,6 +330,7 @@ class PipelineSetting(dict):
     curr_bids = None
     curr_path = None
     cwdir=None
+    jsonfilename=None
 
     def __init__(self, bids_dir, soft_name, soft_path=None):
         if isinstance(bids_dir, str):
@@ -337,6 +351,7 @@ class PipelineSetting(dict):
         if soft_path and os.path.exists(soft_path):
             self.soft_path = soft_path
         if soft_name + '.json' in os.listdir(self.soft_path):
+            self.jsonfilename = soft_name
             err_str = self.read_json_parameter_file(soft_name)
             if err_str:
                 raise EOFError(err_str)
@@ -346,6 +361,7 @@ class PipelineSetting(dict):
         if self.curr_path is not self['Path']:
             self['Path'] = self.curr_path
             self.write_file(os.path.join(self.soft_path, soft_name + '.json'))
+        os.makedirs(os.path.join(self.cwdir, 'derivatives', 'bids_pipeline'), exist_ok=True)
 
     def __setitem__(self, key, value):
         if key in self.keylist:
@@ -402,25 +418,17 @@ class PipelineSetting(dict):
             for elt in order:
                 if isinstance(elt, list):
                     if isinstance(elt[idx], list):
-                        use_list.append('"'+', '.join(elt[idx])+'"')
+                        use_list.append(', '.join(elt[idx]))
                     else:
-                        use_list.append(elt[idx])
+                        if elt[idx]:
+                            use_list.append(elt[idx])
                 else:
-                    use_list.append(elt)
+                    if elt and elt != '':
+                        use_list.append(elt)
             return use_list
 
         param_vars = results['analysis_param']
         output_name = ''
-        if isinstance(param_vars, str):
-            file, ext = os.path.splitext(param_vars)
-            if not ext == '.json':
-                self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The parameters file format is not correct. Format should be json. \n'
-                return self.log_error
-            else:
-                with open(param_vars, 'r') as file:
-                    param_vars = json.load(file)
-
-        #save the param_vars in json file for next analysis
         try:
             # update the parameters and get the subjects
             self['Parameters'].update_values(param_vars, results['input_param'])
@@ -438,9 +446,8 @@ class PipelineSetting(dict):
             output_directory, output_name, dataset_desc = dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
             participants = bids.ParticipantsProcessTSV()
 
-
             # Check if the subjects have all the required values
-            self['Parameters'].write_file(output_directory)
+            #self['Parameters'].write_file(output_directory)
 
             dataset_desc['PipelineDescription']['fileLoc'] = os.path.join(output_directory, Parameters.filename)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
@@ -452,8 +459,9 @@ class PipelineSetting(dict):
             err_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             self.log_error += 'Error type: ' + str(exc_type) + ', scriptname: ' + err_name + ', line number, ' + str(
                 exc_tb.tb_lineno) + ': ' + str(er)
-            self.write_error_system()
-            return self.log_error, output_name
+            self.write_log()
+            shutil.rmtree(output_directory)
+            return self.log_error, output_name, {}
 
         if not order:
             proc = subprocess.Popen(cmd_line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -483,8 +491,9 @@ class PipelineSetting(dict):
                 # if len(log_error) != taille[sub]:
                 #     participants.append({'participant_id': sub})
         else:
-            self.log_error += str(datetime.datetime.now()) + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
-            return self.log_error, output_name
+            self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
+            self.write_log()
+            return self.log_error, output_name, {}
         empty_dir = dev.empty_dirs(output_name, recursive=True)
         if not empty_dir:
             sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
@@ -497,18 +506,20 @@ class PipelineSetting(dict):
             participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
             dataset_desc.update(subject_to_analyse)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, DatasetDescPipeline.filename))
-            self.write_error_system(output_directory)
             try:
                 go_throught_dir_to_convert(output_directory)
             except:
                 pass
             dev.parse_pipeline(output_directory, output_name)
             self.curr_bids.save_as_json()
+            temp = self.write_analysis_done_log(dataset_desc, filename=os.path.join(output_directory, Parameters.filename))
         else:
-            self.log_error += str(datetime.datetime.now()) + ': ' + 'Warning: The folder {0} has no results so your analysis may not succeed. The folder {0} will be erased.\n'.format(output_name)
+            self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'Warning: The folder {0} has no results so your analysis may not succeed. The folder {0} will be erased.\n'.format(output_name)
             shutil.rmtree(output_directory)
 
-        return self.log_error, output_name
+        self.write_log()
+        file_to_write = self.write_analysis_done_log(dataset_desc)
+        return self.log_error, output_name, file_to_write
 
     def create_command_to_run_analysis(self, output_directory, subject_to_analyse):
         #Take the mode into account for now, only automatic
@@ -550,7 +561,7 @@ class PipelineSetting(dict):
             jsonf['RawSources'] = input_file
             jsonf['Parameters'] = analyse
             jsonf['Author'] = getpass.getuser()
-            jsonf['Date'] = str(datetime.datetime.now())
+            jsonf['Date'] = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             jsonf.write_file(output_json)
 
         output_fin = None
@@ -603,19 +614,51 @@ class PipelineSetting(dict):
                                 output_json = os.path.join(output_fin, output_file)
                                 create_json('', output_json, analyse)
 
-    def write_error_system(self, output_directory=None):
-        if not output_directory:
-            output_directory = os.path.join(self.cwdir, 'derivatives', 'log')
-        time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-        log_file = os.path.join(output_directory, 'log_error_analyse_' + time_format + '.log')
-        #os.makedirs(log_file, exist_ok=True)
-        with open(log_file, 'w+') as f:
-            f.write(self.log_error)
-
     def write_file(self, filename):
         with open(filename, 'w+') as f:
             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
             f.write(json_str)
+
+    def write_log(self):
+        log_dir = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline', 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        log_filename = 'bids-pipeline_' + time_format + '.log'
+        with open(os.path.join(log_dir, log_filename), 'w+') as file:
+            file.write(self.log_error + '\n')
+
+    def write_analysis_done_log(self, dataset_desc, filename=None):
+        file_to_write = {key: '' for key in
+                         ['analysis_param', 'subject_selected', 'input_param', 'Software', 'SoftwareVersion',
+                          'JsonName']}
+        # Voir comment gérer Software version
+        file_to_write['JsonName'] = self.jsonfilename
+        author = dataset_desc['Author']
+        name = dataset_desc['Name'].split('-')[0]
+        file_to_write['Software'] = name
+        if author is None or author == '':
+            author = getpass.getuser()
+        date = dataset_desc['Date']
+        if date is None or date == '':
+            date = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        date.replace(' ', 'T')
+        if not filename:
+            analysis_dir = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline', 'analysis_done')
+            os.makedirs(analysis_dir, exist_ok=True)
+            filename = name +'_' + author + '_' + date + '.json'
+            filename = os.path.join(analysis_dir, filename)
+        file_to_write['analysis_param'] = dataset_desc['PipelineDescription']
+        for key, value in dataset_desc['SourceDataset'].items():
+            if key == 'sub':
+                file_to_write['subject_selected'] = value
+            else:
+                if not isinstance(file_to_write['input_param'], dict):
+                    file_to_write['input_param'] = {}
+                file_to_write['input_param'][key] = value
+        with open(filename, 'w+') as file:
+            json_str = json.dumps(file_to_write, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+            file.write(json_str)
+        return file_to_write
 
 
 class Parameters(dict):
@@ -628,7 +671,7 @@ class Parameters(dict):
     curr_path = None
     curr_bids = None
     arg_readbids = []
-    filename = 'parameters_file.json'
+    filename = 'BP_parameters_file.json'
 
     def __init__(self, curr_path=None, dev_path=None, callname=None):
         if dev_path:
@@ -783,11 +826,22 @@ class Parameters(dict):
                 #order.append(output_dict)
             elif isinstance(self[clef], bool):
                 cmd_line += ' ' + clef
+            elif isinstance(self[clef], int) or isinstance(self[clef], float):
+                cmd_line += ' ' + clef + ' ' + '{}'.format(self[clef])
             elif isinstance(self[clef], list):
-                if len(self[clef]) == 1:
-                    cmd_line += ' ' + clef + ' ' + self[clef][0]
-                else:
+                if all(isinstance(elt, str) for elt in self[clef]):
                     cmd_line += ' ' + clef + ' "' + ', '.join(self[clef]) + '"'
+                else:
+                    cmd_temp = ' ' + clef + ' "'
+                    for n, elt in enumerate(self[clef]):
+                        if isinstance(elt, str):
+                            cmd_temp += elt
+                        else:
+                            cmd_temp += '{}'.format(elt)
+                        if n < len(cmd_line) - 1:
+                            cmd_temp += ', '
+                    cmd_temp += '"'
+                    cmd_line += cmd_temp
             else:
                 cmd_line += ' ' + clef + ' ' + self[clef]
         return cmd_line, order
@@ -796,11 +850,11 @@ class Parameters(dict):
         log_error = ''
         if isinstance(x, tuple):
             if not x[0] and not x[1]:
-                log_error += str(datetime.datetime.now()) + ': ' + ' '.join(input) + ' has been analyzed with no error\n'
+                log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + ' '.join(input) + ' has been analyzed with no error\n'
             elif not x[1]:
-                log_error += str(datetime.datetime.now()) + ': ' + ' '.join(input) + ': '+ x[0] + '\n'
+                log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + ' '.join(input) + ': '+ x[0] + '\n'
             else:
-                log_error += str(datetime.datetime.now()) + ': ERROR: ' + ' '.join(input)+ ': ' + x[1] + '\n'
+                log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ERROR: ' + ' '.join(input)+ ': ' + x[1] + '\n'
 
         return log_error
 
@@ -948,11 +1002,23 @@ class Docker(Parameters):
                 cmd_line += ' ' + clef
             elif isinstance(self[clef], list):
                 if len(self[clef]) > 1:
-                    value = ' '.join(self[clef])
+                    if all(isinstance(elt, str) for elt in self[clef]):
+                        value = ' '.join(self[clef])
+                    else:
+                        value = ''
+                        for n, elt in enumerate(self[clef]):
+                            if isinstance(elt, str):
+                                value += elt
+                            else:
+                                value += '{}'.format(elt)
+                            if n < len(cmd_line) - 1:
+                                value += ', '
                     cmd_line += ' ' + clef + ' [' + value + ']'
                 else:
                     value = self[clef][0]
                     cmd_line += ' ' + clef + ' ' + value
+            elif isinstance(self[clef], int) or isinstance(self[clef], float):
+                cmd_line += ' ' + clef + ' ' + '{}'.format(self[clef])
             else:
                 cmd_line += ' ' + clef + ' ' + self[clef]
         return cmd_line, order
@@ -1025,18 +1091,31 @@ class Matlab(Parameters):
                     cmd_line.append("'{" + str(cnt_tot) + "}'")
                     cnt_tot += 1
             elif isinstance(self[clef], list):
-                cmd_line.append(" '"+clef+"' ")
-                value = '", '.join(self[clef])
-                cmd_line.append("'" + value +"'")
-            elif self[clef].isnumeric():
-                cmd_line.append(" '"+clef+"' ")
+                cmd_line.append(" '"+clef+"'")
+                value = ', '.join(self[clef])
+                cmd_line.append("'" + value + "'")
+            elif isinstance(self[clef], int) or isinstance(self[clef], float):
+                cmd_line.append(" '"+clef+"'")
+                if isinstance(self[clef], bool):
+                    self[clef] = int(self[clef])
                 cmd_line.append(self[clef])
             else:
-                cmd_line.append(" '" + clef + "' ")
-                cmd_line.append("'"+self[clef]+"'")
-        cmd_line = '(' + ', '.join(cmd_line) + ')'
-
-        return cmd_line, order
+                cmd_line.append(" '" + clef + "'")
+                if self[clef].isnumeric():
+                    self[clef] = int(self[clef])
+                    cmd_line.append(self[clef])
+                else:
+                    cmd_line.append("'"+self[clef]+"'")
+        cmd_temp = '('
+        for n, elt in enumerate(cmd_line):
+            if isinstance(elt, str):
+                cmd_temp += elt
+            else:
+                cmd_temp += '{}'.format(elt)
+            if n < len(cmd_line)-1:
+                cmd_temp += ', '
+        cmd_temp += ')'
+        return cmd_temp, order
 
 
 class Python(Parameters):
@@ -1480,6 +1559,11 @@ class Arguments(Parameters):
                         self['value_selected'] = input_dict.split(unit)[0]
                     else:
                         self['value_selected'] = input_dict
+                    if self['value_selected'] and any(c.isdigit() for c in self['value_selected']):
+                        if '.' in self['value_selected'] or ',' in self['value_selected']:
+                            self['value_selected'] = float(self['value_selected'])
+                        else:
+                            self['value_selected'] = int(self['value_selected'])
                 elif 'type' in self.keys():
                     unit = self['type']
                     if not input_dict == unit:
@@ -1724,8 +1808,9 @@ class Interface(dict):
             elif att_type == 'Label':
                 res_dict[key] = val_temp
             elif att_type == 'File':
-                if val_temp:
-                    res_dict[key] = val_temp[1:]
+                if len(val_temp) >1 and val_temp[1]:
+                    if isinstance(val_temp[1], list):
+                        res_dict[key] = ', '.join(val_temp[1])
 
         return res_dict
 
@@ -1778,7 +1863,7 @@ class ParameterInterface(Interface):
                 keys = list(self.parameters[key].keys())
                 if keys == Arguments.unit_value:
                     self[key]['attribut'] = 'StringVar'
-                    self[key]['value'] = str(self.parameters[key]['default'] + self.parameters[key]['unit'])
+                    self[key]['value'] = str(self.parameters[key]['default']) + self.parameters[key]['unit']
                     self[key]['unit'] = self.parameters[key]['unit']
                 elif keys == Arguments.list_value:
                     if self.parameters[key]['multipleselection']:

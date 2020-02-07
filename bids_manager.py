@@ -132,6 +132,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 if ext == '.json':
                     pipeline_menu.add_command(label=name, command=lambda nm=name: self.run_analysis(nm), state=DISABLED)
         pipeline_menu.add_command(label='Create processing batch', command=lambda nm='batch': self.run_analysis(nm), state=DISABLED)
+        pipeline_menu.add_command(label='Upload batch file or analysis file', command=lambda: self.select_batch_file(), state=DISABLED)
 
         #sattistic menu
         statistic_menu.add_command(label='Create statistic table', command= lambda: self.createtablestats(), state=DISABLED)
@@ -914,11 +915,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                     'submitted.'
         messagebox.showinfo('Citation', citation)
 
-    def run_analysis(self, nameS):
+    def run_analysis(self, nameS, batch_file=None):
 
         if nameS == 'batch':
-            output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS)
-            last_out = None
+            output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS, batch_file=batch_file)
             if output_dict.log_error:
                 self.update_text(output_dict.log_error)
                 self.make_available()
@@ -928,20 +928,26 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             # self.update_text('Subjects selected \n' + '\n'.join(
             #     output_dict.results[nameS]['subject_selected']) + '\nThe analysis is ready to be run')
             self.make_idle('Analysis in process')
-            for key, soft_res in output_dict.results.items():
+            last_out = {i: '' for i, key in enumerate(output_dict.results)}
+            batch_file = {key: {} for key in output_dict.results}
+            for ind, key in enumerate(output_dict.results):
                 soft_analyse = pip.PipelineSetting(self.curr_bids, key)
-                for clef in soft_res['input_param']:
-                    if 'deriv-folder' in soft_res['input_param'][clef] and soft_res['input_param'][clef]['deriv-folder'] == ['Previous analysis results']:
-                        if last_out:
-                            soft_res['input_param'][clef]['deriv-folder'] = last_out
+                for clef in output_dict.results[key]['input_param']:
+                    if 'deriv-folder' in output_dict.results[key]['input_param'][clef] and 'Previous analysis results' in output_dict.results[key]['input_param'][clef]['deriv-folder'][0]:
+                        idx_prev = int(output_dict.results[key]['input_param'][clef]['deriv-folder'][0].split('-')[0]) - 1
+                        if idx_prev in last_out and last_out[idx_prev] != '':
+                            output_dict.results[key]['input_param'][clef]['deriv-folder'][0] = last_out[idx_prev]
                         else:
                             messagebox.showerror('Selection error', 'There is no analysis before {}.\n'.format(key))
+                            output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS)
                             # remettre le batch
                             self.make_available()
                             return
-                log_analysis, output_name = soft_analyse.set_everything_for_analysis(output_dict.results[key])
+                log_analysis, output_name, batch_file_soft = soft_analyse.set_everything_for_analysis(output_dict.results[key])
                 self.curr_bids.write_log('{} analysis:\n'.format(key) + log_analysis)
-                last_out = output_name
+                last_out[ind] = output_name
+                batch_file[key] = batch_file_soft
+            pip.save_batch(self.curr_bids.dirname, batch_file)
         else:
             try:
                 soft_analyse = pip.PipelineSetting(self.curr_bids, nameS)
@@ -957,14 +963,28 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 self.make_available()
                 return
                 # verify modality is present with one value
-            clef = [key for key in output_dict.results if key.lower() == nameS.lower()][0]
+            clef = [key for key in output_dict.results][0]
             #add the parameters
             self.update_text('Subjects selected \n' + '\n'.join(output_dict.results[clef]['subject_selected']) + '\nThe analysis is ready to be run')
             self.make_idle('Analysis in process')
-            log_analysis, output_name = soft_analyse.set_everything_for_analysis(output_dict.results[clef]) #['analysis_param'], output_dict.results['subject_selected'], output_dict.reults['input_param']
+            log_analysis, output_name, batch_file_soft = soft_analyse.set_everything_for_analysis(output_dict.results[clef]) #['analysis_param'], output_dict.results['subject_selected'], output_dict.reults['input_param']
             #self.update_text(log_analysis)
             self.curr_bids.write_log(log_analysis)
         self.make_available()
+
+    def select_batch_file(self):
+        if os.path.exists(os.path.join(bids.BidsBrick.cwdir, 'derivatives', 'bids_pipeline', 'batch')):
+            init_dir = os.path.join(bids.BidsBrick.cwdir, 'derivatives', 'bids_pipeline', 'batch')
+        elif os.path.exists(os.path.join(bids.BidsBrick.cwdir, 'derivatives', 'bids_pipeline')):
+            init_dir = os.path.join(bids.BidsBrick.cwdir, 'derivatives', 'bids_pipeline')
+        elif os.path.exists(os.path.join(bids.BidsBrick.cwdir, 'derivatives')):
+            init_dir = os.path.join(bids.BidsBrick.cwdir, 'derivatives')
+        else:
+            init_dir = bids.BidsBrick.cwdir
+        fname = filedialog.askopenfilename(title='Please select a batch file',
+                                           filetypes=[('batch', "*.json")],
+                                           initialdir=init_dir)
+        self.run_analysis('batch', batch_file=fname)
 
     def subject_selection(self):
         output_dict = BidsSelectDialog(self, self.curr_bids)
@@ -2205,7 +2225,7 @@ class BidsSelectDialog(TemplateDialog):
     bidsdataset = None
     select_subject = None
 
-    def __init__(self, parent, bids_data, analysis_dict=None):
+    def __init__(self, parent, bids_data, analysis_dict=None, batch_file=None):
 
         if isinstance(bids_data, bids.BidsDataset):
             self.bids_data = bids_data
@@ -2223,9 +2243,10 @@ class BidsSelectDialog(TemplateDialog):
         self.param_gui = {}
         self.frame_soft = {}
         self.batch = False
+        self.batch_file = None
         self.subject_interface = pip.Interface(self.bids_data)
         if analysis_dict and isinstance(analysis_dict, pip.PipelineSetting):
-            self.soft_name = analysis_dict['Name']
+            self.soft_name = analysis_dict.jsonfilename
             try:
                 self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
@@ -2235,12 +2256,22 @@ class BidsSelectDialog(TemplateDialog):
                 messagebox.showerror('ERROR', err)
                 return
             self.copy_values_in_list(self.soft_name)
-        elif analysis_dict and analysis_dict == 'batch':
+            self.parameter_list[self.soft_name]['Software'] = analysis_dict['Name']
+        elif analysis_dict and analysis_dict == 'batch' and batch_file is None:
             self.batch = True
+        elif analysis_dict and analysis_dict == 'batch' and batch_file:
+            self.batch = True
+            with open(batch_file, 'r') as file:
+                self.batch_file = json.load(file)
+            if any(elt in self.batch_file.keys() for elt in ['analysis_param', 'input_param', 'subject-selected']):
+                temp_batch = {self.batch_file['JsonName']: self.batch_file}
+                self.batch_file = temp_batch
+
         super().__init__(parent)
 
     def copy_values_in_list(self, soft_name):
         self.parameter_list[soft_name] = {}
+        self.parameter_list[soft_name]['JsonName'] = soft_name
         for key in self.parameter_interface:
             if isinstance(self.parameter_interface[key], pip.Interface):
                 self.parameter_list[soft_name][key] = type(self.parameter_interface[key])(self.bids_data)
@@ -2277,6 +2308,14 @@ class BidsSelectDialog(TemplateDialog):
         list_choice = Variable(Frame_subject_list, self.subject_interface.subject)
         self.select_subject = Listbox(Frame_subject_list, exportselection=0, listvariable=list_choice, selectmode=MULTIPLE)
         self.select_subject.grid(row=1, column=1, sticky=W + E)
+        if self.batch_file:
+            Id_sub_butt.select()
+            enable_frames(Frame_subject_list, 1)
+            sub_batch = [sub for key in self.batch_file for sub in self.batch_file[key]['subject_selected']]
+            sub_batch = list(set(sub_batch))
+            for sub in sub_batch:
+                idx = self.subject_interface.subject.index(sub)
+                self.select_subject.selection_set(idx)
 
         #Criteria to select subjects
         if self.subject_interface:
@@ -2312,28 +2351,39 @@ class BidsSelectDialog(TemplateDialog):
                 soft_list_button.grid(row=0, column=0)
                 add_soft = Button(frame_add_soft, text='+', command=lambda: self.create_frame_parameters(frame_multi_soft, soft_name=self.soft_list[soft_list_button.current()]))
                 add_soft.grid(row=0, column=1)
+                if self.batch_file:
+                    enable(Frame_subject_list, 'normal')
+                    for key in self.batch_file:
+                        soft_name = self.batch_file[key]['JsonName']
+                        self.create_frame_parameters(frame_multi_soft, soft_name=soft_name, soft_dict=self.batch_file[key])
             frame_multi_soft.frame.pack(side=TOP)
             frame_multi_soft.update_scrollbar()
 
         #row_okcancel = max(length, cntR, cntC)+1
         self.ok_cancel_button(frame_okcancel)
+        save = Button(frame_okcancel, text='Save', command=lambda: self.save())
+        save.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
 
-    def create_frame_parameters(self, parent, soft_name=None):
+    def create_frame_parameters(self, parent, soft_name=None, soft_dict=None):
         frame_parameters = Frame(parent.frame, relief=GROOVE, borderwidth=2)
         if soft_name:
             self.soft_name = soft_name
             try:
+                nbr_soft = len(self.frame_soft.keys())
                 analysis_dict = pip.PipelineSetting(self.bids_data, soft_name)
                 self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
                 for elt in analysis_dict['Parameters']['Input']:
                     self.parameter_interface['Input']['Input_' + elt['tag']] = pip.InputParameterInterface(self.bids_data, elt)
                     if 'deriv-folder' in self.parameter_interface['Input']['Input_' + elt['tag']]:
-                        self.parameter_interface['Input']['Input_' + elt['tag']]['deriv-folder']['value'].append('Previous analysis results')
+                        if nbr_soft >= 1:
+                            for nb in range(1, nbr_soft+1, 1):
+                                self.parameter_interface['Input']['Input_' + elt['tag']]['deriv-folder']['value'].append('{}-Previous analysis results'.format(str(nb)))
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
             self.copy_values_in_list(self.soft_name)
+            self.parameter_list[self.soft_name]['Software'] = analysis_dict['Name']
             self.frame_soft[self.soft_name] = frame_parameters
             frame_title = Frame(frame_parameters)
             Label(frame_title, text=self.soft_name, justify='center', fg='#2E006C').grid(row=0, column=0)
@@ -2349,7 +2399,10 @@ class BidsSelectDialog(TemplateDialog):
                 frame_dict[key] = Frame(frame_input_criteria)
                 Label(frame_dict[key], text='{0}: '.format(' '.join(key.split('_')[1:])), font='bold',
                       fg='#21177D').grid(row=0)
-                max_req, cntR = self.create_button(frame_dict[key], self.parameter_interface['Input'][key])
+                if soft_dict:
+                    max_req, cntR = self.create_button(frame_dict[key], self.parameter_interface['Input'][key], value_dict=soft_dict['input_param'][key])
+                else:
+                    max_req, cntR = self.create_button(frame_dict[key], self.parameter_interface['Input'][key])
                 frame_dict[key].pack(side=LEFT)
             frame_input_criteria.pack(side=LEFT)
         #Frame with the parameter selection
@@ -2373,9 +2426,13 @@ class BidsSelectDialog(TemplateDialog):
                                           variable=self.param_gui[self.soft_name],
                                           command=lambda: enable_frames(frame_param_select, self.param_gui[self.soft_name]))
         select_param_button.pack(side=LEFT)
-        max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'])
+        if soft_dict:
+            max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'], value_dict=soft_dict['analysis_param'])
+            enable(frame_param_select, 'normal')
+        else:
+            max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'])
+            enable(frame_param_select, 'disabled')
         frame_parameters_criteria.pack(side=LEFT)
-        enable(frame_param_select, 'disabled')
         frame_parameters.pack(side=TOP)
         parent.frame.update_idletasks()
         parent.canvas.config(scrollregion=parent.canvas.bbox("all"))
@@ -2384,11 +2441,13 @@ class BidsSelectDialog(TemplateDialog):
         self.frame_soft[soft_name].destroy()
         del self.parameter_list[soft_name]
 
-    def ok(self):
-        self.results = {key: {'input_param': {}, 'analysis_param': {}, 'subject_selected': []} for key in self.parameter_list}
+    def get_results(self):
+        self.results = {key: {'input_param': {}, 'analysis_param': {}, 'subject_selected': []} for key in
+                        self.parameter_list}
         select_sub = []
-
-        #get the subject selected
+        err_dict = {}
+        warn_dict = {}
+        # get the subject selected
         if self.All_sub.get():
             select_sub = self.subject_interface.subject
         elif self.Id_sub.get():
@@ -2405,25 +2464,78 @@ class BidsSelectDialog(TemplateDialog):
         if self.parameter_list:
             for key in self.parameter_list:
                 self.results[key]['subject_selected'] = select_sub
+                self.results[key]['JsonName'] = self.parameter_list[key]['JsonName']
                 for inp in self.parameter_list[key]['Input']:
                     self.results[key]['input_param'][inp] = self.parameter_list[key]['Input'][inp].get_parameter()
                 if not self.param_script[key].get():
                     self.results[key]['analysis_param'] = self.parameter_list[key]['Parameters'].get_parameter()
                 else:
-                    self.results[key]['analysis_param'] = self.param_file[key][-1]
+                    file, ext = os.path.splitext(self.param_file[key][-1])
+                    if not ext == '.json':
+                        err[key] = 'ERROR: The parameters file format is not correct. Format should be json. \n'
+                        return warn_dict, err_dict
+                    else:
+                        with open(self.param_file[key][-1], 'r') as file:
+                            param_vars = json.load(file)
+                        self.results[key]['analysis_param'] = param_vars['analysis_param']
+                        if 'input_param' in param_vars.keys():
+                            self.results[key]['input_param'] = param_vars['input_param']
                 warn, err = pip.verify_subject_has_parameters(self.bids_data,
                                                               self.results[key]['subject_selected'],
                                                               self.results[key]['input_param'])
-                if err:
-                    messagebox.showerror('Error parameters {}'.format(key), warn + err)
-                    return
-                elif warn:
-                    flag = messagebox.askyesno('Warning {}'.format(key), 'Your parameter selection has created warnings.\n'+warn+'Do you want to modify your selection?')
-                    if flag:
-                        return
+                warn_dict[key] = warn
+                err_dict[key] = err
         else:
             self.results['subject_selected'] = select_sub
+        return warn_dict, err_dict
+
+    def ok(self):
+        warn, err = self.get_results()
+        str_err = ''
+        for key in err:
+            if err[key]:
+                str_err += 'Error parameters {}'.format(key) + ': ' + warn[key] + err[key] + '\n'
+        if str_err:
+            messagebox.showerror('Error parameters', str_err)
+            return
+        str_warn = ''
+        for key in warn:
+            if warn[key]:
+                str_warn += 'Warnng in {}'.format(key) + ': ' + warn[key] + '\n'
+        if str_warn:
+            flag = messagebox.askyesno('Warning',
+                                       'Your parameter selection has created warnings.\n' + str_warn + 'Do you want to modify your selection?')
+            if flag:
+                return
         self.destroy()
+
+    def save(self):
+        warn, err = self.get_results()
+        if err:
+            str_err = ''
+            for key in err:
+                if err[key]:
+                    str_err += 'Error parameters {}'.format(key) + ': ' + warn[key] + err[key] + '\n'
+            messagebox.showerror('Error parameters', str_err)
+            return
+        bp_dir = os.path.join(bids.BidsBrick.cwdir, 'derivatives', 'bids_pipeline')
+        author = bids.BidsBrick.curr_user
+        date = bids.BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M-%S")
+        if self.batch:
+            pip.save_batch(bids.BidsBrick.cwdir, self.results)
+            messagebox.showinfo('Batch saved', 'Your batch has been saved in {}'.format(os.path.join(bp_dir, 'batch')))
+            return
+        else:
+            name = self.parameter_list[self.soft_name]['Software']
+            bp_an = os.path.join(bp_dir, 'analysis_done')
+            os.makedirs(bp_an, exist_ok=True)
+            filename = name + '_' + author + '_' + date + '_saved.json'
+            with open(os.path.join(bp_an, filename), 'w+') as f:
+                json_str = json.dumps(self.results[self.soft_name], indent=1, separators=(',', ': '), ensure_ascii=False,
+                                      sort_keys=False)
+                f.write(json_str)
+            messagebox.showinfo('Batch saved', 'Your batch has been saved in {}'.format(os.path.join(bp_an, filename)))
+            return
 
     def cancel(self):
         # put focus back to the parent window
@@ -2437,7 +2549,7 @@ class BidsSelectDialog(TemplateDialog):
         self.log_error = 'The pipeline selection has been cancel.'
         self.destroy()
 
-    def create_button(self, frame, var_dict, max_col=None):
+    def create_button(self, frame, var_dict, max_col=None, value_dict=None):
         cnt=0
         if not max_col:
             max_col = 1
@@ -2447,13 +2559,19 @@ class BidsSelectDialog(TemplateDialog):
             label_dict[key].grid(row=cnt + 1, sticky=W)
             att_type = var_dict[key]['attribut']
             val_temp = var_dict[key]['value']
+            val_sel = None
+            if value_dict and key in value_dict.keys():
+                val_sel = value_dict[key]
             if att_type == 'StringVar':
                 if isinstance(val_temp, str):
                     var_dict[key]['value'] = StringVar()
                     var_dict[key]['value']._name = val_temp
                     l = Entry(frame, textvariable=val_temp)
                     l.delete(0, END)
-                    l.insert(END, val_temp)
+                    if val_sel:
+                        l.insert(END, val_sel)
+                    else:
+                        l.insert(END, val_temp)
                     l.grid(row=cnt + 1, column=max_col, sticky=W + E)
                 elif isinstance(val_temp, list):
                     idx_var =0
@@ -2464,20 +2582,43 @@ class BidsSelectDialog(TemplateDialog):
                         l = Entry(frame, textvariable=temp)
                         l.delete(0, END)
                         l.insert(END, temp)
+                        if isinstance(val_sel, list) and idx_var < len(val_sel):
+                            l.delete(0, END)
+                            l.insert(END, val_sel[idx_var])
                         l.grid(row=cnt + 1, column=idx_var + 1, sticky=W + E)
                         idx_var += 1
                     max_col = max(max_col, idx_var)
             elif att_type == 'Listbox': #A revoir
                 l = ttk.Combobox(frame, values=val_temp)
+                if val_sel:
+                    if isinstance(val_sel, list) and val_sel[0] != '':
+                        idx = val_temp.index(val_sel[0])
+                        l.current(idx)
+                    elif isinstance(val_sel, str) and val_sel != '':
+                        idx = val_temp.index(val_sel)
+                        l.current(idx)
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
                 var_dict[key]['value'] = l
             elif att_type == 'Variable':
                 var_dict[key]['results'] = CheckbuttonList(frame, val_temp, row_list=cnt + 1, col_list=max_col).variable_list
+                if val_sel:
+                    if isinstance(val_sel, list):
+                        for var in val_sel:
+                            idx = val_temp.index(var)
+                            var_dict[key]['results'][idx].set(1)
+                    elif isinstance(val_sel, str):
+                        idx = val_temp.index(val_sel)
+                        var_dict[key]['results'][idx].set(1)
             elif att_type == 'Bool':
-                if val_temp:
-                    val = True
-                else:
-                    val = False
+                if isinstance(val_temp, str):
+                    if val_temp == 'True':
+                        val = True
+                    else:
+                        val = False
+                elif isinstance(val_temp, bool):
+                    val = val_temp
+                if val_sel:
+                    val = val_sel
                 var_dict[key]['value'] = BooleanVar()
                 var_dict[key]['value'].set(val)
                 l = Checkbutton(frame, text='True', variable=var_dict[key]['value'])
@@ -2487,6 +2628,8 @@ class BidsSelectDialog(TemplateDialog):
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
             elif att_type == 'File':
                 l = Button(frame, text='Browse', command=lambda file=val_temp: self.ask4file(file))
+                if val_sel:
+                    val_temp.append(val_sel)
                 l.grid(row=cnt + 1, column=max_col, sticky=W + E)
 
         return max_col, cnt
@@ -2526,9 +2669,6 @@ class RequirementsDialog(TemplateDialog):
         self.bids_dir = bids_dir
         self.error_str=''
         self.modif_file = filename
-        self.info_butt_removed = []
-        self.mod_butt_removed = []
-        self.mod_required_butt_removed = []
         self.info_val_removed = []
         self.mod_required_removed = []
         self.mod_removed = []
@@ -2670,7 +2810,7 @@ class RequirementsDialog(TemplateDialog):
         self.info_button.append(l3)
         idx_beg = self.info_button.index(l1)
         idx_val = len(self.info_key_label)-1
-        l5 = Button(self.frame_subject_info.frame, text='-', command=lambda: self.remove_lines_command(idx_beg, idx_val))
+        l5 = Button(self.frame_subject_info.frame, text='-', command=lambda: self.remove_lines_command(idx_val))
         l5.grid(row=cnt, column=3)
         self.info_button.append(l5)
 
@@ -2683,7 +2823,7 @@ class RequirementsDialog(TemplateDialog):
         self.btn_ok.pack(side=LEFT, anchor='sw', expand=1, padx=10, pady=5)
         self.btn_cancel.pack(side=RIGHT, anchor='se', expand=1, padx=10, pady=5)
 
-    def remove_lines_command(self, idx_button, idx_val, mod=False, required=False):
+    def remove_lines_command(self, idx_val, mod=False, required=False):
         if mod:
             if required:
                 req = 'required_'
@@ -2692,11 +2832,9 @@ class RequirementsDialog(TemplateDialog):
             keys = eval('self.modality_'+req+'key')
             button = eval('self.modality_'+req+'button')
             label = eval('self.modality_'+req+'label')
-            butt2removed = eval('self.mod_' + req + 'butt_removed')
             idx_val_removed = eval('self.mod_' + req + 'removed')
             try:
                 number_line = len(keys[idx_val])
-                butt2removed.append(idx_button)
                 num = -1
                 for i in range(0, len(keys), 1):
                     num = num + len(keys[i]) + 1
@@ -2704,9 +2842,7 @@ class RequirementsDialog(TemplateDialog):
                         num = num - len(keys[i]) - 1
                     elif idx_val <= i:
                         break
-                if idx_button != num:
-                    idx_button = num
-                idx_button = idx_button - number_line
+                idx_button = num - number_line
                 idx = 1
                 while idx <= number_line + 1:
                     button[idx_button].grid_forget()
@@ -2716,18 +2852,24 @@ class RequirementsDialog(TemplateDialog):
                     keys[idx_val][key].grid_forget()
                 label[idx_val].grid_forget()
                 idx_val_removed.append(idx_val)
+                if not required:
+                    self.modality_name[idx_val] = ''
             except IndexError:
                 self.attributes("-topmost", False)
                 messagebox.showerror('Error', 'There are no buttons to delete')
                 self.attributes("-topmost", True)
         else:
             idx = 1
-            num = 0
-            self.info_butt_removed.append(idx_button)
-            for val in self.info_butt_removed:
-                if idx_button > val:
-                    num += 1
-            idx_button = idx_button - num*4
+            num = 3
+            #self.info_butt_removed.append(idx_button)
+            if idx_val != 0:
+                for i in range(1, idx_val, 1):
+                    if i not in self.info_val_removed:
+                        num += 4
+            # for val in self.info_butt_removed:
+            #     if idx_button > val:
+            #         num += 1
+            idx_button = num - 3
             while idx < 5:
                 self.info_button[idx_button].grid_forget()
                 del self.info_button[idx_button]
@@ -2750,9 +2892,17 @@ class RequirementsDialog(TemplateDialog):
 
         if mod:
             if required and flag_first:
-                parent_list = [self.frame_required, self.frame_modality]
+                if mod not in self.modality_name:
+                    parent_list = [self.frame_required, self.frame_modality]
+                else:
+                    parent_list = [self.frame_required]
             elif required and not flag_first:
                 parent_list = [self.frame_required]
+            elif not required and mod in self.modality_name:
+                self.attributes("-topmost", False)
+                messagebox.showinfo('Information', '{} is already presents.'.format(mod))
+                self.attributes("-topmost", True)
+                return
             else:
                 parent_list = [self.frame_modality]
             required_value = {nbr: {} for nbr in range(0, len(parent_list), 1)}
@@ -2785,8 +2935,15 @@ class RequirementsDialog(TemplateDialog):
                             required_key[nbr][elt] = ''
                             if dict_val:
                                 val = ''
-                                if 'type' in dict_val and elt in dict_val['type']:
-                                    val = dict_val['type'][elt]
+                                if 'type' in dict_val:
+                                    if isinstance(dict_val['type'], dict) and elt in dict_val['type']:
+                                        val = dict_val['type'][elt]
+                                    elif isinstance(dict_val['type'], list):
+                                        val = []
+                                        for type in dict_val['type']:
+                                            if elt in type:
+                                                val.append(type[elt])
+                                        val = list(set(val))
                                 elif elt in dict_val:
                                     val = dict_val[elt]
                                 if isinstance(val, list):
@@ -2819,12 +2976,20 @@ class RequirementsDialog(TemplateDialog):
                         l = Listbox(parent.frame, exportselection=0, selectmode=MULTIPLE, height=3)
                         for item in required_value[nbr][key]:
                             l.insert(END, item)
-                        if dict_val and key in dict_val['type']:
-                            val = dict_val['type'][key]
-                            if val != '_':
-                                idx = required_value[nbr][key].index(val)
-                                l.selection_set(idx)
-                                required_value[nbr][key] = l
+                        if dict_val:
+                            if isinstance(dict_val['type'], dict) and key in dict_val['type']:
+                                val = dict_val['type'][key]
+                                if val != '_':
+                                    idx = required_value[nbr][key].index(val)
+                                    l.selection_set(idx)
+                            elif isinstance(dict_val['type'], list):
+                                val = []
+                                for type in dict_val['type']:
+                                    if key in type:
+                                        idx = required_value[nbr][key].index(type[key])
+                                        l.selection_set(idx)
+
+                        required_value[nbr][key] = l
                     else:
                         l = Entry(parent.frame, textvariable=required_value[nbr][key])
                     l.grid(row=line_num + cnt + init_num+1, column=1)
@@ -2836,7 +3001,7 @@ class RequirementsDialog(TemplateDialog):
                 eval('self.modality_' + req + 'label.append(lab)')
                 idx_val[nbr] = len(eval('self.modality_' + req + 'label')) - 1
                 idx_butt[nbr] = len(eval('self.modality_' + req + 'button'))
-                m[nbr] = Button(parent.frame, text='-', command=lambda but=idx_butt[nbr], val=idx_val[nbr], mod_bool=True, req_bool=required_dict[nbr]: self.remove_lines_command(but, val, mod=mod_bool, required=req_bool))
+                m[nbr] = Button(parent.frame, text='-', command=lambda val=idx_val[nbr], mod_bool=True, req_bool=required_dict[nbr]: self.remove_lines_command(val, mod=mod_bool, required=req_bool))
                 m[nbr].grid(row=line_num + init_num, column=2)
                 eval('self.modality_' + req + 'button.append(m[nbr])')
 
@@ -2876,40 +3041,26 @@ class RequirementsDialog(TemplateDialog):
             self.imag_name = req_dict['Converters']['Imaging']['path']
 
     def ok(self):
+        def call_raise(parent, error):
+            parent.attributes("-topmost", False)
+            messagebox.showerror('Error', error)
+            parent.attributes("-topmost", True)
+
         self.error_str = ''
         if not self.elec_name or 'AnyWave' not in os.path.basename(self.elec_name):
-            self.error_str += 'Bids Manager requires AnyWave to convert electrophy. data. '
-            pass
+            self.error_str += 'Bids Manager requires AnyWave to convert electrophy data.\n'
         if not self.imag_name or 'dicm2nii' not in os.path.basename(self.imag_name):
-            self.error_str += 'Bids Manager requires dcm2niix to convert Imaging data. '
-            pass
-        if self.info_val_removed:
-            self.info_val_removed.sort(reverse=True)
-            for val in self.info_val_removed:
-                del self.info_value_label[val]
-                del self.info_key_label[val]
-                del self.req_button[val]
-            self.info_val_removed = []
-        if self.mod_removed:
-            self.mod_removed.sort(reverse=True)
-            for val in self.mod_removed:
-                del self.modality_key[val]
-                del self.modality_name[val]
-                del self.modality_value[val]
-                del self.modality_label[val]
-            self.mod_removed = []
-        if self.mod_required_removed:
-            self.mod_required_removed.sort(reverse=True)
-            for val in self.mod_required_removed:
-                del self.modality_required_key[val]
-                del self.modality_required_name[val]
-                del self.modality_required_value[val]
-                del self.modality_required_label[val]
-            self.mod_required_removed = []
+            self.error_str += 'Bids Manager requires dcm2niix to convert Imaging data.\n'
+
+        if self.error_str:
+            call_raise(self, self.error_str)
+            return
 
         if self.import_req.get():
             if not self.req_name:
-                self.error_str = 'Bids Manager requires a requirements.json file to be operational. '
+                error = 'Bids Manager requires a requirements.json file to be operational.\n'
+                call_raise(self, error)
+                return
             else:
                 req_dict = bids.Requirements(self.req_name)
         elif self.create_req.get() or self.load_add.get():
@@ -2922,44 +3073,48 @@ class RequirementsDialog(TemplateDialog):
             required_keys = []
 
             for i, elt in enumerate(self.info_key_label):
-                value = self.info_value_label[i].get()
-                key = elt.get()
-                if not key:
-                    if not self.req_name:
-                        self.error_str = 'Subject"s information are missing'
-                    break
-                else:
-                    if ' ' in key and not key.endswith(' '):
-                        key = key.replace(' ', '_')
+                if i not in self.info_val_removed:
+                    value = self.info_value_label[i].get()
+                    key = elt.get()
+                    if not key:
+                        if not self.req_name:
+                            error = 'Subject"s information are missing.\n'
+                            call_raise(self, error)
+                            return
+                    else:
+                        if ' ' in key and not key.endswith(' '):
+                            key = key.replace(' ', '_')
 
-                if ',' not in value:
-                    keys[key] = value
-                else:
-                    list_val = value.split(',')
-                    keys[key] = []
-                    for val in list_val:
-                        if ' ' in val:
-                            keys[key].append(val.replace(' ', ''))
-                        else:
-                            keys[key].append(val)
-                    # if len(list_val) < 2:
-                    #     list_val = value.split(',')
-                    #keys[key] = [val.replace(' ', '') for val in list_val]
-                if self.req_button[i].get():
-                    required_keys.append(key)
+                    if ',' not in value:
+                        keys[key] = value
+                    else:
+                        list_val = value.split(',')
+                        keys[key] = []
+                        for val in list_val:
+                            if ' ' in val:
+                                keys[key].append(val.replace(' ', ''))
+                            else:
+                                keys[key].append(val)
+                        # if len(list_val) < 2:
+                        #     list_val = value.split(',')
+                        #keys[key] = [val.replace(' ', '') for val in list_val]
+                    if self.req_button[i].get():
+                        required_keys.append(key)
 
             req_dict['Requirements']['Subject']['keys'] = keys
             req_dict['Requirements']['Subject']['required_keys'] = required_keys
-            if not self.error_str:
-                #to get the required modality for the database
-                verif_type = {mod: [] for mod in list(set(self.modality_required_name))}
-                for i, mod in enumerate(self.modality_required_key):
+
+            #to get the required modality for the database
+            #self.del_from_list(flag_req=True)
+            verif_type = {mod: [] for mod in list(set(self.modality_required_name))}
+            for i, mod in enumerate(self.modality_required_key):
+                if i not in self.mod_required_removed:
                     if self.modality_required_name[i] not in req_dict['Requirements']['Subject'].keys():
                         req_dict['Requirements']['Subject'][self.modality_required_name[i]] = []
                     mod_dict = {}
                     type_list = []
                     type_dict = {}
-                    for key in mod:
+                    for j, key in enumerate(mod):
                         if isinstance(self.modality_required_value[i][key], StringVar):
                             value = self.modality_required_value[i][key].get()
                         elif isinstance(self.modality_required_value[i][key], Listbox):
@@ -2970,8 +3125,9 @@ class RequirementsDialog(TemplateDialog):
                             if value.isdigit() or value is '_':
                                 type_dict[key] = value
                             else:
-                                self.error_str = 'Run should be numerical value or "_"'
-                                break
+                                error = 'Run should be numerical value or "_" in required mod {}.\n'.format(self.modality_required_name[i])
+                                call_raise(self, error)
+                                return
                         elif value and isinstance(value, list):
                             for v, val in enumerate(value):
                                 type_list.append({clef: type_dict[clef] for clef in type_dict})
@@ -2991,14 +3147,20 @@ class RequirementsDialog(TemplateDialog):
                     if self.modality_required_name[i] in bids.GlobalSidecars.get_list_subclasses_names():
                         if isinstance(mod_dict['type'], dict):
                             if 'space' and 'acq' in mod_dict['type'].keys():
-                                self.error_str += 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
+                                error = 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
+                                call_raise(self, error)
+                                return
                         elif isinstance(mod_dict['type'], list):
                             for elt in mod_dict['type']:
                                 if 'space' and 'acq' in elt.keys():
-                                    self.error_str += 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
+                                    error = 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
+                                    call_raise(self, error)
+                                    return
                     req_dict['Requirements']['Subject'][self.modality_required_name[i]].append(mod_dict)
-                #To get the possible keys in modality
-                for i, mod in enumerate(self.modality_name):
+            #self.del_from_list(flag_mod=True)
+            #To get the possible keys in modality
+            for i, mod in enumerate(self.modality_name):
+                if i not in self.mod_removed:
                     if mod not in req_dict['Requirements'].keys():
                         req_dict['Requirements'][mod] = {}
                         key_dict = {}
@@ -3022,34 +3184,59 @@ class RequirementsDialog(TemplateDialog):
                         else:
                             if mod in verif_type:
                                 if key in verif_type[mod] and key != 'run':
-                                    self.error_str += 'Be carefull, in {0} required {1} is mentionned but not in possible modalities.\n'.format(mod, key)
+                                    error = 'Be carefull, in {0} required {1} is mentionned but not in possible modalities.\n'.format(mod, key)
+                                    call_raise(self, error)
+                                    return
                     if any(mod not in list(self.modality_name) for mod in verif_type):
-                        self.error_str += 'Error: Some required modalities (2nd column) are not in possible modalities (3rd column).\n'
+                        error = 'Error: Some required modalities (2nd column) are not in possible modalities (3rd column).\n'
+                        call_raise(self, error)
                     req_dict['Requirements'][mod]['keys'] = key_dict
         else:
-            self.error_str += 'Bids Manager requires a requirements.json file to be operational. '
-            pass
+            error = 'Bids Manager requires a requirements.json file to be operational.\n'
+            call_raise(self, error)
 
-        if self.error_str:
+        bids.BidsDataset.converters['Imaging']['path'] = self.imag_name
+        req_dict['Converters']['Imaging']['path'] = self.imag_name
+        req_dict['Converters']['Imaging']['ext'] = ['.nii']
+        bids.BidsDataset.converters['Electrophy']['path'] = self.elec_name
+        req_dict['Converters']['Electrophy']['path'] = self.elec_name
+        req_dict['Converters']['Electrophy']['ext'] = ['.vhdr', '.vmrk', '.eeg']
+        bids.BidsDataset.dirname = self.bids_dir
+        if self.modif_file:
             self.attributes("-topmost", False)
-            messagebox.showerror('Error', self.error_str)
+            flag = messagebox.askyesno('Modify Requirements', 'Do you really want to change your requirements file?')
             self.attributes("-topmost", True)
-        else:
-            bids.BidsDataset.converters['Imaging']['path'] = self.imag_name
-            req_dict['Converters']['Imaging']['path'] = self.imag_name
-            req_dict['Converters']['Imaging']['ext'] = ['.nii']
-            bids.BidsDataset.converters['Electrophy']['path'] = self.elec_name
-            req_dict['Converters']['Electrophy']['path'] = self.elec_name
-            req_dict['Converters']['Electrophy']['ext'] = ['.vhdr', '.vmrk', '.eeg']
-            bids.BidsDataset.dirname = self.bids_dir
-            if self.modif_file:
-                self.attributes("-topmost", False)
-                flag = messagebox.askyesno('Modify Requirements', 'Do you really want to change your requirements file?')
-                if flag:
-                    req_dict.save_as_json()
-            else:
+            if flag:
                 req_dict.save_as_json()
-            self.destroy()
+        else:
+            req_dict.save_as_json()
+        self.destroy()
+        return
+
+    def del_from_list(self, flag_info=False, flag_mod=False, flag_req=False):
+        if flag_info and self.info_val_removed:
+            self.info_val_removed.sort(reverse=True)
+            for val in self.info_val_removed:
+                del self.info_value_label[val]
+                del self.info_key_label[val]
+                del self.req_button[val]
+            self.info_val_removed = []
+        if flag_mod and self.mod_removed:
+            self.mod_removed.sort(reverse=True)
+            for val in self.mod_removed:
+                del self.modality_key[val]
+                del self.modality_name[val]
+                del self.modality_value[val]
+                del self.modality_label[val]
+            self.mod_removed = []
+        if flag_req and self.mod_required_removed:
+            self.mod_required_removed.sort(reverse=True)
+            for val in self.mod_required_removed:
+                del self.modality_required_key[val]
+                del self.modality_required_name[val]
+                del self.modality_required_value[val]
+                del self.modality_required_label[val]
+            self.mod_required_removed = []
 
     def cancel(self, event=None):
         self.error_str += 'You cancel before to indicate your requirements.json.\n Bids Manager requires a requirements.json file to be operational.'
@@ -3238,7 +3425,10 @@ def enable(frame, state):
             pass
 
 def enable_frames(frame, button):
-    button_value = button.get()
+    if isinstance(button, int):
+        button_value = button
+    else:
+        button_value = button.get()
     if button_value == 1:
         if isinstance(frame, list):
             for fr in frame:

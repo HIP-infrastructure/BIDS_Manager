@@ -340,6 +340,8 @@ class BidsBrick(dict):
             if sidecar_dict.inheritance and not direct_search:
                 while os.path.dirname(drname) != BidsDataset.dirname:
                     drname = os.path.dirname(drname)
+                    if drname[-1] == '\\':
+                        drname = drname[:-1]
                     has_broken = False
                     with os.scandir(drname) as it:
                         for idx in range(1, len(piece_fname)):
