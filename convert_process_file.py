@@ -42,7 +42,10 @@ def go_throught_dir_to_convert(dirname):
     return log_error
 
 
-def parse_derivatives_folder(folder, table2write, table_attributes, folder_out=None):
+def parse_derivatives_folder(folder, table2write, table_attributes, folder_out=None, derivatives_folder=None):
+    dev_folder = None
+    if derivatives_folder:
+        dev_folder = derivatives_folder
     log_error = ''
     if folder_out is not None:
         folder_out = folder_out + ['log', 'log_old', 'parsing', 'parsing_old']
@@ -51,6 +54,9 @@ def parse_derivatives_folder(folder, table2write, table_attributes, folder_out=N
     with os.scandir(folder) as it:
         for entry in it:
             if entry.name in __modality_type__ and entry.is_dir():
+                #Find the software name:
+                soft_name = entry.path.split(dev_folder)[1]
+                soft_name = soft_name.split('\\')[1]
                 go_throught_dir_to_convert(entry.path)
                 file_list = os.listdir(entry.path)
                 for file in file_list:
@@ -62,12 +68,12 @@ def parse_derivatives_folder(folder, table2write, table_attributes, folder_out=N
                                 channel = tsv_dict[key]
                                 key2remove.append(key)
                         try:
-                            create_table(tsv_dict, channel, key2remove, table2write, table_attributes, file)
+                            create_table(tsv_dict, channel, key2remove, table2write, table_attributes, file, soft_analysis=soft_name)
                         except UnboundLocalError:
                             log_error += 'The file {} cannot be present in the table.\n'.format(file)
                             pass
             elif entry.name not in folder_out and entry.is_dir():
-                error = parse_derivatives_folder(entry.path, table2write, table_attributes)
+                error = parse_derivatives_folder(entry.path, table2write, table_attributes, derivatives_folder=dev_folder)
                 log_error += error
     return log_error
 
@@ -77,7 +83,7 @@ def write_big_table(derivatives_folder, folder_out=None):
     table2write = [[]]
     table_attributes = [[]]
     table_attributes[0] = ['sub']
-    log_error = parse_derivatives_folder(derivatives_folder, table2write, table_attributes, folder_out)
+    log_error = parse_derivatives_folder(derivatives_folder, table2write, table_attributes, folder_out, derivatives_folder=derivatives_folder)
     if not len(table2write) == len(table_attributes):
         print('ERROR')
     else:
@@ -225,15 +231,19 @@ def read_tsv(filename):
     return json_dict, tsv_dict
 
 
-def create_table(tsv_dict, channel, key2remove, table2write, table_attributes=None, file=None):
+def create_table(tsv_dict, channel, key2remove, table2write, table_attributes=None, file=None, soft_analysis=None):
     header = table2write[0]
     name = {}
     id_same_file = None
+    if soft_analysis:
+        soft = soft_analysis + ':'
+    else:
+        soft = ''
     if 'Channel' not in header:
         header.insert(0, 'Channel')
     for key in tsv_dict:
-        if key not in key2remove and key not in header and len(tsv_dict[key]) == len(channel) and key != '':
-            header.append(key)
+        if key not in key2remove and soft + key not in header and len(tsv_dict[key]) == len(channel) and key != '':
+            header.append(soft + key)
         # create_attributes_table
     if table_attributes:
         name_list = os.path.basename(file).split('_')
@@ -271,10 +281,14 @@ def create_table(tsv_dict, channel, key2remove, table2write, table_attributes=No
             lines = ['n/a'] * len(header)
         for key in header:
             idx = header.index(key)
-            if key in tsv_dict.keys():
-                lines[idx] = str(tsv_dict[key][i])
-            elif key in name.keys():
-                lines[idx] = str(name[key])
+            if soft != '' and key != 'Channel':
+                key_sub = key.split(':')[1]
+            else:
+                key_sub = key
+            if key_sub in tsv_dict.keys():
+                lines[idx] = str(tsv_dict[key_sub][i])
+            elif key_sub in name.keys():
+                lines[idx] = str(name[key_sub])
             elif key == 'Channel':
                 lines[idx] = chan
         if flag_not_inside:
