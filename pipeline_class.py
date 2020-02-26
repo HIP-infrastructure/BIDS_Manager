@@ -468,7 +468,6 @@ class PipelineSetting(dict):
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
             self.write_json_associated(order, output_directory, cmd_arg)
-            #pass
         elif order:
             taille, idx_in, in_out = input_dict.get_input_values(subject_to_analyse, order)
             if output_dict:
@@ -725,7 +724,7 @@ class Parameters(dict):
                 ext = '.m'
             elif intermediaire == 'AnyWave':
                 ext = '.exe'
-                name = AnyWave
+                name = 'AnyWave'
             return name, ext
 
         def select_pipeline_path(name, ext):
