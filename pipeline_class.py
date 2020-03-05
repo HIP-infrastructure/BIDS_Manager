@@ -449,7 +449,7 @@ class PipelineSetting(dict):
             # Check if the subjects have all the required values
             #self['Parameters'].write_file(output_directory)
 
-            dataset_desc['PipelineDescription']['fileLoc'] = os.path.join(output_directory, Parameters.filename)
+            #dataset_desc['PipelineDescription']['fileLoc'] = os.path.join(output_directory, Parameters.filename)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
 
             #Get the value for the command_line
@@ -797,18 +797,17 @@ class Parameters(dict):
                         elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ['']):
                             cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'][0])
                     else:
+                        if not elt['tag']:
+                            order['in' + str(cn)] = cnt_tot
+                        else:
+                            order[elt['tag']] = cnt_tot
                         if elt.deriv_input:
                             if elt['deriv-folder'] == [''] and not elt['optional']:
                                 raise ValueError('The derivative folder for this paramater {} should be mentionned.\n'.format(elt['tag']))
                             elif elt['deriv-folder'] != ['']:
-                                order[elt['tag']] = cnt_tot
                                 cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                                 cnt_tot += 1
                         else:
-                            if not elt['tag']:
-                                order['in'+str(cn)] = cnt_tot
-                            else:
-                                order[elt['tag']] = cnt_tot
                             cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                             cnt_tot += 1
             elif clef == 'Output':
@@ -828,7 +827,9 @@ class Parameters(dict):
             elif isinstance(self[clef], int) or isinstance(self[clef], float):
                 cmd_line += ' ' + clef + ' ' + '{}'.format(self[clef])
             elif isinstance(self[clef], list):
-                if all(isinstance(elt, str) for elt in self[clef]):
+                if len(self[clef]) == 1:
+                    cmd_line += ' ' + clef + ' ' + self[clef][0]
+                elif all(isinstance(elt, str) for elt in self[clef]):
                     cmd_line += ' ' + clef + ' "' + ', '.join(self[clef]) + '"'
                 else:
                     cmd_temp = ' ' + clef + ' "'
@@ -1242,9 +1243,14 @@ class InputArguments(Parameters):
             raise KeyError('Your json is not conform.\n')
         else:
             for key in input_dict:
-                if key == 'modality' and isinstance(input_dict[key], str):
-                    self[key] = []
-                    self[key].append(input_dict[key])
+                if key == 'modality':
+                    if isinstance(input_dict[key], str):
+                        self[key] = []
+                        value = input_dict[key].capitalize()
+                        self[key].append(value)
+                    elif isinstance(input_dict[key], list):
+                        value = [elt.capitalize() for elt in input_dict[key]]
+                        self[key] = value
                 elif key == 'deriv-folder':
                     self[key] = input_dict[key]
                     self.deriv_input = True
@@ -1681,23 +1687,32 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
                             elmt = [val['modality'] for val in
                                     curr_bids.curr_pipeline['Pipeline'].curr_subject['SubjectProcess'][mod]]
                     else:
-                        elmt=[]
+                        warn_txt += 'The subject {0} is not present in the {1} folder.\n'.format(sid, deriv_folder)
+                        sub2remove.append(sid)
+                        continue
                 else:
                     curr_bids.is_subject_present(sid)
-                    elmt = [val[clef] for val in curr_bids.curr_subject['Subject'][mod]]
-                    if clef == 'mod':
-                        elmt = [val['modality'] for val in curr_bids.curr_subject['Subject'][mod]]
+                    if curr_bids.curr_subject['isPresent']:
+                        elmt = [val[clef] for val in curr_bids.curr_subject['Subject'][mod]]
+                        if clef == 'mod':
+                            elmt = [val['modality'] for val in curr_bids.curr_subject['Subject'][mod]]
+                    else:
+                        warn_txt += 'The subject {0} is not present in the bids dataset.\n'.format(sid)
+                        sub2remove.append(sid)
+                        continue
                 if not any(elt in elmt for elt in input_vars[key][clef]):
                     warn_txt += 'The subject {0} doesn"t have the required {1} for the analysis.\n The {2} is missing.\n'.format(sid, key, clef)
                     sub2remove.append(sid)
-        if sub2remove:
-            for sub in sub2remove:
-                if sub in sub_id:
-                    warn_txt += 'The subject {} will be removed from the subject selection.\n'.format(sub)
-                    sub_id.remove(sub)
-        if not sub_id:
-            err_txt += 'There is no more subject in the selection.\n Please modify your parameters.\n'
-            return warn_txt, err_txt
+        deriv_folder = None
+    if sub2remove:
+        sub2remove = list(set(sub2remove))
+        for sub in sub2remove:
+            if sub in sub_id:
+                warn_txt += 'The subject {} will be removed from the subject selection.\n'.format(sub)
+                sub_id.remove(sub)
+    if not sub_id:
+        err_txt += 'There is no more subject in the selection.\n Please modify your parameters.\n'
+        return warn_txt, err_txt
 
     return warn_txt, err_txt
 
@@ -1810,6 +1825,8 @@ class Interface(dict):
                 if len(val_temp) >1 and val_temp[1]:
                     if isinstance(val_temp[1], list):
                         res_dict[key] = ', '.join(val_temp[1])
+                    else:
+                        res_dict[key] = val_temp[1]
 
         return res_dict
 
@@ -1982,8 +1999,9 @@ class InputParameterInterface(Interface):
             if self.parameters.deriv_input:
                 mod_list = bids.ElectrophyProcess.get_list_subclasses_names() + bids.ImagingProcess.get_list_subclasses_names()
             keylist = [elt for key in mod_list for elt in eval('bids.' + key + '.keylist') if not (
-                    elt.endswith('JSON') or elt.endswith('TSV') or elt.endswith('Loc') or elt.endswith(
-                'modality') or elt == 'sub' or elt.endswith('Labels'))]
+                     elt in bids.BidsJSON.get_list_subclasses_names() or elt in bids.BidsTSV.get_list_subclasses_names()
+                     or elt in bids.BidsFreeFile.get_list_subclasses_names() or elt.endswith('Loc') or elt.endswith(
+                'modality') or elt == 'sub' or elt.endswith('Labels'))] #elt.endswith('JSON') or elt.endswith('TSV')
             self.keylist = list(set(keylist))
             self.vars_interface()
 
@@ -2022,7 +2040,8 @@ class InputParameterInterface(Interface):
                         keys = [elt for elt in self.keylist if elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
                         if mod in bids.Imaging.get_list_subclasses_names() and 'mod' not in keys:
                             keys.append('mod')
-                        self.get_values(mod, keys, sub)
+                        if sub[mod]:
+                            self.get_values(mod, keys, sub)
         else:
             for pip in self.bids_data['Derivatives'][0]['Pipeline']:
                 sub_list = [sub for sub in pip['SubjectProcess']]
@@ -2033,11 +2052,13 @@ class InputParameterInterface(Interface):
                                     elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
                             if mod in bids.ImagingProcess.get_list_subclasses_names() and 'mod' not in keys:
                                 keys.append('mod')
-                            self.get_values(mod, keys, sub)
-            clefs = [key for key in self]
-            for key in clefs:
-                if self[key]['attribut'] == 'Label' and key != 'modality':
-                    del self[key]
+                            if sub[mod]:
+                                self.get_values(mod, keys, sub)
+        clefs = [key for key in self]
+        for key in clefs:
+            if self[key]['attribut'] == 'Label' and key not in ['modality', 'ses']:
+                del self[key]
+        #Ecrire qqch si juste la modality en label et rien d'autre
 
     def get_values(self, mod, keys, sub):
         for key in keys:

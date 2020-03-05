@@ -836,15 +836,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             if key in bids.ModalityType.get_list_subclasses_names():
                 is_conform = True
         if not is_conform:
-            messagebox.showinfo('Requirements is not conform', 'Your requirements doesn"t contain the "different possible values for all modalities" (3rd column in requirements GUI), \nso Generic Uploader cannot be ran\n')
+            messagebox.showinfo('Requirements is not conform', 'Your requirements doesn"t contain the "different possible values for all modalities" (3rd column in requirements GUI), \nso Bids Uploader cannot be ran\n')
             req_box = messagebox.askquestion('Modify your Requirements', 'Do you want to open the GUI to modify your requirements?')
             if req_box == 'yes':
                 self.modify_requirements_file()
             else:
-                messagebox.showinfo('Generic Uploader', 'Genereic Uploader cannot be ran')
+                messagebox.showinfo('Bids Uploader', 'Bids Uploader cannot be ran')
                 return
         #Run the Generic Uploader
-        self.make_idle('Generic Uploader is running')
+        self.make_idle('Bids Uploader is running')
         try:
             call_generic_uplader(self.curr_bids)
         except:
@@ -916,7 +916,6 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         messagebox.showinfo('Citation', citation)
 
     def run_analysis(self, nameS, batch_file=None):
-
         if nameS == 'batch':
             output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS, batch_file=batch_file)
             if output_dict.log_error:
@@ -953,7 +952,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 soft_analyse = pip.PipelineSetting(self.curr_bids, nameS)
             except (EOFError, KeyError) as err:
                 if isinstance(err, KeyError):
-                    err = err.args[0]
+                    err = 'The error comes from the key ' + err.args[0] + ' in your json.'
                 self.update_text(str(err))
                 self.make_available()
                 return
@@ -994,15 +993,17 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
     def createtablestats(self):
         self.make_idle('Create your statistical table')
+        select_list = None
         deriv_dir = os.path.join(self.curr_bids.dirname, 'derivatives')
-        reject_dir = ['parsing', 'log', 'parsing_old', 'log_old']
+        reject_dir = ['parsing', 'log', 'parsing_old', 'log_old', 'bids_pipeline']
         deriv_list = [entry for entry in os.listdir(deriv_dir) if
                            not os.path.isfile(os.path.join(deriv_dir, entry)) and not entry in reject_dir]
         multi_soft = [fold.split('-')[0] for fold in deriv_list if '-v' in fold]
         multi_soft = list(set(multi_soft))
-        select_list = HandleMultipleSameProcess(self, deriv_list, multi_soft)
+        if multi_soft:
+            select_list = HandleMultipleSameProcess(self, deriv_list, multi_soft).results
         try:
-            log_error = write_big_table(deriv_dir, select_list.results)
+            log_error = write_big_table(deriv_dir, select_list)
             self.update_text(log_error)
             self.make_available()
             return
@@ -2250,8 +2251,11 @@ class BidsSelectDialog(TemplateDialog):
             try:
                 self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
-                for elt in analysis_dict['Parameters']['Input']:
-                    self.parameter_interface['Input']['Input_'+elt['tag']] = pip.InputParameterInterface(self.bids_data, elt)
+                for cnt, elt in enumerate(analysis_dict['Parameters']['Input']):
+                    tag_val = elt['tag']
+                    if not tag_val:
+                        tag_val = 'in'+str(cnt)
+                    self.parameter_interface['Input']['Input_'+tag_val] = pip.InputParameterInterface(self.bids_data, elt)
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
@@ -2284,6 +2288,10 @@ class BidsSelectDialog(TemplateDialog):
                         self.parameter_list[soft_name][key][clef].copy_values(self.parameter_interface[key][clef])
 
     def body(self, parent):
+        if self.batch:
+            width = round((self.monitor_width * 3) / 4)
+            height = round((self.monitor_height * 3) / 4)
+            self.geometry('{}x{}'.format(width, height))
         self.title('Select Subjects and parameters')
         self.All_sub = IntVar()
         self.Id_sub = IntVar()
@@ -2339,14 +2347,10 @@ class BidsSelectDialog(TemplateDialog):
         if self.batch or self.soft_name:
             frame_add_soft = Frame(parent)
             frame_add_soft.pack(side=TOP)
-            frame_multi_soft = VerticalScrollbarFrame(parent)
+            frame_multi_soft = DoubleScrollbarFrame(parent)
             if not self.batch:
                 self.create_frame_parameters(frame_multi_soft)
             else:
-                width = round((self.monitor_width * 3) / 4)
-                height = round((self.monitor_height * 3) / 4)
-                self.geometry('{}x{}'.format(width, height))
-                frame_multi_soft.frame.config(height=height / 3)
                 soft_list_button = ttk.Combobox(frame_add_soft, values=self.soft_list)
                 soft_list_button.grid(row=0, column=0)
                 add_soft = Button(frame_add_soft, text='+', command=lambda: self.create_frame_parameters(frame_multi_soft, soft_name=self.soft_list[soft_list_button.current()]))
@@ -2373,12 +2377,15 @@ class BidsSelectDialog(TemplateDialog):
                 analysis_dict = pip.PipelineSetting(self.bids_data, soft_name)
                 self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
-                for elt in analysis_dict['Parameters']['Input']:
-                    self.parameter_interface['Input']['Input_' + elt['tag']] = pip.InputParameterInterface(self.bids_data, elt)
-                    if 'deriv-folder' in self.parameter_interface['Input']['Input_' + elt['tag']]:
+                for cnt, elt in enumerate(analysis_dict['Parameters']['Input']):
+                    tag_val = elt['tag']
+                    if not tag_val:
+                        tag_val = 'in' + str(cnt)
+                    self.parameter_interface['Input']['Input_' + tag_val] = pip.InputParameterInterface(self.bids_data, elt)
+                    if 'deriv-folder' in self.parameter_interface['Input']['Input_' + tag_val]:
                         if nbr_soft >= 1:
                             for nb in range(1, nbr_soft+1, 1):
-                                self.parameter_interface['Input']['Input_' + elt['tag']]['deriv-folder']['value'].append('{}-Previous analysis results'.format(str(nb)))
+                                self.parameter_interface['Input']['Input_' + tag_val]['deriv-folder']['value'].append('{}-Previous analysis results'.format(str(nb)))
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
@@ -2427,6 +2434,7 @@ class BidsSelectDialog(TemplateDialog):
                                           command=lambda: enable_frames(frame_param_select, self.param_gui[self.soft_name]))
         select_param_button.pack(side=LEFT)
         if soft_dict:
+            import_param_button.select()
             max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'], value_dict=soft_dict['analysis_param'])
             enable(frame_param_select, 'normal')
         else:
@@ -2516,8 +2524,9 @@ class BidsSelectDialog(TemplateDialog):
             for key in err:
                 if err[key]:
                     str_err += 'Error parameters {}'.format(key) + ': ' + warn[key] + err[key] + '\n'
-            messagebox.showerror('Error parameters', str_err)
-            return
+            if str_err:
+                messagebox.showerror('Error parameters', str_err)
+                return
         bp_dir = os.path.join(bids.BidsBrick.cwdir, 'derivatives', 'bids_pipeline')
         author = bids.BidsBrick.curr_user
         date = bids.BidsBrick.access_time.strftime("%Y-%m-%dT%H-%M-%S")
@@ -2546,6 +2555,11 @@ class BidsSelectDialog(TemplateDialog):
         self.frame_soft = {}
         self.batch = False
         self.results = {}
+        self.param_file = {}
+        self.param_script = {}
+        self.param_gui = {}
+        self.batch_file = None
+        self.subject_interface = None
         self.log_error = 'The pipeline selection has been cancel.'
         self.destroy()
 
@@ -2637,7 +2651,10 @@ class BidsSelectDialog(TemplateDialog):
     def ask4file(self, file):
         filetypes = ('Files', file)
         filename = filedialog.askopenfilename(title='Select file', initialdir=self.bids_data.cwdir, filetypes=[filetypes])
-        file.append(filename)
+        if len(file) <= 1:
+            file.append(filename)
+        else:
+            file[1] = filename
 
 
 class RequirementsDialog(TemplateDialog):
@@ -2730,17 +2747,17 @@ class RequirementsDialog(TemplateDialog):
         Label(Frame_path, text='Indicate the path of the converters').pack(side=TOP, anchor=N)
 
         #Scrollbar the subject's frame
-        self.frame_subject_info = VerticalScrollbarFrame(parent)
+        self.frame_subject_info = DoubleScrollbarFrame(parent)
         Label(self.frame_subject_info.frame, text='Indicate the subjects information you need', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
         Label(self.frame_subject_info.frame, text='Label').grid(row=1, column=0)
         Label(self.frame_subject_info.frame, text='Possible Values').grid(row=1, column=1)
 
         # Scrollbar the frame with canvas
-        self.frame_required = VerticalScrollbarFrame(parent)
+        self.frame_required = DoubleScrollbarFrame(parent)
         Label(self.frame_required.frame, text='Indicate the modality required in the dataset', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
 
         #Scrollbar the modality's frame
-        self.frame_modality = VerticalScrollbarFrame(parent)
+        self.frame_modality = DoubleScrollbarFrame(parent)
         Label(self.frame_modality.frame, text='Indicate the different possible values for all modalities', justify='center', fg='#17657D').grid(row=0, column=0, columnspan=3)
         self.frame_modality.frame.pack(side=LEFT, fill=BOTH, expand=True)
 
@@ -2924,7 +2941,7 @@ class RequirementsDialog(TemplateDialog):
                     key_label = eval('bids.'+mod+'.keylist')
 
                 for elt in key_label:
-                    if elt not in bids.BidsJSON.get_list_subclasses_names() + bids.BidsTSV.get_list_subclasses_names() + bids.BidsBrick.required_keys + ['fileLoc']:
+                    if elt not in bids.BidsJSON.get_list_subclasses_names() + bids.BidsTSV.get_list_subclasses_names() + bids.BidsFreeFile.get_list_subclasses_names() + bids.BidsBrick.required_keys + ['fileLoc']:
                         if elt == 'modality':
                             mod_list = eval('bids.'+mod+'.allowed_modalities')
                             if required:
@@ -3338,9 +3355,9 @@ class HorizontalScrollbarFrame(Frame):
     def __init__(self, parent):
         self.Frame_to_scrollbar = Frame(parent, relief=GROOVE, borderwidth=2)
         self.Frame_to_scrollbar.pack(side=LEFT, fill=BOTH, expand=True)
-        self.vsb = Scrollbar(self.Frame_to_scrollbar, orient="horizontal")
-        self.vsb.pack(side=BOTTOM, fill=X)
-        self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.vsb.set)
+        self.hsb = Scrollbar(self.Frame_to_scrollbar, orient="horizontal")
+        self.hsb.pack(side=BOTTOM, fill=X)
+        self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.hsb.set)
         self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
         self.frame = Frame(self.canvas, bg='white')#, relief=GROOVE, borderwidth=2)
         self.frame.pack()
@@ -3353,7 +3370,33 @@ class HorizontalScrollbarFrame(Frame):
         self.canvas.pack()
         self.frame.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
-        self.vsb.configure(command=self.canvas.xview)
+        self.hsb.configure(command=self.canvas.xview)
+        self.frame.bind('<Configure>', myfunction(self.canvas))
+
+
+class DoubleScrollbarFrame(Frame):
+    def __init__(self, parent):
+        self.Frame_to_scrollbar = Frame(parent, relief=GROOVE, borderwidth=2)
+        self.Frame_to_scrollbar.pack(side=LEFT, fill=BOTH, expand=True)
+        self.vsb = Scrollbar(self.Frame_to_scrollbar, orient="vertical")
+        self.vsb.pack(side=RIGHT, fill=Y)
+        self.hsb = Scrollbar(self.Frame_to_scrollbar, orient="horizontal")
+        self.hsb.pack(side=BOTTOM, fill=X)
+        self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.hsb.set, yscrollcommand=self.vsb.set)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        self.frame = Frame(self.canvas, bg='white')#, relief=GROOVE, borderwidth=2)
+        self.frame.pack()
+
+    def update_scrollbar(self):
+        def myfunction(canvas):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        self.canvas.create_window(0, 0, window=self.frame, anchor='nw') #scrollregion=self.canvas.bbox("all"),
+        self.canvas.pack()
+        self.frame.update_idletasks()
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+        self.hsb.configure(command=self.canvas.xview)
+        self.vsb.configure(command=self.canvas.yview)
         self.frame.bind('<Configure>', myfunction(self.canvas))
 
 
@@ -3411,6 +3454,12 @@ class CheckbuttonList(Frame):
             self.combo_entry.toplevel.deiconify()
             self.combo_entry.toplevel.grab_set()
         else:
+            self.combo_entry.delete(0, END)
+            for var in self.variable_list:
+                if var.get():
+                    idx = self.variable_list.index(var)
+                    self.combo_entry.insert(END, self.variable_string[idx])
+                    self.combo_entry.insert(END, ' ')
             self.hidden = False
             self.combo_entry.toplevel.withdraw()
             #self.parent.master.master.master.grab_set()
@@ -3423,6 +3472,7 @@ def enable(frame, state):
             child.configure(state=state)
         except:
             pass
+
 
 def enable_frames(frame, button):
     if isinstance(button, int):
@@ -3441,6 +3491,7 @@ def enable_frames(frame, button):
                 enable(fr, 'disabled')
         else:
             enable(frame, 'disabled')
+
 
 def make_splash():
     if bids.BidsBrick.curr_user.lower() == 'ponz':

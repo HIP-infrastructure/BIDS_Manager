@@ -340,8 +340,6 @@ class BidsBrick(dict):
             if sidecar_dict.inheritance and not direct_search:
                 while os.path.dirname(drname) != BidsDataset.dirname:
                     drname = os.path.dirname(drname)
-                    if drname[-1] == '\\':
-                        drname = drname[:-1]
                     has_broken = False
                     with os.scandir(drname) as it:
                         for idx in range(1, len(piece_fname)):
@@ -638,7 +636,7 @@ class BidsBrick(dict):
                     req_amount = get_amount_of_file(sub_mod_list, mod_req['amount'], modality)
 
                 if amount == 0:
-                    str_iss = 'Subject ' + sub_name + ' does not have files of type: ' + str(type_dict) + '.'
+                    str_iss = 'Subject ' + sub_name + ' in modality '+ modality + ' does not have files of type: ' + str(type_dict) + '.'
                 elif amount < req_amount:
                     str_iss = 'Subject ' + sub_name + ' misses ' + str(req_amount-amount) \
                                 + ' files of type: ' + str(type_dict) + '.'
@@ -646,7 +644,7 @@ class BidsBrick(dict):
                     return True
             else:
                 str_iss = 'For subject ' + sub_name + ', the amount parameter for ' + str(type_dict) + \
-                          ' is wrongly set. It should be an integer or a dictionary.'
+                          ' is wrongly set in modality ' + modality + '. It should be an integer or a dictionary.'
 
             self.write_log(str_iss)
             return False
@@ -1045,9 +1043,14 @@ class BidsSidecar(object):
                     raise TypeError('File is not ".tsv".')
             elif isinstance(self, BidsFreeFile):
                 self.clear()
-                with open(os.path.join(filename), 'r') as file:
-                    for line in file:
-                        self.append(line.replace('\n', ''))
+                try:
+                    with open(os.path.join(filename), 'r') as file:
+                        for line in file:
+                            self.append(line.replace('\n', ''))
+                except UnicodeDecodeError:
+                    with open(os.path.join(filename), 'rb') as file:
+                        for line in file:
+                            self.append(line)
             else:
                 raise TypeError('Not readable class input ' + self.classname() + '.')
 
@@ -1109,9 +1112,15 @@ class BidsSidecar(object):
 class BidsFreeFile(BidsSidecar, list):
 
     def write_file(self, freefilename):
-        with open(os.path.join(freefilename), 'w') as file:
-            for line in self:
-                file.write(line + '\n')
+        if isinstance(self[0], bytes):
+            with open(os.path.join(freefilename), 'wb') as file:
+                for line in self:
+                    file.write(line)
+            self.clear()
+        else:
+            with open(os.path.join(freefilename), 'w') as file:
+                for line in self:
+                    file.write(line + '\n')
         if platform.system() == 'Linux':
             chmod_recursive(freefilename, 0o777)
 
@@ -1204,20 +1213,21 @@ class Imaging(ModalityType):
 
 
 class Electrophy(ModalityType):
-    channel_type = ['EEG', 'SEEG', 'ECOG', 'MEG', 'EMG', 'ECG', 'EOG', 'Trigger', 'Misc']
+    channel_type = ['EEG', 'ECOG', 'SEEG', 'DBS', 'VEOG', 'HEOG', 'EOG', 'ECG', 'EMG', 'TRIG', 'AUDIO', 'PD', 'EYEGAZ',
+                    'PUPIL', 'MISC', 'SYSCLOCK', 'ADC', 'DAC', 'REF', 'OTHER']
 
 
 class ImagingJSON(BidsJSON):
-    keylist = ['Manufacturer', 'ManufacturersModelName', 'MagneticFieldStrength', 'DeviceSerialNumber', 'StationName',
-               'SoftwareVersions', 'HardcopyDeviceSoftwareVersion', 'ReceiveCoilName', 'ReceiveCoilActiveElements',
+    keylist = ['Manufacturer', 'ManufacturersModelName', 'DeviceSerialNumber', 'StationName', 'SoftwareVersions',
+                'HardcopyDeviceSoftwareVersion', 'MagneticFieldStrength', 'ReceiveCoilName', 'ReceiveCoilActiveElements',
                'GradientSetType', 'MRTransmitCoilSequence', 'MatrixCoilMode', 'CoilCombinationMethod',
-               'PulseSequenceType', 'ScanningSequence', 'SequenceVariant', 'ScanOptions', 'PulseSequenceDetails',
+               'PulseSequenceType', 'ScanningSequence', 'SequenceVariant', 'ScanOptions', 'SequenceName', 'PulseSequenceDetails',
                'NonlinearGradientCorrection', 'NumberShots', 'ParallelReductionFactorInPlane',
-               'ParallelAcquisitionTechnique', 'PartialFourier', 'PartialFourierDirection', 'PhaseEncodingDirection',
-               'EffectiveEchoSpacing', 'TotalReadoutTime', 'WaterFatShift', 'EchoTrainLength', 'EchoTime',
-               'InversionTime', 'SliceTiming', 'SliceEncodingDirection', 'DwellTime', 'FlipAngle',
-               'MultibandAccelerationFactor', 'AnatomicalLandmarkCoordinates', 'InstitutionName', 'InstitutionAddress',
-               'InstitutionalDepartmentName']
+               'ParallelAcquisitionTechnique', 'PartialFourier', 'PartialFourierDirection', 'RepetitionTime', 'PhaseEncodingDirection',
+               'EffectiveEchoSpacing', 'TotalReadoutTime', 'EchoTime', 'EchoTrainLength', 'InversionTime', 'SliceTiming',
+               'SliceEncodingDirection', 'SliceThickness', 'DwellTime', 'FlipAngle', 'MultibandAccelerationFactor', 'NegativeContrast',
+               'AnatomicalLandmarkCoordinates', 'InstitutionName', 'InstitutionAddress', 'InstitutionalDepartmentName']
+                #'WaterFatShift', ,
     required_keys = []
 
 
@@ -1661,7 +1671,7 @@ class Eeg(Electrophy):
     required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['eeg']
     allowed_file_formats = ['.edf', '.vhdr']
-    readable_file_formats = allowed_file_formats + ['.eeg', '.trc']
+    readable_file_formats = allowed_file_formats + ['.eeg', '.trc', '.ades', '.cnt', '.mat', '.set', '.mff', '.fif', '.ds']
     channel_type = ['EEG']
     required_protocol_keys = []
 
@@ -1671,22 +1681,22 @@ class Eeg(Electrophy):
 
 
 class EegJSON(ElectrophyJSON):
-    keylist = ['TaskName', 'Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
-               'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency',
-               'ECOGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
+    required_keys = ['TaskName']
+    keylist = required_keys + ['Manufacturer', 'ManufacturersModelName', 'TaskDescription', 'Instructions', 'CogAtlasID',
+               'CogPOID', 'InstitutionName', 'InstitutionAddress', 'DeviceSerialNumber', 'PowerLineFrequency', 'EEGReference', 'SamplingFrequency',
+               'SoftwareFilters', 'CapManufacturer', 'CapManufacturersModelName', 'ECOGChannelCount', 'EEGChannelCount', 'EOGChannelCount', 'ECGChannelCount',
                'EMGChannelCount', 'MiscChannelCount', 'TriggerChannelCount', 'RecordingDuration', 'RecordingType',
-               'EpochLength', 'DeviceSoftwareVersion', 'SubjectArtefactDescription', 'EEGPlacementScheme',
-               'EEGReferenceScheme', 'Stimulation', 'Medication']
-    required_keys = ['TaskName', 'Manufacturer', 'PowerLineFrequency']
+               'EpochLength', 'EEGGround', 'HeadCircumference', 'SoftwareVersions', 'HardwareFilters',
+                               'SubjectArtefactDescription', 'EEGPlacementScheme']
 
 
 class EegChannelsTSV(ChannelsTSV):
     """Store the info of the #_channels.tsv, listing amplifier metadata such as channel names, types, sampling
     frequency, and other information. Note that this may include non-electrode channels such as trigger channels."""
-
-    header = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
+    required_fields = ['name', 'type', 'units']
+    header = required_fields + ['sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference', 'group',
               'description', 'status', 'status_description', 'software_filters']
-    required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
+
     modality_field = 'channels'
 
 
@@ -1696,18 +1706,17 @@ class EegEventsTSV(EventsTSV):
 
 
 class EegElecTSV(BidsTSV):
-    header = ['name', 'x', 'y', 'z', 'size', 'type', 'material', 'tissue', 'manufacturer', 'grid_size', 'group',
-              'hemisphere']
-    required_fields = ['name', 'x', 'y', 'z', 'size']
+    required_fields = ['name', 'x', 'y', 'z']
+    header = required_fields + ['type', 'material', 'impedance']
     modality_field = 'electrodes'
 
 
 class EegCoordSysJSON(BidsJSON):
-    keylist = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateProcessingDescription', 'IntendedFor',
-               'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits',
-               'AssociatedImageCoordinateSystemDescription', 'EEGCoordinateProcessingReference']
-    required_keys = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateProcessingDescription',
-                     'IntendedFor', 'AssociatedImageCoordinateSystem', 'AssociatedImageCoordinateUnits']
+    required_keys = ['EEGCoordinateSystem', 'EEGCoordinateUnits', 'EEGCoordinateSystemDescription']
+    keylist = required_keys + ['IntendedFor', 'FiducialsDescription', 'FiducialsCoordinates', 'FiducialsCoordinateSystem',
+                               'FiducialsCoordinateUnits', 'FiducialsCoordinateSystemDescription', 'AnatomicalLandmarkCoordinates',
+                               'AnatomicalLandmarkCoordinateSystem', 'AnatomicalLandmarkCoordinateUnits', 'AnatomicalLandmarkCoordinateSystemDescription']
+
     modality_field = 'coordsystem'
 
 
@@ -1715,11 +1724,11 @@ class EegPhoto(Photo):
     pass
 
 
-# class EegGlobalSidecars(GlobalSidecars):
-#     complementary_keylist = ['EegElecTSV', 'EegCoordSysJSON', 'EegPhoto']
-#     required_keys = BidsBrick.required_keys
-#     allowed_file_formats = ['.tsv', '.json'] + EegPhoto.allowed_file_formats
-#     allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
+class EegGlobalSidecars(GlobalSidecars):
+    complementary_keylist = ['EegElecTSV', 'EegCoordSysJSON', 'EegPhoto']
+    required_keys = BidsBrick.required_keys
+    allowed_file_formats = ['.tsv', '.json'] + EegPhoto.allowed_file_formats
+    allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
 
 
 """ Anat brick with its file-specific sidecar files."""
@@ -1801,10 +1810,9 @@ class Func(Imaging):
 
 
 class FuncJSON(ImagingJSON):
-    keylist = ImagingJSON.keylist + ['RepetitionTime', 'VolumeTiming', 'TaskName',
+    keylist = ImagingJSON.keylist + ['VolumeTiming', 'TaskName',
                                      'NumberOfVolumesDiscardedByScanner', 'NumberOfVolumesDiscardedByUser',
                                      'DelayTime', 'AcquisitionDuration', 'DelayAfterTrigger',
-                                     'NumberOfVolumesDiscardedByScanner', 'NumberOfVolumesDiscardedByUser',
                                      'Instructions', 'TaskDescription', 'CogAtlasID', 'CogPOID']
     required_keys = ['RepetitionTime', 'VolumeTiming', 'TaskName']
 
@@ -1917,7 +1925,7 @@ class Bvec(BidsFreeFile):
 class Meg(Electrophy):
 
     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'run', 'proc', 'modality', 'fileLoc', 'MegJSON',
-                                   'MegEventsTSV']
+                                   'MegChannelsTSV', 'MegEventsTSV', 'MegHeadShape', 'MegCoordSysJSON']
     # keybln = BidsBrick.create_keytype(keylist)
     required_keys = Imaging.required_keys + ['task', 'modality']
     allowed_modalities = ['meg']
@@ -1964,6 +1972,22 @@ class MegCoordSysJSON(BidsJSON):
 class MegEventsTSV(EventsTSV):
     """Store the info of the #_events.tsv."""
     pass
+
+
+class MegHeadShape(BidsFreeFile):
+    extension = '.pos'
+    modality_field = 'headshape'
+
+    def clear_head(self):
+        if self and isinstance(self[0], bytes):
+            self.clear()
+
+# class MegGlobalSidecars(GlobalSidecars):
+#     complementary_keylist = ['Headshape']
+#     required_keys = BidsBrick.required_keys
+#     allowed_file_formats = ['.pos']
+#     allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
+#     required_protocol_keys = []
 
 
 """ Behaviour brick with its file-specific sidecar files (To be finalized). """
@@ -2027,18 +2051,13 @@ class Scans(BidsBrick):
                     scan_time = str(datetime.strptime(mod_json['AcquisitionDateTime'], '%Y%m%d%H%M%S.%f'))
                 except:
                     scan_time = '1900-01-01T00:00:00'
-        # if bids_dir['DatasetDescJSON']['Name'] == 'FTract' and mod_type == 'Anat':
-        #     ind_pre = bids_dir['ParticipantsTSV'][0].index('pre_iEEG_date')
-        #     ind_post = bids_dir['ParticipantsTSV'][0].index('post_resection_MRI_date')
-        #     for elt in bids_dir['ParticipantsTSV']:
-        #        if self['sub'] in elt:
-        #            indeP = bids_dir['ParticipantsTSV'].index(elt)
-        #     if self['ses'].startswith('pre'):
-        #         scan_time = bids_dir['ParticipantsTSV'][indeP][ind_pre]
-        #     elif self['ses'].startswith('post'):
-        #         scan_time = bids_dir['ParticipantsTSV'][indeP][ind_post]
-        # else:
-        #     scan_time = '1900-01-01T00:00:00'
+                del mod_json['AcquisitionDateTime']
+            elif 'AcquisitionDate' in mod_json.keys() and mod_json['AcquisitionDate'] and mod_json['AcquisitionDate'] != 'n/a':
+                try:
+                    scan_time = mod_json['AcquisitionDate']
+                except:
+                    scan_time = '1900-01-01T00:00:00'
+                del mod_json['AcquisitionDate']
         self['ScansTSV'].append({'filename': scan_name, 'acq_time': scan_time})
 
     def write_file(self):
@@ -2211,7 +2230,7 @@ class DatasetDescJSON(BidsJSON):
                'ReferencesAndLinks', 'DatasetDOI']
     required_keys = ['Name', 'BIDSVersion']
     filename = 'dataset_description.json'
-    bids_version = '1.2.0'
+    bids_version = '1.2.2'
 
     def __init__(self):
         super().__init__()
@@ -2664,6 +2683,7 @@ class BidsDataset(MetaBrick):
                 list_of_log_files = sorted(list_of_log_files, key=os.path.getctime)
                 for log_file in list_of_log_files:
                     with open(log_file, 'r') as file:
+                        #use readlines instead to be able to read big file
                         for line in file:
                             logs += line
         return logs
@@ -2735,6 +2755,8 @@ class BidsDataset(MetaBrick):
                             # element is equivalent to checking the newest element
                             subinfo[mod_dir][-1].get_attributes_from_filename()
                             subinfo[mod_dir][-1].get_sidecar_files()
+                            if 'MegHeadShape' in subinfo[mod_dir][-1] and isinstance(subinfo[mod_dir][-1]['MegHeadShape'], MegHeadShape):
+                                subinfo[mod_dir][-1]['MegHeadShape'].clear_head()
                             # need to find corresponding json file and import it in modality json class
                             if not srcdata:  # check/add elements to scans.tsv only if not in source folder
                                 subinfo.check_file_in_scans(file.name, mod_dir)
@@ -2759,6 +2781,8 @@ class BidsDataset(MetaBrick):
                         if mod_dir == 'Meg':
                             subinfo[mod_dir][-1].get_attributes_from_filename()
                             subinfo[mod_dir][-1].get_sidecar_files()
+                            if isinstance(subinfo[mod_dir][-1]['MegHeadShape'], MegHeadShape):
+                                subinfo[mod_dir][-1]['MegHeadShape'].clear_head()
 
             for scan in subinfo['Scans']:
                 scan['ScansTSV'].write_file(os.path.join(BidsDataset.dirname, scan['fileLoc']))
@@ -3050,6 +3074,8 @@ class BidsDataset(MetaBrick):
                     sub[mod_type][-1].get_sidecar_files(input_dirname=bids_dst.dirname, input_filename=fname)
                 else:
                     sub[mod_type][-1].get_sidecar_files()
+                    if 'MegHeadShape' in sidecar_flag:
+                        sub[mod_type][-1]['MegHeadShape'].clear_head()
 
             # To write the scans.tsv
             if not flag_process:

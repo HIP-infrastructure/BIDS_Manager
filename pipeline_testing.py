@@ -69,13 +69,13 @@ class PipelineTest(unittest.TestCase):
                 in_tmp[elt] = dict()
                 in_tmp[elt]['modality'] = {'value': 'Ieeg', 'attribut': 'Label'}
                 in_tmp[elt]['run'] = {'value': ['01', '02', '03'], 'attribut': 'Variable'}
-                in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
-                in_tmp[elt]['task'] = {'value': ['ccep'], 'attribut': 'Label'}
+                #in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
+                #in_tmp[elt]['task'] = {'value': ['ccep'], 'attribut': 'Label'}
             elif cnt == 3:
                 in_tmp[elt] = dict()
                 in_tmp[elt]['modality'] = {'value': 'Anat', 'attribut': 'Label'}
                 in_tmp[elt]['acq'] = {'value': ['postimp', 'preimp'], 'attribut': 'Variable'}
-                in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
+                #in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
                 in_tmp[elt]['mod'] = {'value': ['CT', 'T1w'], 'attribut': 'Variable'}
             elif cnt == 4:
                 param_tmp[elt] = dict()
@@ -96,6 +96,18 @@ class PipelineTest(unittest.TestCase):
                 param_tmp[elt]['value'] = ['.tsv']
         self.assertEqual(param_vars, param_tmp)
         self.assertEqual(in_vars, in_tmp)
+
+    def test_read_json(self):
+        pip_file = 'testing_modality'
+        soft = pip.PipelineSetting(__bids_dataset__, pip_file,
+                                                   soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        for cnt, elt in enumerate(soft['Parameters']['Input']):
+            if cnt == 0:
+                self.assertEqual(elt['modality'], ['Ieeg'])
+            elif cnt ==1:
+                self.assertEqual(elt['modality'], ['Eeg', 'Meg', 'Ieeg'])
+            self.assertEqual(elt['tag'], 'in' + str(cnt))
+
 
     def test_run_analysis(self):
         pass
@@ -161,15 +173,15 @@ class ParameterTest(unittest.TestCase):
         for sub in in_out:
             in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg'.format(sub)], [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
-        self.results['input_param'] = {}
-        self.results['input_param']['Input_--input_dir'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
-        subjects_anat = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        taille, idx_in, in_out_anat = input_dict.get_input_values(subjects_anat, order)
-        output_dict.get_output_values(in_out_anat, taille, order, self.output_dir, idx_in)
-        for sub in in_out_anat:
-            in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\anat'.format(sub)], [
-                ['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\anat'.format(sub)]]]
-            self.assertEqual(in_out_anat[sub], in_out_res)
+        # self.results['input_param'] = {}
+        # self.results['input_param']['Input_--input_dir'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
+        # subjects_anat = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
+        # taille, idx_in, in_out_anat = input_dict.get_input_values(subjects_anat, order)
+        # output_dict.get_output_values(in_out_anat, taille, order, self.output_dir, idx_in)
+        # for sub in in_out_anat:
+        #     in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\anat'.format(sub)], [
+        #         ['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\anat'.format(sub)]]]
+        #     self.assertEqual(in_out_anat[sub], in_out_res)
 
     def test_infile_outdir(self):
         self.results['input_param'] = {}
@@ -276,7 +288,7 @@ class RunSoftwareTest(unittest.TestCase):
         self.results['subject_selected'] = ['01', '02', '03']
 
     def test_run_analysis(self):
-        log_analysis, output_name = self.soft.set_everything_for_analysis(self.results)
+        log_analysis, output_name, file_to_write = self.soft.set_everything_for_analysis(self.results)
         self.assertIn(' has been analyzed with no error\n', log_analysis)
 
 
@@ -284,6 +296,7 @@ def suite_init():
     suite = unittest.TestSuite()
     #Test the def to create the gui to select the parameters
     suite.addTest(PipelineTest('test_init'))
+    suite.addTest(PipelineTest('test_read_json'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected
     suite.addTest(ParameterTest('test_multiple_input_output'))
