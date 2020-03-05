@@ -69,13 +69,13 @@ class PipelineTest(unittest.TestCase):
                 in_tmp[elt] = dict()
                 in_tmp[elt]['modality'] = {'value': 'Ieeg', 'attribut': 'Label'}
                 in_tmp[elt]['run'] = {'value': ['01', '02', '03'], 'attribut': 'Variable'}
-                #in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
+                in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
                 #in_tmp[elt]['task'] = {'value': ['ccep'], 'attribut': 'Label'}
             elif cnt == 3:
                 in_tmp[elt] = dict()
                 in_tmp[elt]['modality'] = {'value': 'Anat', 'attribut': 'Label'}
                 in_tmp[elt]['acq'] = {'value': ['postimp', 'preimp'], 'attribut': 'Variable'}
-                #in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
+                in_tmp[elt]['ses'] = {'value': ['01'], 'attribut': 'Label'}
                 in_tmp[elt]['mod'] = {'value': ['CT', 'T1w'], 'attribut': 'Variable'}
             elif cnt == 4:
                 param_tmp[elt] = dict()
@@ -106,8 +106,6 @@ class PipelineTest(unittest.TestCase):
                 self.assertEqual(elt['modality'], ['Ieeg'])
             elif cnt ==1:
                 self.assertEqual(elt['modality'], ['Eeg', 'Meg', 'Ieeg'])
-            self.assertEqual(elt['tag'], 'in' + str(cnt))
-
 
     def test_run_analysis(self):
         pass

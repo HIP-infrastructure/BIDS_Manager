@@ -791,30 +791,31 @@ class Parameters(dict):
         for clef in self:
             if clef == 'Input':
                 for cn, elt in enumerate(input_dict):
+                    tag_val = elt['tag']
+                    if not elt['tag']:
+                        tag_val = 'in' + str(cn)
                     if elt['multiplesubject'] and elt['type'] == 'dir':
                         if not elt.deriv_input:
                             cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
                         elif elt.deriv_input and (elt['deriv-folder'] and elt['deriv-folder'] != ['']):
                             cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives', elt['deriv-folder'][0])
                     else:
-                        if not elt['tag']:
-                            order['in' + str(cn)] = cnt_tot
-                        else:
-                            order[elt['tag']] = cnt_tot
                         if elt.deriv_input:
-                            if elt['deriv-folder'] == [''] and not elt['optional']:
+                            if (not elt['deriv-folder'] or elt['deriv-folder'] == ['']) and not elt['optional']:
                                 raise ValueError('The derivative folder for this paramater {} should be mentionned.\n'.format(elt['tag']))
-                            elif elt['deriv-folder'] != ['']:
+                            elif elt['deriv-folder'] != [''] and elt['deriv-folder']:
+                                order[tag_val] = cnt_tot
                                 cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                                 cnt_tot += 1
                         else:
+                            order[tag_val] = cnt_tot
                             cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                             cnt_tot += 1
             elif clef == 'Output':
                 if output_dict['multiplesubject'] and output_dict['directory']:
                     cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
                 else:
-                    if not elt['tag']:
+                    if not output_dict['tag']:
                         order['out'] = cnt_tot
                     else:
                         order[output_dict['tag']] = cnt_tot
@@ -911,6 +912,9 @@ class AnyWave(Parameters):
         #Handle the input and output
         cnt_tot = 0
         for cn, elt in enumerate(input_dict):
+            tag_val = elt['tag']
+            if not elt['tag']:
+                tag_val = 'in' + str(cn)
             if elt['multiplesubject'] and elt['type'] == 'dir':
                 if not elt.deriv_input:
                     cmd_line += ' ' + elt['tag'] + ' ' + self.bids_directory
@@ -918,20 +922,16 @@ class AnyWave(Parameters):
                     cmd_line += ' ' + elt['tag'] + ' ' + os.path.join(self.bids_directory, 'derivatives',
                                                                       elt['deriv-folder'][0])
             else:
-                if not elt['tag']:
-                    order['in' + str(cn)] = cnt_tot
-                else:
-                    order[elt['tag']] = cnt_tot
                 if elt.deriv_input:
-                    if elt['deriv-folder'] == [''] and not elt['optional']:
+                    if (elt['deriv-folder'] == [''] or not elt['deriv-folder']) and not elt['optional']:
                         raise ValueError(
                             'The derivative folder for this paramater {} should be mentionned.\n'.format(elt['tag']))
-                    elif elt['deriv-folder'] != ['']:
+                    elif elt['deriv-folder'] != [''] and elt['deriv-folder']:
+                        order[tag_val] = cnt_tot
                         cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                         cnt_tot += 1
-                    else:
-                        del order[-1]
                 else:
+                    order[tag_val] = cnt_tot
                     cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                     cnt_tot += 1
 
@@ -1049,6 +1049,9 @@ class Matlab(Parameters):
         for clef in self:
             if clef == 'Input':
                 for cn, elt in enumerate(input_dict):
+                    tag_val = elt['tag']
+                    if not elt['tag']:
+                        tag_val = 'in' + str(cn)
                     if elt['multiplesubject'] and elt['type'] == 'dir':
                         if elt['tag']:
                             cmd_line.append("'" + elt['tag'] + "'")
@@ -1058,23 +1061,21 @@ class Matlab(Parameters):
                             cmd_line.append("'" + os.path.join(self.bids_directory, 'derivatives',
                                                                               elt['deriv-folder'][0]) + "' ")
                     else:
-                        if not elt['tag']:
-                            order['in'+str(cn)] = cnt_tot
-                        else:
-                            cmd_line.append("'" + elt['tag'] + "'")
-                            order[elt['tag']] = cnt_tot
                         if elt.deriv_input:
-                            if elt['deriv-folder'] == [''] and not elt['optional']:
+                            if (elt['deriv-folder'] == [''] or not elt['deriv-folder']) and not elt['optional']:
                                 raise ValueError(
                                     'The derivative folder for this paramater {} should be mentionned.\n'.format(
                                         elt['tag']))
-                            elif elt['deriv-folder'] != ['']:
+                            elif elt['deriv-folder'] != [''] and elt['deriv-folder']:
+                                order[tag_val] = cnt_tot
+                                if elt['tag']:
+                                    cmd_line.append("'" + elt['tag'] + "'")
                                 cmd_line.append("'{" + str(cnt_tot) + "}'")
                                 cnt_tot += 1
-                            else:
-                                del cmd_line[-1]
-                                del order[-1]
                         else:
+                            order[tag_val] = cnt_tot
+                            if elt['tag']:
+                                cmd_line.append("'" + elt['tag'] + "'")
                             cmd_line.append("'{" + str(cnt_tot) + "}'")
                             cnt_tot += 1
             elif clef == 'Output':
@@ -1206,14 +1207,15 @@ class Input(ParametersSide):
         idx_in = []
         for cn, elt in enumerate(self):
             not_inside = False
+            tag_val = elt['tag']
             if not elt['tag']:
-                idx = order['in'+str(cn)]
-            elif elt['tag'] not in order_tag:
+                tag_val = 'in'+str(cn)
+            if tag_val not in order_tag:
                 not_inside = True
             else:
-                idx = order[elt['tag']]
+                idx = order[tag_val]
             if not not_inside:
-                elt.get_input_values(subject_to_analyse, in_out, idx)
+                elt.get_input_values(subject_to_analyse, in_out, idx, order_tag[idx])
                 # if temp:
                 #     if temp != len(in_out[idx]):
                 #         raise ValueError('The elements in the list don"t have the same size')
@@ -1265,7 +1267,7 @@ class InputArguments(Parameters):
                 self[key] = input_dict[key]
         #self['value_selected'] = input_dict
 
-    def get_input_values(self, subject_to_analyse, in_out, idx):#sub, input_param=None):
+    def get_input_values(self, subject_to_analyse, in_out, idx, tag):#sub, input_param=None):
         def check_dir_existence(bids_directory, chemin):
             chemin_final = os.path.join(self.bids_directory, '\\'.join(chemin))
             if os.path.exists(chemin_final):
@@ -1282,18 +1284,18 @@ class InputArguments(Parameters):
                         'The derivatives folder {} selected doesn"t exists in the Bids Dataset.\n'.format(
                             self['deriv-folder']))
                 #self.read_deriv_fold = subject_to_analyse[self['tag']]['deriv-folder']
-            elif self['deriv-folder'] == [''] and not self['optional']:
+            elif (self['deriv-folder'] == [''] or not self['deriv-folder']) and self['optional']:
                 return
             else:
-                raise ValueError('You have to select a derivatives folder for the input {}'.format(self['tag']))
+                raise ValueError('You have to select a derivatives folder for the input {}'.format(tag))
         if self['type'] == 'file':
             for sub in subject_to_analyse['sub']:
-                in_out[sub][idx] = self.get_subject_files(subject_to_analyse['Input_'+self['tag']], sub)
+                in_out[sub][idx] = self.get_subject_files(subject_to_analyse['Input_'+tag], sub)
         elif self['type'] == 'dir':
             path_key = {key: '' for key in self.path_key}
             for key in path_key:
-                if key in subject_to_analyse['Input_'+self['tag']]:
-                    val = subject_to_analyse['Input_'+self['tag']][key]
+                if key in subject_to_analyse['Input_'+tag]:
+                    val = subject_to_analyse['Input_'+tag][key]
                     if isinstance(val, list) and len(val) == 1:
                         path_key[key] = val[0]
 
@@ -1419,7 +1421,7 @@ class Output(Parameters):
             return out_file
 
         def create_output_sub_dir(output_dir, filename, bids_directory):
-            if os.path.isfile(filename):
+            if os.path.isfile(filename) or (os.path.isdir(filename) and filename.endswith('meg')):
                 dirname, filename = os.path.split(filename)
                 trash, dirname = dirname.split(bids_directory + '\\')
             else:

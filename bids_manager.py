@@ -2434,7 +2434,7 @@ class BidsSelectDialog(TemplateDialog):
                                           command=lambda: enable_frames(frame_param_select, self.param_gui[self.soft_name]))
         select_param_button.pack(side=LEFT)
         if soft_dict:
-            import_param_button.select()
+            select_param_button.select()
             max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'], value_dict=soft_dict['analysis_param'])
             enable(frame_param_select, 'normal')
         else:
