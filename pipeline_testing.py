@@ -28,6 +28,9 @@ class PipelineTest(unittest.TestCase):
         with self.assertRaises(EOFError):
             soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror',
                                                soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        with self.assertRaises(KeyError):
+            soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_output',
+                                               soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         keys = [key for key in soft_analyse]
         self.assertEqual(keys, pip.PipelineSetting.keylist)

@@ -2711,9 +2711,15 @@ class BidsDataset(MetaBrick):
                 # the latest log file may have been created after the latest parsing file (case of issues removal
                 #  which does not affect parsing.json)
                 log_file = latest_file(os.path.join(self.dirname, self.log_path), 'log')
+                log_line = []
                 if log_file:
                     with open(log_file, 'r') as file:
                         for line in file:
+                            log_line.append(line)
+                    if len(log_line) > 100000:
+                        self.__class__.curr_log += 'The log is too big to be displayed on Bids Manager.\n Please use text editor to read it.\n'
+                    else:
+                        for line in log_line:
                             self.__class__.curr_log += line
                     print(self.__class__.curr_log)
                 return False  # no need to parse the dataset

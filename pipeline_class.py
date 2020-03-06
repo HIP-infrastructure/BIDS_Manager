@@ -1386,10 +1386,12 @@ class Output(Parameters):
         if not keys == self.keylist and not flag_process:
             raise KeyError('Your json is not conform')
         else:
-            for key in input_dict:
+            if (input_dict['type'] == 'dir' and  not input_dict['directory']) or (input_dict['type'] == 'file' and input_dict['directory']):
+                raise KeyError('The output in your json is not conform due to the type.\n You mention directory: {0} and type: {1}.\n'.format(input_dict['directory'], input_dict['type']))
+            for key in keys:
                 self[key] = input_dict[key]
         if self['multiplesubject'] and self['type'] == 'file':
-            raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
+            raise ValueError('Your json is not conform.\n It is not possible to have files as output and process multiple subject.\n')
 
     def update_values(self, input_dict):
         self['value_selected'] = input_dict
@@ -1451,8 +1453,8 @@ class Output(Parameters):
             # elif self['type'] == 'sub':
             #     if not self['multiplesubject']:
             #         output_files = sub
+        #A revoir avec subject_list
         else:
-            #A revoir avec subject_list
             if self['multiplesubject']:
                 for sub in in_out:
                     in_out[sub][idx] = output_directory #[output_directory] * taille[sub]
