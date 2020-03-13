@@ -313,13 +313,14 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
 
     def update(self, subject2add):
         for elt in subject2add:
-            if isinstance(subject2add[elt], list):
+            if isinstance(subject2add[elt], list) and elt in self['SourceDataset'].keys():
                 self['SourceDataset'][elt].extend(subject2add[elt])
                 self['SourceDataset'][elt] = list(set(self['SourceDataset'][elt]))
             elif isinstance(subject2add[elt], dict):
-                for clef in subject2add[elt]:
-                    self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
-                    self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
+                if elt in self['SourceDataset'].keys():
+                    for clef in subject2add[elt]:
+                        self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
+                        self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
 
 
 class PipelineSetting(dict):
@@ -704,7 +705,12 @@ class Parameters(dict):
                     tag = '_'.join(tag)
                 self[new_key].update_values(input_dict[key], tag)
         if input_param:
-            input_tag = [elt['tag'] for elt in self['Input']]
+            input_tag = []
+            for cn, elt in enumerate(self['Input']):
+                if elt['tag']:
+                    input_tag.append(elt['tag'])
+                else:
+                    input_tag.append('in'+str(cn))
             for inp in input_param:
                 inp_tag = inp.split('Input_')[1]
                 if inp_tag in input_tag:
