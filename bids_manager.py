@@ -110,8 +110,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_menu.add_command(label='Determine subject by criteria subject', command=lambda: self.subject_selection(), state=DISABLED)
         bids_menu.add_command(label='Modify requirements file', command=self.modify_requirements_file, state=DISABLED)
         # fill up the upload/import menu
-        uploader_menu.add_command(label='Import data with Generic Uploader', command=self.ask4uploader_import, state=DISABLED)
+        uploader_menu.add_command(label='Import data with Bids Uploader', command=self.ask4uploader_import, state=DISABLED)
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
+        uploader_menu.add_command(label='Create template data2import', command=self.create_data2import_template, state=DISABLED)
         uploader_menu.add_command(label='Add elements to import', command=self.add_elmt2data2import, state=DISABLED)
         uploader_menu.add_command(label='Import', command=self.import_data, state=DISABLED)
         # fill up the issue menu
@@ -121,6 +122,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                                command=lambda: self.solve_issues('ImportIssue'), state=DISABLED)
         issue_menu.add_command(label='Solve channel issues',
                                command=lambda: self.solve_issues('ElectrodeIssue'), state=DISABLED)
+        issue_menu.add_command(label='Solve bids-validator issues',
+                               command=lambda: self.solve_issues('ValidatorIssue'), state=DISABLED)
         #fill up the about menu
         about_menu.add_command(label='License', command=self.read_license)
         about_menu.add_command(label='How to cite the paper', command=self.cite_paper)
@@ -431,7 +434,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.bids_menu.entryconfigure(5, command=lambda: self.show_bids_desc(self.curr_bids['DatasetDescJSON']))
         self.bids_menu.entryconfigure(6, command=self.explore_bids_dataset)
         # enable selection of upload directory
-        self.change_menu_state(self.uploader_menu, end_idx=1)
+        self.change_menu_state(self.uploader_menu, end_idx=2)
         # enable all issue sub-menu
         self.change_menu_state(self.issue_menu)
         # enalbe all pipelines
@@ -632,6 +635,19 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         info['IsAction'] = True
         self.update_issue_list(curr_dict, list_idx, info)
 
+    def add_elt_bidsignore(self, list_idx, info):
+        input_dict = {'type': ''}
+        opt_dict = {'type': bids.ValidatorIssue.possibility}
+        curr_iss = self.curr_bids.issues['ValidatorIssue'][info['index']]
+        output_dict = FormDialog(self, input_dict, title='What part of the file would you like to add to bidsignore?',
+                                 options=opt_dict).apply()
+        if output_dict:
+            str_info = 'The ' + output_dict['type'] + ' of ' + curr_iss['fileLoc'] + ' will be added to bidsignore.\n'
+            command = 'type="' + output_dict['type'] + '"'
+            curr_iss.add_action(str_info, command)
+            info['IsAction'] = True
+            self.update_issue_list(curr_iss, list_idx, info)
+
     def solve_issues(self, issue_key):
 
         def what2domenu(iss_key, dlb_lst, line_map, event, deriv_issue=None):
@@ -649,6 +665,11 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                                      command=lambda: self.select_correct_name(curr_idx, line_map[curr_idx]))
                 pop_menu.add_command(label='Change electrode type',
                                      command=lambda: self.change_elec_type(curr_idx, line_map[curr_idx]))
+            elif iss_key == 'ValidatorIssue':
+                pop_menu.add_command(label='Open file',
+                                     command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))
+                pop_menu.add_command(label='Add elements to bidsignore',
+                                     command=lambda: self.add_elt_bidsignore(curr_idx, line_map[curr_idx]))
             else:
                 if isinstance(line_map[curr_idx]['Element'], bids.DatasetDescJSON):
                     # if issue arise from DatasetDescJSON change the DatasetDescJSON object in data2import.json
@@ -763,6 +784,19 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                     line_mapping[-1]['IsAction'] = True
                 else:
                     action_list2write.append('')
+        elif issue_key == 'ValidatorIssue':
+            label_str = 'bids-validator issue'
+            for issue in issue_dict:
+                line_mapping.append({'index': issue_dict.index(issue),
+                                 'IsComment': bool(issue.formatting(comment_type='Comment')),
+                                 'IsAction': False})
+                issue_list2write.append(issue['description'])
+                act_str = issue.formatting(comment_type='Action')
+
+                if act_str:
+                    action_list2write.append(act_str[0])
+                    # you can write act_str[0] because there is only one action per channel
+                    line_mapping[-1]['IsAction'] = True
         else:
             messagebox.showerror('Unknown issue', 'This issue is currently not recognize')
             return
@@ -848,7 +882,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         try:
             call_generic_uplader(self.curr_bids)
         except:
-            self.update_text('Generic uploader crashed')
+            self.update_text('Bids uploader crashed')
             self.make_available()
             return
         dirname = os.path.dirname(self.curr_bids.dirname)
@@ -898,6 +932,38 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             filename = os.path.join(self.curr_bids.dirname, 'code', 'requirements.json')
             RequirementsDialog(self, self.curr_bids.dirname, filename)
             self.curr_bids.requirements = bids.Requirements(filename)
+
+    def create_data2import_template(self):
+        import_dir = filedialog.askdirectory(title='Select the import folder', initialdir=self.curr_bids.dirname)
+        if not import_dir:
+            messagebox.showerror('ERROR', 'An import folder have to be selected !')
+            return
+        else:
+            results = Data2ImportTemplate(self).results
+            data2import = bids.Data2Import(import_dir, os.path.join(self.curr_bids.dirname, 'Code', 'requirements.json'))
+            if len(data2import['Derivatives']) < 1:
+                data2import['Derivatives'] = bids.Derivatives()
+            if results:
+                for elt in results['subject']:
+                    sub = bids.Subject()
+                    sub['sub'] = elt['name']
+                    for mod in elt['modality']:
+                        if 'Process' in mod:
+                            mod = mod.replace('Process', '')
+                        sub[mod] = eval('bids.'+mod+'()')
+                    data2import['Subject'].append(sub)
+                for elt in results['derivatives']:
+                    pip = bids.Pipeline()
+                    pip['name'] = elt['name']
+                    sub = bids.SubjectProcess()
+                    for mod in elt['modality']:
+                        stemp = ''
+                        if 'Process' not in mod:
+                            stemp = 'Process'
+                        sub[mod+stemp] = eval('bids.'+mod+stemp+'()')
+                    pip['SubjectProcess'].append(sub)
+                    data2import['Derivatives'][-1]['Pipeline'].append(pip)
+            data2import.save_as_json()
 
     def read_license(self):
         notice_license = 'BIDS Manager  Copyright (C) 2018-2020  Aix-Marseille University, INSERM, INS.\n' \
@@ -1766,7 +1832,7 @@ class BidsBrickDialog(FormDialog):
             #     cnt_tot += setting_list['rowspan'] - 1
             self.key_button_lbl[key] = Label(parent, text=key, fg="black")
             self.key_button_lbl[key].grid(**setting_label)
-            if key == 'Subject':
+            if key.startswith('Subject'):
                 ht = 8
             elif key in bids.BidsSidecar.get_list_subclasses_names():
                 ht = 1
@@ -1774,9 +1840,12 @@ class BidsBrickDialog(FormDialog):
                 ht = 3
             if isinstance(self.main_brick, (bids.ModalityType, bids.GlobalSidecars)):
                 setting_list['columnspan'] = 1
-            self.key_listw[key] = Listbox(parent, height=ht)
-            self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
-            self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
+            self.key_listw[key] = Listbox(parent, height=ht) #Voir si modifie cela
+            if not (key.startswith('Subject') or key == 'Derivatives'):
+                self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
+                self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
+            else:
+                self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.call_menu(k, event))
             self.populate_list(self.key_listw[key], self.main_brick[key])
             self.key_listw[key].grid(**setting_list)
 
@@ -1798,6 +1867,12 @@ class BidsBrickDialog(FormDialog):
             for i in range(self.body_widget.grid_size()[0]):
                 self.body_widget.grid_columnconfigure(i, weight=1, uniform='test')
         self.results = self.input_dict
+
+    def call_menu(self, key, event):
+        pop_menu = Menu(self.key_listw[key], tearoff=0)
+        pop_menu.add_command(label='Show {}'.format(key), command=lambda ev=event, k=key: self.open_new_window(k, ev))
+        pop_menu.add_command(label='Delete {}'.format(key), command=lambda k=key: self.remove_element(k))
+        pop_menu.post(event.x_root, event.y_root)
 
     @staticmethod
     def populate_list(list_obj, list_of_bbricks):
@@ -1849,6 +1924,7 @@ class BidsBrickDialog(FormDialog):
                 disabl = None
             BidsBrickDialog(self, pip, disabled=disabl,
                             title=pip.classname() + ': ' + pip['name'], flag_process=True, addelements=addelements)
+            self.main_brick.save_as_json()
         elif key == 'Scans':
             sdcr_file = self.main_brick['Scans'][curr_idx]['ScansTSV']
             title=None
@@ -1925,8 +2001,27 @@ class BidsBrickDialog(FormDialog):
             self.populate_list(self.key_listw[key], self.main_brick[key])
             self.config(cursor="")
 
-    # def remove_element(self, key, index):
-    #     self.populate_list(self.key_listw[key], self.main_brick[key])
+    def remove_element(self, key):
+        in_deriv = None
+        if not self.key_listw[key].curselection():
+            return
+        curr_idx = self.key_listw[key].curselection()[0]
+        if key == 'Derivatives':
+            input_dict = self.main_brick[key][0]['Pipeline'][curr_idx]
+            to_display = input_dict['name']
+        else:
+            input_dict = self.main_brick[key][curr_idx]
+            to_display = input_dict['sub']
+        if key == 'SubjectProcess':
+            in_deriv = self.main_brick['name']
+            to_display += ' in '+ in_deriv + 'folder'
+        if (BidsBrickDialog.meta_brick == 'BidsDataset' or BidsBrickDialog.meta_brick == 'Pipeline') and \
+            messagebox.askyesno('Remove {}'.format(key), 'Are you sure you want to remove ' + to_display + ' from the dataset?'):
+            self.config(cursor="wait")
+            BidsBrickDialog.bidsdataset.remove(input_dict, in_deriv=in_deriv)
+            self.populate_list(self.key_listw[key], self.main_brick[key])
+            self.config(cursor="")
+
 
     def add_new_brick(self, key):
         self.update_fields()
@@ -2199,7 +2294,7 @@ def make_cmd4chg_attr(curr_issue, elmt_brick, input_dict, modif_brick, in_bids_f
 def prepare_chg_eletype(curr_iss, mismtch_elec):
     input_dict = {'type': mism_elec['type'] for mism_elec in curr_iss['MismatchedElectrodes']
                   if mism_elec['name'] == mismtch_elec}
-    opt_dict = {'type': bids.Electrophy.channel_type}
+    opt_dict = {'type': eval('bids.'+ curr_iss['mod'] +'.channel_type')}
 
     return input_dict, opt_dict
 
@@ -2585,7 +2680,7 @@ class BidsSelectDialog(TemplateDialog):
                     if val_sel:
                         l.insert(END, val_sel)
                     else:
-                        l.insert(END, val_temp)
+                        l.insert(END, val_temp.replace('_'+key, ''))
                     l.grid(row=cnt + 1, column=max_col, sticky=W + E)
                 elif isinstance(val_temp, list):
                     idx_var =0
@@ -3260,6 +3355,81 @@ class RequirementsDialog(TemplateDialog):
         self.destroy()
 
 
+class Data2ImportTemplate(TemplateDialog):
+
+    def __init__(self, parent):
+        self.sub_dict = {}
+        self.dev_dict = {}
+        self.mod = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elt not in ['Imaging', 'Electrophy',
+                                                                                                'Process', 'ImagingProcess',
+                                                                                                'ElectrophyProcess']]
+        super().__init__(parent)
+
+    def body(self, parent):
+        self.frame_subject = DoubleScrollbarFrame(parent)
+        Label(self.frame_subject.frame, text='Add Subject in data2import').grid(row=0, column=0)
+        Button(self.frame_subject.frame, text='+', command=lambda: self.add_elt(self.frame_subject)).grid(row=0, column=1)
+        self.frame_subject.Frame_to_scrollbar.pack(side=TOP)
+        self.frame_subject.update_scrollbar()
+
+        self.frame_dev = DoubleScrollbarFrame(parent)
+        Label(self.frame_dev.frame, text='Add Derivatives in data2import').grid(row=0, column=0)
+        Button(self.frame_dev.frame, text='+', command=lambda: self.add_elt(self.frame_dev, dev=True)).grid(row=0, column=1)
+        self.frame_dev.Frame_to_scrollbar.pack(side=TOP)
+        self.frame_dev.update_scrollbar()
+
+        frame_okcancel = Frame(parent)
+        self.ok_cancel_button(frame_okcancel)
+        frame_okcancel.pack(side=BOTTOM)
+
+    def add_elt(self, parent, dev=False):
+        if dev:
+            tmp_dict = self.dev_dict
+            st_label = 'Derivatives'
+        else:
+            tmp_dict = self.sub_dict
+            st_label = 'Subject'
+        frame_sub = Frame(parent.frame)
+        nbr = len(tmp_dict) + 1
+        tmp_dict[nbr] = {'name': StringVar(), 'modality': []}
+        ll = Label(frame_sub, text=st_label+' Name:')
+        ll.grid(row=0, column=0)
+        le = Entry(frame_sub, textvariable=tmp_dict[nbr]['name'])
+        le.grid(row=0, column=1)
+        lm = Label(frame_sub, text='Modalities:')
+        lm.grid(row=0, column=2)
+        tmp_dict[nbr]['modality'] = CheckbuttonList(frame_sub, self.mod, row_list=0, col_list=3).variable_list
+        frame_sub.grid(row=nbr)
+
+        parent.frame.update_idletasks()
+        parent.canvas.config(scrollregion=parent.canvas.bbox("all"))
+
+    def ok(self):
+        self.destroy()
+        self.results = {'subject': [], 'derivatives': []}
+        self.results['subject'] = self.get_results(self.sub_dict)
+        self.results['derivatives'] = self.get_results(self.dev_dict)
+
+    def get_results(self, tmp_dict):
+        elt_list = []
+        for elt in tmp_dict:
+            val = {}
+            val['name'] = tmp_dict[elt]['name'].get()
+            val['modality'] = []
+            for v in tmp_dict[elt]['modality']:
+                if v.get():
+                    idx = tmp_dict[elt]['modality'].index(v)
+                    val['modality'].append(self.mod[idx])
+            elt_list.append(val)
+        return elt_list
+
+    def cancel(self):
+        self.destroy()
+        self.results = {}
+        self.sub_dict = {}
+        self.dev_dict = {}
+
+
 class HandleMultipleSameProcess(TemplateDialog):
 
     def __init__(self, parent, deriv_list, similar_process):
@@ -3359,7 +3529,7 @@ class HorizontalScrollbarFrame(Frame):
         self.hsb.pack(side=BOTTOM, fill=X)
         self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.hsb.set)
         self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
-        self.frame = Frame(self.canvas, bg='white')#, relief=GROOVE, borderwidth=2)
+        self.frame = Frame(self.canvas)#, bg='white', relief=GROOVE, borderwidth=2)
         self.frame.pack()
 
     def update_scrollbar(self):
