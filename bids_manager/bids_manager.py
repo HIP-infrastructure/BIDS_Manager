@@ -23,33 +23,21 @@
 #     Authors: Nicolas Roehri, 2018-2019
 #              Aude Jegou, 2019-2020
 
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from builtins import super
-from builtins import round
-from builtins import range
-from builtins import dict
-from builtins import str
-from builtins import object
-from future import standard_library
-import ins_bids_class as bids
-import pipeline_class as pip
-import statistics_class as st
+import bids_manager.ins_bids_class as bids
+from pipeline import pipeline_class as pip
 import os
 import json
 import platform
 from generic_uploader.generic_uploader import call_generic_uplader
-from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, simpledialog, Toplevel, \
-    Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, S, E, INSERT, BOTH, X, Y, RIGHT, LEFT,\
-    TOP, BOTTOM, BROWSE, SINGLE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, YES, Variable, Canvas, font
-from convert_process_file import write_big_table
+from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, Toplevel, \
+    Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, E, BOTH, X, Y, RIGHT, LEFT,\
+    TOP, BOTTOM, BROWSE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, \
+    Variable, Canvas, font
+from pipeline.convert_process_file import write_big_table
 try:
     from importlib import reload
 except:
     pass
-standard_library.install_aliases()
 
 
 class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class Py2 compatible
@@ -65,7 +53,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         import_startfile = os.path.join(os.getcwd(), 'Data')
         folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
 
-    def __init__(self, monitor_width, monitor_height):
+    def __init__(self, root, monitor_width, monitor_height):
         super().__init__()
         self.monitor_width = monitor_width
         self.monitor_height = monitor_height
@@ -80,16 +68,17 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.bids_dir = None
         self.upload_dir = None
         self.main_frame = dict()
+        self.root = root
         # make menu
         menu_bar = Menu(self.master)
-        root['menu'] = menu_bar
+        self.root['menu'] = menu_bar
         # settings menu
         bids_menu = Menu(menu_bar, tearoff=0)
         self.bids_menu = bids_menu
         uploader_menu = Menu(menu_bar, tearoff=0)
         self.uploader_menu = uploader_menu
-        bids_menu = Menu(menu_bar, tearoff=0)
-        self.bids_menu = bids_menu
+        # bids_menu = Menu(menu_bar, tearoff=0)
+        # self.bids_menu = bids_menu
         issue_menu = Menu(menu_bar, tearoff=0)
         self.issue_menu = issue_menu
         about_menu = Menu(menu_bar, tearoff=0)
@@ -245,7 +234,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     def add_elmt2data2import(self):
         self.curr_data2import._assign_import_dir(self.curr_data2import.dirname)
         self.curr_data2import.save_as_json(write_date=True)
-        results = BidsBrickDialog(root, self.curr_data2import,
+        results = BidsBrickDialog(self.root, self.curr_data2import,
                                   disabled=self.curr_data2import['DatasetDescJSON'].keylist,
                                   title=self.curr_data2import.classname()).apply()
         if results is not None and messagebox.askyesno('Change ' + self.curr_data2import.classname() + '?',
@@ -295,14 +284,14 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     def show_bids_desc(self, input_dict):
 
         if isinstance(input_dict, bids.BidsBrick):
-            output_dict = FormDialog(root, input_dict,
+            output_dict = FormDialog(self.root, input_dict,
                                      required_keys=input_dict.required_keys,
                                      title='Fill up the ' + input_dict.__class__.__name__ + 'attributes').apply()
         elif isinstance(input_dict, bids.DatasetDescJSON):
             messagebox.showwarning('Warning !!', 'If you change the Name of the dataset, it will change the anonymisation key!')
             temp_dict = input_dict.__class__()
             temp_dict.copy_values(input_dict, simplify_flag=False)
-            output_dict = FormDialog(root, temp_dict,
+            output_dict = FormDialog(self.root, temp_dict,
                                      required_keys=input_dict.required_keys,
                                      title='Fill up the ' + input_dict.__class__.filename).apply()
             if output_dict:
@@ -344,7 +333,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 return error_str
             # create a dataset description file
             datasetdesc = bids.DatasetDescJSON()
-            output_dict = FormDialog(root, datasetdesc,
+            output_dict = FormDialog(self.root, datasetdesc,
                                      required_keys=bids.DatasetDescJSON.required_keys,
                                      title='Fill up the ' + bids.DatasetDescJSON.filename).apply()
             if output_dict:
@@ -474,7 +463,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 self.update_text('Error: data2import.json not found in ' + self.upload_dir)
                 self.upload_dir = None
                 self.curr_data2import = None
-                self.change_menu_state(self.uploader_menu, state=DISABLED, start_idx=1)
+                self.change_menu_state(self.uploader_menu, state=DISABLED, start_idx=2)
 
         except Exception as err:
             self.update_text(str(err))
@@ -829,7 +818,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.update_text(self.curr_bids.curr_log + str(err))
         self.curr_data2import = None
         self.upload_dir = None
-        self.change_menu_state(self.uploader_menu, start_idx=2, state=DISABLED)
+        self.change_menu_state(self.uploader_menu, start_idx=3, state=DISABLED)
         self.make_available()
 
     def close_window(self):
@@ -841,14 +830,14 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.curr_bids.write_log('Bids Manager was closed')
             self.curr_bids.save_as_json()
         self.quit()
-        root.destroy()
+        self.root.destroy()
 
     def make_idle(self, str2print=None):
         if str2print is None:
             str2print = ''
         else:
             str2print = '\n' + str2print
-        root.config(cursor="wait")
+        self.root.config(cursor="wait")
         for key in self.main_frame:
             self.main_frame[key].config(cursor="wait")
         self.banner.configure(bg="red")
@@ -856,7 +845,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.update()
 
     def make_available(self):
-        root.config(cursor="")
+        self.root.config(cursor="")
         for key in self.main_frame:
             self.main_frame[key].config(cursor="")
         self.banner.configure(bg="blue")
@@ -941,6 +930,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         else:
             results = Data2ImportTemplate(self).results
             data2import = bids.Data2Import(import_dir, os.path.join(self.curr_bids.dirname, 'Code', 'requirements.json'))
+            data2import['DatasetDescJSON'] = self.curr_bids['DatasetDescJSON']
             if len(data2import['Derivatives']) < 1:
                 data2import['Derivatives'] = bids.Derivatives()
             if results:
@@ -951,6 +941,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                         if 'Process' in mod:
                             mod = mod.replace('Process', '')
                         sub[mod] = eval('bids.'+mod+'()')
+                        sub[mod][-1]['sub'] = elt['name']
                     data2import['Subject'].append(sub)
                 for elt in results['derivatives']:
                     pip = bids.Pipeline()
@@ -964,6 +955,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                     pip['SubjectProcess'].append(sub)
                     data2import['Derivatives'][-1]['Pipeline'].append(pip)
             data2import.save_as_json()
+            self.update_text('The data2import template has been created.\n')
 
     def read_license(self):
         notice_license = 'BIDS Manager  Copyright (C) 2018-2020  Aix-Marseille University, INSERM, INS.\n' \
@@ -1070,7 +1062,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             select_list = HandleMultipleSameProcess(self, deriv_list, multi_soft).results
         try:
             log_error = write_big_table(deriv_dir, select_list)
-            self.update_text(log_error)
+            if log_error:
+                self.update_text(log_error)
+            else:
+                self.update_text('The statistical table has been created with no error.\n')
             self.make_available()
             return
         except ValueError as err:
@@ -1814,6 +1809,11 @@ class BidsBrickDialog(FormDialog):
         self.main_form(parent)
         cnt_tot = len(self.input_dict)
         # remember input_dict corresponds only to the attributes
+        if any(key in bids.ModalityType.get_list_subclasses_names() for key in self.key_button_lbl):
+            VertFrame = VerticalScrollbarFrame(parent, grid_row=1)
+            body_frame = VertFrame.frame
+        else:
+            body_frame = parent
         for cnt, key in enumerate(self.key_button_lbl.keys()):
             if not self.meta_brick == 'Data2Import':
                 if key not in bids.BidsSidecar.get_list_subclasses_names() and not self.main_brick[key]:
@@ -1830,18 +1830,21 @@ class BidsBrickDialog(FormDialog):
             #     setting_list['rowspan'] = 6
             #     setting_label['rowspan'] = 6
             #     cnt_tot += setting_list['rowspan'] - 1
-            self.key_button_lbl[key] = Label(parent, text=key, fg="black")
+            self.key_button_lbl[key] = Label(body_frame, text=key, fg="black")
             self.key_button_lbl[key].grid(**setting_label)
             if key.startswith('Subject'):
                 ht = 8
+                wd = 20
             elif key in bids.BidsSidecar.get_list_subclasses_names():
                 ht = 1
+                wd = 20
             else:
                 ht = 3
+                wd = 40
             if isinstance(self.main_brick, (bids.ModalityType, bids.GlobalSidecars)):
                 setting_list['columnspan'] = 1
-            self.key_listw[key] = Listbox(parent, height=ht) #Voir si modifie cela
-            if not (key.startswith('Subject') or key == 'Derivatives'):
+            self.key_listw[key] = Listbox(body_frame, height=ht, width=wd) #Voir si modifie cela
+            if not (key.startswith('Subject') or key == 'Derivatives') or (key not in self.key_disabled or not self.key_disabled[key] == DISABLED):
                 self.key_listw[key].bind('<Double-Button-1>', lambda event, k=key: self.open_new_window(k, event))
                 self.key_listw[key].bind('<Return>', lambda event, k=key: self.open_new_window(k, event))
             else:
@@ -1858,7 +1861,7 @@ class BidsBrickDialog(FormDialog):
                     btn_str = 'Set '
                 else:
                     btn_str = 'Add '
-                self.key_button[key] = Button(parent, text=btn_str + key, justify=CENTER,
+                self.key_button[key] = Button(body_frame, text=btn_str + key, justify=CENTER,
                                               command=lambda k=key: self.add_new_brick(k))
                 self.key_button[key].grid(row=cnt+cnt_tot, column=3, sticky=W+E, padx=self.default_pad[0],
                                           pady=self.default_pad[1])
@@ -1867,6 +1870,10 @@ class BidsBrickDialog(FormDialog):
             for i in range(self.body_widget.grid_size()[0]):
                 self.body_widget.grid_columnconfigure(i, weight=1, uniform='test')
         self.results = self.input_dict
+        if 'VertFrame' in locals():
+            VertFrame.update_scrollbar()
+            if 'btn_str' in locals():
+                self.body_widget.grid_columnconfigure(1, weight=5, uniform='test')
 
     def call_menu(self, key, event):
         pop_menu = Menu(self.key_listw[key], tearoff=0)
@@ -2021,7 +2028,6 @@ class BidsBrickDialog(FormDialog):
             BidsBrickDialog.bidsdataset.remove(input_dict, in_deriv=in_deriv)
             self.populate_list(self.key_listw[key], self.main_brick[key])
             self.config(cursor="")
-
 
     def add_new_brick(self, key):
         self.update_fields()
@@ -2807,8 +2813,9 @@ class RequirementsDialog(TemplateDialog):
         self.attributes("-topmost", True)
 
     def body(self, parent):
-        width = round((self.monitor_width * 3)/4)
-        height = round((self.monitor_height * 3)/4)
+        # width = round(self.monitor_width * 9/10)
+        height = round(self.monitor_height * 9/10)
+        width = self.monitor_width
         self.geometry('{}x{}'.format(width, height))
         smallfont = font.Font(family="Segoe UI", size=9)
         self.option_add('*Font', smallfont)
@@ -3161,8 +3168,8 @@ class RequirementsDialog(TemplateDialog):
         self.error_str = ''
         if not self.elec_name or 'AnyWave' not in os.path.basename(self.elec_name):
             self.error_str += 'Bids Manager requires AnyWave to convert electrophy data.\n'
-        if not self.imag_name or 'dicm2nii' not in os.path.basename(self.imag_name):
-            self.error_str += 'Bids Manager requires dcm2niix to convert Imaging data.\n'
+        if not self.imag_name or '2nii'not in os.path.basename(self.imag_name):
+            self.error_str += 'Bids Manager requires dcm2niix or dicm2nii to convert Imaging data.\n'
 
         if self.error_str:
             call_raise(self, self.error_str)
@@ -3258,13 +3265,13 @@ class RequirementsDialog(TemplateDialog):
                             mod_dict['type']['modality'] = '_'
                     if self.modality_required_name[i] in bids.GlobalSidecars.get_list_subclasses_names():
                         if isinstance(mod_dict['type'], dict):
-                            if 'space' and 'acq' in mod_dict['type'].keys():
+                            if 'space' in mod_dict['type'].keys() and 'acq' in mod_dict['type'].keys():
                                 error = 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
                                 call_raise(self, error)
                                 return
                         elif isinstance(mod_dict['type'], list):
                             for elt in mod_dict['type']:
-                                if 'space' and 'acq' in elt.keys():
+                                if 'space' in elt.keys() and 'acq' in elt.keys():
                                     error = 'For the modality GlobalSidecars, you cannot have both space and acq.\n "acq" goes with Photo, and "space" goes with electrodes or coordsystem.\n'
                                     call_raise(self, error)
                                     return
@@ -3443,7 +3450,8 @@ class HandleMultipleSameProcess(TemplateDialog):
 
     def body(self, parent):
         self.title('Select the version that should not appear in the statistical table')
-        self.geometry('1000x800')
+        #self.geometry('1000x800')
+        #body_frame = VerticalScrollbarFrame(parent)
         double_frame = Frame(parent)
         double_frame.pack(side=TOP)
         folder_frame = Frame(double_frame, relief='groove')
@@ -3461,6 +3469,7 @@ class HandleMultipleSameProcess(TemplateDialog):
             cp += 1
         display_frame.update_scrollbar()
         self.ok_cancel_button(okcancel_frame)
+        #body_frame.update_scrollbar()
 
     def display_dataset(self, frame2display, deriv_name):
 
@@ -3529,7 +3538,7 @@ class HorizontalScrollbarFrame(Frame):
         self.hsb.pack(side=BOTTOM, fill=X)
         self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.hsb.set)
         self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
-        self.frame = Frame(self.canvas)#, bg='white', relief=GROOVE, borderwidth=2)
+        self.frame = Frame(self.canvas, bg='white')#, relief=GROOVE, borderwidth=2)
         self.frame.pack()
 
     def update_scrollbar(self):
@@ -3554,7 +3563,7 @@ class DoubleScrollbarFrame(Frame):
         self.hsb.pack(side=BOTTOM, fill=X)
         self.canvas = Canvas(self.Frame_to_scrollbar, xscrollcommand=self.hsb.set, yscrollcommand=self.vsb.set)
         self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
-        self.frame = Frame(self.canvas, bg='white')#, relief=GROOVE, borderwidth=2)
+        self.frame = Frame(self.canvas)#, relief=GROOVE, borderwidth=2)
         self.frame.pack()
 
     def update_scrollbar(self):
@@ -3700,7 +3709,7 @@ def make_splash():
     return splash + ['Version ' + BidsManager.version]
 
 
-if __name__ == '__main__':
+def run_app():
     from time import sleep
 
     splsh = make_splash()
@@ -3718,7 +3727,7 @@ if __name__ == '__main__':
     width = root.winfo_screenwidth()
     height = root.winfo_screenheight()
     root.option_add("*Font", "10")
-    my_gui = BidsManager(width, height)
+    my_gui = BidsManager(root, width, height)
     root.protocol("WM_DELETE_WINDOW", my_gui.close_window)
     if not bids.BidsBrick.curr_user.lower() == 'jegou':
         if platform.system() == 'Windows':
@@ -3732,3 +3741,6 @@ if __name__ == '__main__':
     # root.update()
     # root.deiconify()
     root.mainloop()
+
+if __name__ == '__main__':
+    run_app()

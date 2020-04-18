@@ -24,10 +24,6 @@
 """
 Created on Mon Mar 19 11:19:56 2018
 """
-
-from PyQt5 import QtGui, QtCore, QtWidgets
-from generic_uploader.generic_uploaderUI import Ui_MainWindow
-from generic_uploader.validationdialog import Ui_Dialog
 import sys
 import os
 import shutil
@@ -35,13 +31,28 @@ import hashlib
 import datetime
 import re
 import unicodedata
+try:
+    from PyQt5 import QtGui, QtCore, QtWidgets
+except:
+    python_sys = sys.path
+    lib_path = [ch for ch in python_sys if ch.endswith('site-packages')]
+    lib_list = os.listdir(lib_path[0])
+    if any(elt.startswith('PyQt5-') for elt in lib_list) and any(elt.startswith('PyQt5_sip') for elt in lib_list):
+        pyqt_path = [elt for elt in lib_list if elt.startswith('PyQt5-')]
+        sip_path = [elt for elt in lib_list if elt.startswith('PyQt5_sip')]
+        for file in os.listdir(os.path.join(lib_path[0], sip_path[0], 'PyQt5')):
+            if file.startswith('sip') and file.endswith('.pyd'):
+                shutil.copy(os.path.join(lib_path[0], sip_path[0], 'PyQt5', file), os.path.join(lib_path[0], pyqt_path[0], 'PyQt5'))
+                from PyQt5 import QtGui, QtCore, QtWidgets
+from generic_uploader.generic_uploaderUI import Ui_MainWindow
+from generic_uploader.validationdialog import Ui_Dialog
 from generic_uploader.micromed import anonymize_micromed
 from generic_uploader.deltamed import anonymize_deltamed
 from generic_uploader.read_seeg_images_header import read_headers
 from generic_uploader.anonymizeDicom import anonymize as anonymize_dcm
 # import pysftp
 # import paramiko
-import ins_bids_class
+from bids_manager import ins_bids_class
 from generic_uploader import patient_requirements_class
 from generic_uploader.modality_gui import ModalityGui
 from generic_uploader.import_by_modality import import_by_modality
@@ -1294,7 +1305,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                     [nom, prenom, date] = self.recursively_read_imagery_folder(data_path)
                     if nom == prenom == date == 0:
                         return 0
-                    birthdate = self.birth_date_str[0:2] + self.birth_date_str[3:5] + self.birth_date_str[8:10]
+                    birthdate = self.birth_date_str[0:2] + self.birth_date_str[3:5] + self.birth_date_str[6:10]
                     if nom.lower().rstrip('\x00') != str(self.TextName.toPlainText()).lower() or prenom.lower().rstrip(
                             '\x00') != str(self.TextPrenom.toPlainText()).lower() or date.lower() != birthdate:
                         self.listWidget.item(action_number).setForeground(QtGui.QColor("red"))
@@ -1312,7 +1323,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
 
         def validation_seeg(suj, map_line, action_number):
             if str(self.maplist[action_number]["curr_state"]) not in ["valid", "forced"]:
-                data_path = os.path.join(self.current_working_path, suj["Ieeg"][map_line["Index"]]["fileLoc"])
+                data_path = os.path.join(self.current_working_path, suj[map_line['Modality']][map_line["Index"]]["fileLoc"])
                 try:
                     [nom, prenom, date] = read_headers(os.path.join(data_path, data_path))
                 except Exception as e:
@@ -1320,7 +1331,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                     return 0, e
                 if nom == prenom == date == 0:
                     return 0, ""
-                birthdate = self.birth_date_str[0:2] + self.birth_date_str[3:5] + self.birth_date_str[8:10]
+                birthdate = self.birth_date_str[0:2] + self.birth_date_str[3:5] + self.birth_date_str[6:10]
                 if nom.lower().rstrip('\x00') != str(self.TextName.toPlainText()).lower() or prenom.lower().rstrip(
                                       '\x00') \
                                       != str(self.TextPrenom.toPlainText()).lower() or date.lower() != birthdate:
@@ -1367,9 +1378,9 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 if isinstance(tmp_modality, ins_bids_class.Imaging):
                     cur_state = validation_neuroimagerie(self.Subject, line, action, line["Modality"])
                 elif isinstance(tmp_modality, ins_bids_class.Electrophy):
-                    if tmp_modality.classname() in ["ieeg", "eeg"]:
+                    if tmp_modality.classname() in ["Ieeg", "Eeg"]:
                         cur_state, error = validation_seeg(self.Subject, line, action)
-                    elif tmp_modality.classname() == "meg":
+                    elif tmp_modality.classname() == "Meg":
                         "reflechir a valider la meg ou neurophy de facon generale"
             # elif line["Modality"] == "" and "Addi_file_path" in line:
             #     cur_state = validation_addi_files(self.Subject, line, action)

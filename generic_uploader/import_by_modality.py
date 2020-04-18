@@ -22,7 +22,7 @@
 
 from PyQt5 import QtWidgets
 import os
-import ins_bids_class
+from bids_manager import ins_bids_class
 from generic_uploader.meg_import_dialog import MegImportDialog
 
 
@@ -195,9 +195,10 @@ def import_by_modality(main_window, modality_class, modality_gui, subject):
         #     extenstion_allowed = '*' + ' *'.join(files_type_allowed)
         imported_name = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more files",
                                                            main_window.last_path, extenstion_allowed)
+        imported_name = imported_name[0] # to manage pyqt5 and tuple from QtWidgets.openfile
         if not imported_name:
             return 0, 0
-        nb_file = imported_name.count()
+        nb_file = imported_name.__len__()
         if nb_file == 0:
             return 0, 0
         file_list = [str(imported_name[i]) for i in range(0, nb_file)]

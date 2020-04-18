@@ -1,4 +1,4 @@
-import ins_bids_class as bids
+from bids_manager import ins_bids_class as bids
 import json
 import os
 import datetime
@@ -8,7 +8,7 @@ import sys
 import subprocess
 import shutil
 from tkinter import messagebox, filedialog
-from convert_process_file import go_throught_dir_to_convert
+from pipeline.convert_process_file import go_throught_dir_to_convert
 from sys import exc_info
 
 
@@ -113,9 +113,10 @@ class DerivativesSetting(object):
             desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
-        os.makedirs(directory_path, exist_ok=True)
-        desc_data.write_file(jsonfilename=os.path.join(directory_path, DatasetDescPipeline.filename))
-        return directory_path, directory_name, desc_data
+        norm_path = os.path.normpath(directory_path)
+        os.makedirs(norm_path, exist_ok=True)
+        desc_data.write_file(jsonfilename=os.path.join(norm_path, DatasetDescPipeline.filename))
+        return norm_path, directory_name, desc_data
 
     def pipeline_is_present(self, pip_name):
         is_present = False
@@ -153,6 +154,7 @@ class DerivativesSetting(object):
                             subinfo[mod_dir + 'Process'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'Process'][-1].get_attributes_from_filename()
                             subinfo[mod_dir + 'Process'][-1]['modality'] = mod_dir
+                            subinfo.check_file_in_scans(file.name, mod_dir + 'Process')
                             #subinfo[mod_dir + 'Process'][-1].get_sidecar_files()
                         # elif mod_dir + 'GlobalSidecars' in bids.BidsBrick.get_list_subclasses_names() and ext.lower() \
                         #         in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
@@ -483,6 +485,8 @@ class PipelineSetting(dict):
                                             universal_newlines=True)
                     error_proc = proc.communicate()
                     self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
+                    if error_proc[1]:
+                        log_error.append(error_proc[1])
                     if not error_proc[1]:
                         self.write_json_associated(use_list, output_directory, cmd_arg)
                     else:
@@ -1683,7 +1687,7 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
 
         for clef in keylist:
             for sid in sub_id:
-                if deriv_folder:
+                if deriv_folder is not None:
                     curr_bids.is_pipeline_present(deriv_folder)
                     if not curr_bids.curr_pipeline['isPresent']:
                         err_txt += "The derivative folder selected {0} in {1} is not present in the bids dataset.\n".format(deriv_folder, key)
@@ -1749,15 +1753,15 @@ class Interface(dict):
             return is_numerical
 
         participant_dict = self.bids_data['ParticipantsTSV']
-        display_dict = dict()
         req_keys = self.bids_data.requirements['Requirements']['Subject']['keys']
-        for key, value in req_keys.items():
-            if value:
-                display_dict[key] = value
-            elif 'age' in key:
-                display_dict[key] = value
-            elif 'duration' in key:
-                display_dict[key] = value
+        display_dict = {key: value for key, value in req_keys.items() if value or 'age' in key or 'duration' in key}
+        # for key, value in req_keys.items():
+            # if value:
+            #     display_dict[key] = value
+            # elif 'age' in key:
+            #     display_dict[key] = value
+            # elif 'duration' in key:
+            #     display_dict[key] = value
         criteria = participant_dict.header
         key_list = display_dict.keys()
         for key in key_list:
@@ -1780,6 +1784,10 @@ class Interface(dict):
             if is_string:
                 self[key] = {}
                 display_value = sorted(display_value, reverse=True)
+                if 'n/a' in display_value:
+                    display_value.remove('n/a')
+                elif 'N/A' in display_value:
+                    display_value.remove('N/A')
                 self[key]['attribut'] = 'StringVar'
                 self[key]['value'] = [value for value in display_value]
             elif display_value:
@@ -1824,6 +1832,8 @@ class Interface(dict):
                         res_dict[key] = range(minA, maxA)
                 else:
                     res_dict[key] = val_temp.get()
+                if key in res_dict and key in res_dict[key]:
+                    res_dict[key] = res_dict[key].replace('_'+key, '')
             elif att_type == 'Listbox':
                 res_dict[key] = val_temp.get()
             elif att_type == 'Bool':
@@ -1864,6 +1874,8 @@ class Interface(dict):
                         elt_in.append(False)
             elt_in = list(set(elt_in))
             if len(elt_in) == 1 and elt_in[0] is True:
+                if 'sub-' in elt[0]:
+                    elt[0] = elt[0].split('sub-')[1]
                 subject_list.append(elt[0])
         return subject_list
 
@@ -1889,7 +1901,7 @@ class ParameterInterface(Interface):
                 keys = list(self.parameters[key].keys())
                 if keys == Arguments.unit_value:
                     self[key]['attribut'] = 'StringVar'
-                    self[key]['value'] = str(self.parameters[key]['default']) + self.parameters[key]['unit']
+                    self[key]['value'] = str(self.parameters[key]['default']) + self.parameters[key]['unit'] + '_' + key
                     self[key]['unit'] = self.parameters[key]['unit']
                 elif keys == Arguments.list_value:
                     if self.parameters[key]['multipleselection']:
@@ -2076,14 +2088,16 @@ class InputParameterInterface(Interface):
             if key == 'mod':
                 value = [elt['modality'] for elt in sub[mod]]
             value = sorted(list(set(value)))
-            if '' in value:
-                value.remove('')
-            if value and value[0] is not '':
+            # if '' in value:
+            #     value.remove('')
+            if value: #and value[0] is not '':
                 # if key == 'modality':
                 #     if self[key]['attribut'] == 'Label':
                 #         self[key]['value'] = value
                 #     else:
                 #         self[key]['value'].extend(value)
+                if key == 'ses' and '' in value:
+                    value.remove('')
                 if not key in self:
                     self[key] = {}
                     self[key]['value'] = value

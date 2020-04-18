@@ -25,7 +25,7 @@
 import os
 from sys import argv, modules, exc_info
 import json
-import brainvision_hdr as bv_hdr
+import bids_manager.brainvision_hdr as bv_hdr
 from datetime import datetime
 import pprint
 import gzip
@@ -324,7 +324,7 @@ class BidsBrick(dict):
                 while os.path.dirname(drname) != BidsDataset.dirname:
                     drname = os.path.dirname(drname)
                     if drname.endswith('\\'):
-                        sz = len(drname) -1
+                        sz = len(drname) - 1
                         drname = drname[0:sz]
                     has_broken = False
                     with os.scandir(drname) as it:
@@ -819,7 +819,7 @@ class BidsBrick(dict):
             elif os.path.isfile(os.path.join(Data2Import.dirname, self['fileLoc'])) and ext in ImagingProcess.allowed_file_formats:#self['fileLoc'].endswith('.nii'):
                 #os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
                 shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']),
-                                os.path.join(Data2Import.dirname, filename + ext))
+                            os.path.join(Data2Import.dirname, filename + ext))
                 list_filename = [filename + ext]
                 if dest_change is not None:
                     process_flag = True
@@ -2511,6 +2511,7 @@ class MetaBrick(BidsBrick):
             for pip in pip_list:
                 self.is_pipeline_present(pip)
                 if self.curr_pipeline['isPresent']:
+                    sub_list = [sub['sub'] for sub in self.curr_pipeline['Pipeline']['SubjectProcess']]
                     for s_id in sub_list:
                         self.curr_pipeline['Pipeline'].is_subject_present(s_id, flagProcess=True)
                         if self.curr_pipeline['Pipeline'].curr_subject['isPresent'] and subclass:
@@ -4332,7 +4333,7 @@ class ValidatorIssue(IssueType):
     """Allows to store information about Bids Validator on the dataset"""
     keylist = ['fileLoc', 'path', 'description', 'Comment', 'Action']
     required_keys = ['fileLoc', 'path']
-    possibility = ['ext', 'end_file', 'directory']
+    possibility = ['ext', 'end_file'] #, 'directory'
 
 
 class Issue(BidsBrick):
