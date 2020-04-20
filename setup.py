@@ -4,8 +4,8 @@ from setuptools import setup, find_packages
 here = path.abspath(path.dirname(__file__))
 
 setup(
-    name='bids-manager',
-    version='0.2.5',
+    name='bids_manager',
+    version='0.2.6',
     zip_safe=False,
     #modifier l'url
     url='https://github.com/Dynamap/BIDS_Manager',
