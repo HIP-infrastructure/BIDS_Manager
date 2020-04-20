@@ -8,7 +8,7 @@ import sys
 import subprocess
 import shutil
 from tkinter import messagebox, filedialog
-from pipeline.convert_process_file import go_throught_dir_to_convert
+from bids_pipeline.convert_process_file import go_throught_dir_to_convert
 from sys import exc_info
 
 

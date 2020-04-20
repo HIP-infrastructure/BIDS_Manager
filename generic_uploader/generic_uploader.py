@@ -3,7 +3,7 @@
 #     BIDS Manager collect, organise and manage data in BIDS format.
 #     Copyright © 2018-2020 Aix-Marseille University, INSERM, INS
 #
-#     This file is part of BIDS Manager. Generic uploader collects data and
+#     This file is part of BIDS Manager. BIDS uploader collects data and
 #     creates the data2import requires by BIDS Manager.
 #
 #     BIDS Manager is free software: you can redistribute it and/or modify
@@ -286,7 +286,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         self.progressBar.setVisible(False)
         self.progressBar.setValue(0)
         self.generic_uploader_version = str(1.03)
-        self.setWindowTitle("GenericUploader v" + self.generic_uploader_version)
+        self.setWindowTitle("BIDSUploader v" + self.generic_uploader_version)
         self.MenuList = self.ListMenuObject(self)
         self.listWidget.clear()
         self.current_working_path = self.init_path
@@ -647,7 +647,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 else:
                     return dd.strftime('%d%m%Y')
 
-        def creation_id(last_name, first_name, birth_date_str_dd_mm_yyyy, sexe):
+        def creation_id(last_name, first_name, birth_date_str_dd_mm_yyyy):
             if last_name and first_name and birth_date:
                 last_name_validated = valide_mot(str(last_name))
                 last_name_validated = str(last_name_validated)
@@ -657,7 +657,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 if birth_date_validated == False:
                     return 0
             if self.anonymize_patient_checkBox.isChecked():
-                graine = last_name_validated + first_name_validated + birth_date_validated + sexe + self.secret_key
+                graine = last_name_validated + first_name_validated + birth_date_validated + self.secret_key
                 hashed = hash_object(graine)
             else:
                 alternative_id = str(self.id_textbox.toPlainText())
@@ -702,8 +702,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         else:
             sexe = "F"
         try:
-            self.ID, last_name_valid, first_name_valid = creation_id(last_name, first_name, self.birth_date_str,
-                                                                     sexe)
+            self.ID, last_name_valid, first_name_valid = creation_id(last_name, first_name, self.birth_date_str)
         except :
             self.restart_groupbox_identite()
             return

@@ -24,7 +24,7 @@
 #              Aude Jegou, 2019-2020
 
 import bids_manager.ins_bids_class as bids
-from pipeline import pipeline_class as pip
+from bids_pipeline import pipeline_class as pip
 import os
 import json
 import platform
@@ -33,7 +33,7 @@ from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrol
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, E, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, \
     Variable, Canvas, font
-from pipeline.convert_process_file import write_big_table
+from bids_pipeline.convert_process_file import write_big_table
 try:
     from importlib import reload
 except:
@@ -99,7 +99,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_menu.add_command(label='Determine subject by criteria subject', command=lambda: self.subject_selection(), state=DISABLED)
         bids_menu.add_command(label='Modify requirements file', command=self.modify_requirements_file, state=DISABLED)
         # fill up the upload/import menu
-        uploader_menu.add_command(label='Import data with Bids Uploader', command=self.ask4uploader_import, state=DISABLED)
+        uploader_menu.add_command(label='Import data with BIDS Uploader', command=self.ask4uploader_import, state=DISABLED)
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
         uploader_menu.add_command(label='Create template data2import', command=self.create_data2import_template, state=DISABLED)
         uploader_menu.add_command(label='Add elements to import', command=self.add_elmt2data2import, state=DISABLED)
@@ -859,15 +859,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             if key in bids.ModalityType.get_list_subclasses_names():
                 is_conform = True
         if not is_conform:
-            messagebox.showinfo('Requirements is not conform', 'Your requirements doesn"t contain the "different possible values for all modalities" (3rd column in requirements GUI), \nso Bids Uploader cannot be ran\n')
+            messagebox.showinfo('Requirements is not conform', 'Your requirements doesn"t contain the "different possible values for all modalities" (3rd column in requirements GUI), \nso BIDS Uploader cannot be ran\n')
             req_box = messagebox.askquestion('Modify your Requirements', 'Do you want to open the GUI to modify your requirements?')
             if req_box == 'yes':
                 self.modify_requirements_file()
             else:
-                messagebox.showinfo('Bids Uploader', 'Bids Uploader cannot be ran')
+                messagebox.showinfo('BIDS Uploader', 'BIDS Uploader cannot be ran')
                 return
         #Run the Generic Uploader
-        self.make_idle('Bids Uploader is running')
+        self.make_idle('BIDS Uploader is running')
         try:
             call_generic_uplader(self.curr_bids)
         except:
