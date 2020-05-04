@@ -908,8 +908,10 @@ class AnyWave(Parameters):
     def chaine_parameters(self, output_directory, input_dict, output_dict):
         jsonfilename = os.path.join(self.derivatives_directory, self['plugin'] + '_parameters' + '.json')
 
-        del self['Input']
-        del self['Output']
+        if 'Input' in self.keys():
+            del self['Input']
+        if 'Output' in self.keys():
+            del self['Output']
         with open(jsonfilename, 'w') as json_file:
             if 'modality' in self and isinstance(self['modality'], list):
                 self['modality'] = self['modality'][-1]
@@ -944,16 +946,16 @@ class AnyWave(Parameters):
                     order[tag_val] = cnt_tot
                     cmd_line += ' ' + elt['tag'] + ' {' + str(cnt_tot) + '}'
                     cnt_tot += 1
-
-        if output_dict['multiplesubject'] and output_dict['directory']:
-            cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
-        else:
-            if not output_dict['tag']:
-                order['out'] = cnt_tot
+        if output_dict is not None:
+            if output_dict['multiplesubject'] and output_dict['directory']:
+                cmd_line += ' ' + output_dict['tag'] + ' ' + output_directory
             else:
-                order[output_dict['tag']] = cnt_tot
-            cmd_line += ' ' + output_dict['tag'] + ' {' + str(cnt_tot) + '}'
-            cnt_tot += 1
+                if not output_dict['tag']:
+                    order['out'] = cnt_tot
+                else:
+                    order[output_dict['tag']] = cnt_tot
+                cmd_line += ' ' + output_dict['tag'] + ' {' + str(cnt_tot) + '}'
+                cnt_tot += 1
 
         return cmd_line, order
 

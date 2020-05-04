@@ -1277,7 +1277,7 @@ class ImagingProcessJSON(ProcessJSON):
 class ElectrophyProcess(Process):
     keylist = Process.keylist + ['ElectrophyProcessJSON']
     allowed_modalities = ['annotations', 'meg', 'eeg', 'ieeg', 'proj', 'epochs', 'average', 'mixing', 'components']
-    allowed_file_formats = ['.mat', '.tsv', '.npy', '.txt', '.h5']
+    allowed_file_formats = ['.mat', '.tsv', '.npy', '.txt', '.h5', '.vhdr', '.edf', '.set']
 
     def check_files_conformity(self):
         if self['fileLoc'].endswith('.tsv'):
