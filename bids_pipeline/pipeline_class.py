@@ -149,7 +149,7 @@ class DerivativesSetting(object):
                         filename, ext = os.path.splitext(file)
                         if ext.lower() == '.gz':
                             filename, ext = os.path.splitext(filename)
-                        if ext.lower() in bids.Process.allowed_file_formats:
+                        if ext.lower() in eval('bids.'+ mod_dir + 'Process.allowed_file_formats'):
                             subinfo[mod_dir + 'Process'] = eval('bids.' + mod_dir + 'Process()')
                             subinfo[mod_dir + 'Process'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'Process'][-1].get_attributes_from_filename()
@@ -1283,7 +1283,7 @@ class InputArguments(Parameters):
         def check_dir_existence(bids_directory, chemin):
             chemin_final = os.path.join(self.bids_directory, '\\'.join(chemin))
             if os.path.exists(chemin_final):
-                return chemin_final
+                return os.path.normpath(chemin_final)
             else:
                 del chemin[-1]
                 return check_dir_existence(bids_directory, chemin)
@@ -1385,6 +1385,8 @@ class InputArguments(Parameters):
                                     is_equal.append(False)
                             if all(is_equal):
                                 input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+                                if mod == 'Meg' and os.path.isdir(input_files[-1]):
+                                    input_files[-1] = os.path.join(input_files[-1], 'c,rfDC')
 
         return input_files
 
@@ -1662,7 +1664,7 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
             mod = input_vars[key]['modality'][-1]
         if 'deriv-folder' in input_vars[key].keys():
             deriv_folder = input_vars[key]['deriv-folder'][-1]
-            if deriv_folder == '' or deriv_folder == ['Previous analysis results']:# or deriv_folder == ['']:
+            if deriv_folder == '' or 'Previous analysis results' in deriv_folder:# or deriv_folder == ['']:
                 continue
         # if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
         #     mod = []
