@@ -2776,7 +2776,10 @@ class BidsDataset(MetaBrick):
                             is_same = scan.compare_scanstsv(tmp_scantsv)
                             if is_same:
                                 scan['fileLoc'] = file.path
-                        is_bids.append(validator(file.path, subinfo.cwdir))
+                        try:
+                            is_bids.append(validator(file.path, subinfo.cwdir))
+                        except:
+                            continue
                     elif mod_dir and file.is_file():
                         if flag_process and not mod_dir.endswith('Process'):
                             mod_dir = mod_dir + 'Process'
@@ -2810,7 +2813,10 @@ class BidsDataset(MetaBrick):
                         #     subinfo[mod_dir][-1]['fileLoc'] = file.path
                         #     subinfo[mod_dir][-1].get_attributes_from_filename()
                         #     subinfo[mod_dir][-1].get_sidecar_files()
-                        is_bids.append(validator(file.path, subinfo.cwdir))
+                        try:
+                            is_bids.append(validator(file.path, subinfo.cwdir))
+                        except:
+                            continue
                     elif mod_dir and file.is_dir():
                         if flag_process and not mod_dir.endswith('Process'):
                             mod_dir = mod_dir + 'Process'
