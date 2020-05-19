@@ -3793,7 +3793,7 @@ class BidsDataset(MetaBrick):
         elif isinstance(element2remove, Pipeline):
             self.is_pipeline_present(element2remove['name'])
             if self.curr_pipeline['isPresent']:
-                shutil.rmtree(os.path.join(self.dirname, 'derivatives', element2remove['name']))
+                shutil.rmtree(os.path.join(self.dirname, 'derivatives', element2remove['name']), ignore_errors=True)
                 self['Derivatives'][0]['Pipeline'].pop(self.curr_pipeline['index'])
                 self.save_as_json()
                 self.write_log(element2remove['name'] + ' has been removed from derivatives folder.')
