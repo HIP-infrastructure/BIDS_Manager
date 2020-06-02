@@ -27,7 +27,7 @@ class MegImportDialog(QtWidgets.QDialog):
     def __init__(self):
         QtWidgets.QDialog.__init__(self)
         self.setWindowTitle("MEG files or MEG folder ?")
-        self.setMinimumSize(275, 25)
+        self.setMinimumSize(300, 100)
         files_button = QtWidgets.QPushButton("Files")
         files_button.clicked.connect(self.import_files)
         folder_button = QtWidgets.QPushButton("Folder")
