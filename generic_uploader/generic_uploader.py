@@ -56,6 +56,7 @@ from bids_manager import ins_bids_class
 from generic_uploader import patient_requirements_class
 from generic_uploader.modality_gui import ModalityGui
 from generic_uploader.import_by_modality import import_by_modality
+from generic_uploader.empty_room_dialog import EmptyRoomImportDialog
 
 if 0:  # Used to compile, otherwise, it crashes
     pass
@@ -285,7 +286,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.progressBar.setVisible(False)
         self.progressBar.setValue(0)
-        self.generic_uploader_version = str(1.03)
+        self.generic_uploader_version = str(1.04)
         self.setWindowTitle("BIDSUploader v" + self.generic_uploader_version)
         self.MenuList = self.ListMenuObject(self)
         self.listWidget.clear()
@@ -663,7 +664,9 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 graine = last_name_validated + first_name_validated + birth_date_validated + self.secret_key
                 hashed = hash_object(graine)
             else:
-                alternative_id = str(self.id_textbox.toPlainText())
+                alternative_id = str(self.id_textbox.toPlainText()).lower()
+                last_name_validated = last_name_validated.lower()
+                first_name_validated = first_name_validated.lower()
                 if not alternative_id:
                     hashed = last_name_validated + first_name_validated
                 else:
@@ -713,8 +716,9 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         except :
             self.restart_groupbox_identite()
             return
-        self.TextName.setPlainText(last_name_valid.lower())
-        self.TextPrenom.setPlainText(first_name_valid.lower())
+        self.TextName.setPlainText(last_name_valid)
+        self.TextPrenom.setPlainText(first_name_valid)
+        self.id_textbox.setPlainText(self.ID)
         if (self.radioButtonM.isChecked() or self.radioButtonF.isChecked()) and str(
                 self.TextName.toPlainText()) != "" \
                 and self.TextPrenom.toPlainText() != "":
@@ -745,7 +749,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             # self.Subject = creation_sujet_bids(sub_required_keys, self.ID, birth_date, sexe, str(self.proto_name),
             #                                    self.Subject)
         self.Subject = creation_sujet_bids(sub_required_keys, self.ID, birth_date, sexe, str(self.proto_name),
-                                           last_name, first_name, self.Subject)
+                                           last_name_valid, first_name_valid, self.Subject)
         suj = self.Subject
         # self.mapping_subject2list(suj)
         # Enabler les différents comboBox et afficher dans listWidget
@@ -959,6 +963,19 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         res = modality_gui.exec_()
         if res == 0:
             return 0
+        # si MEG nouvelle gui pour empty room
+        if modality_gui.flag_emptyroom:
+            empty_room_dial = EmptyRoomImportDialog()
+            res = empty_room_dial.exec()
+            if res == 0:
+                return 0
+            modality_gui.combobox_list = []
+            modality_gui.combobox_list.append(QtWidgets.QComboBox(self))
+            modality_gui.combobox_list[-1].setObjectName('ses')
+            modality_gui.combobox_list[-1].addItems([empty_room_dial.ses])
+            modality_gui.combobox_list.append(QtWidgets.QComboBox(self))
+            modality_gui.combobox_list[-1].setObjectName('task')
+            modality_gui.combobox_list[-1].addItems([empty_room_dial.task])
         try:
             sub, curr_keys_dict = import_by_modality(self, modality, modality_gui, self.Subject)
         except Exception as e:
@@ -1317,7 +1334,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                     [nom, prenom, date] = self.recursively_read_imagery_folder(data_path)
                     if nom == prenom == date == 0:
                         return 0
-                elif os.path.isfile(data_path) and [key][map_line["Index"]]:
+                elif os.path.isfile(data_path) and map_line["Index"]:
                     [nom, prenom, date] = read_headers(data_path)
                     if nom == prenom == date == 0:
                         return 0
@@ -1447,7 +1464,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             # if classe in ["Anat", "Dwi", "Func"]:
             if classe not in ins_bids_class.GlobalSidecars.get_list_subclasses_names():
                 tmp_modality = getattr(ins_bids_class, classe)()
-                if isinstance(tmp_modality, ins_bids_class.Imaging) or os.path.isdir(src_path):
+                #if isinstance(tmp_modality, ins_bids_class.Imaging) or os.path.isdir(src_path):
+                if os.path.isdir(src_path):
                     foldername_list = [sujet[classe][idx][notempty] for notempty in sujet[classe][idx].keys()
                                        if (sujet[classe][idx][notempty] and notempty != "fileLoc" and notempty != "sub")]
                     foldername = ""
@@ -1482,7 +1500,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 #    dest_filename = os.path.join(temp_path, acq)
                 #    dest4data2import = acq
                 # elif classe in ["Ieeg", "Meg", "Eeg"]:
-                elif isinstance(tmp_modality, ins_bids_class.Electrophy):
+                elif isinstance(tmp_modality, ins_bids_class.Electrophy) or os.path.isfile(src_path):
                     dest_filename = os.path.join(temp_path, filename + file_extension)
                     dest4data2import = filename + file_extension
                 # elif classe == "IeegGlobalSidecars":
