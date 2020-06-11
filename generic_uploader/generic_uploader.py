@@ -1331,11 +1331,19 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 data_path = os.path.join(self.current_working_path, suj[key][map_line["Index"]]["fileLoc"])
                 #list_files = os.listdir(data_path)
                 #if os.path.isdir(data_path) and [key][map_line["Index"]]["modality"]:
+<<<<<<< HEAD
                 if os.path.isdir(data_path) and suj[key][map_line["Index"]]:
                     [nom, prenom, date] = self.recursively_read_imagery_folder(data_path)
                     if nom == prenom == date == 0:
                         return 0
                 elif os.path.isfile(data_path) and suj[key][map_line["Index"]]:
+=======
+                if os.path.isdir(data_path) and [key][map_line["Index"]]:
+                    [nom, prenom, date] = self.recursively_read_imagery_folder(data_path)
+                    if nom == prenom == date == 0:
+                        return 0
+                elif os.path.isfile(data_path) and map_line["Index"]:
+>>>>>>> 12f25ada6305ec9212ff49ed11f5f5bd93dd9c79
                     [nom, prenom, date] = read_headers(data_path)
                     if nom == prenom == date == 0:
                         return 0
@@ -1787,8 +1795,14 @@ if __name__ == "__main__":
         if len(sys.argv) > 1:
             window = GenericUploader(sys.argv[1])
         else:
+<<<<<<< HEAD
             bids_path = r'D:\Data\demo'
             window = GenericUploader(bids_path)
+=======
+            bids_path = r'C:\Users\Samuel\Documents\Data\BIDS_HJE'
+            window = GenericUploader(bids_path)
+            #window = GenericUploader()
+>>>>>>> 12f25ada6305ec9212ff49ed11f5f5bd93dd9c79
         window.show()
         sys.exit(app.exec_())
     except:
