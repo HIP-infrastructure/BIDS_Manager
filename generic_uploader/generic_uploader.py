@@ -179,10 +179,11 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 data_path = sujet[current_action["Modality"]][current_action["Index"]]["fileLoc"]
             else:
                 data_path = os.path.join(papa.init_path, sujet[current_action["Modality"]][current_action["Index"]]["fileLoc"])
-            if os.path.isdir(data_path):
-                [nom, prenom, date] = papa.recursively_read_imagery_folder(data_path)
+            modality = current_action["Modality"]
+            if os.path.isdir(data_path) :
+                [nom, prenom, date] = papa.recursively_read_imagery_folder(data_path, modality)
             else:
-                [nom, prenom, date] = read_headers(data_path)
+                [nom, prenom, date] = read_headers(data_path, modality)
             if nom == prenom == date == 0:
                 qmesbox = QtWidgets.QMessageBox(papa)
                 qmesbox.setText("Le dossier ne contient pas que des fichiers dicom")
@@ -1277,15 +1278,15 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         else:
             self.raz_gui()
 
-    def recursively_read_imagery_folder(self, path):
+    def recursively_read_imagery_folder(self, path, modality):
         for file in os.listdir(path):
             try:
-                [nom, prenom, date] = read_headers(os.path.join(path, file))
+                [nom, prenom, date] = read_headers(os.path.join(path, file), modality)
                 return nom, prenom, date
             except:
                 if os.path.isdir(os.path.join(path, file)):
                     new_path = os.path.join(path, file)
-                    [nom, prenom, date] = self.recursively_read_imagery_folder(new_path)
+                    [nom, prenom, date] = self.recursively_read_imagery_folder(new_path, modality)
                     if nom and prenom and date:
                         return [nom, prenom, date]
         nom = prenom = date = 0
@@ -1416,6 +1417,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                         cur_state, error = validation_seeg(self.Subject, line, action)
                     elif tmp_modality.classname() == "Meg":
                         "reflechir a valider la meg ou neurophy de facon generale"
+                        self.listWidget.item(action).setForeground(QtGui.QColor("green"))
+                        self.maplist[action]["curr_state"] = "valid"
             # elif line["Modality"] == "" and "Addi_file_path" in line:
             #     cur_state = validation_addi_files(self.Subject, line, action)
             # elif line["Modality"] == "" and "fiche_patient" in line:
@@ -1787,7 +1790,8 @@ if __name__ == "__main__":
         if len(sys.argv) > 1:
             window = GenericUploader(sys.argv[1])
         else:
-            bids_path = r'D:\Data\demo'
+            # bids_path = r'D:\Data\demo'
+            bids_path = r'D:\SAMUEL\Data\test_bids_meg'
             window = GenericUploader(bids_path)
         window.show()
         sys.exit(app.exec_())
