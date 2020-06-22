@@ -31,6 +31,7 @@ class ModalityGui(QtWidgets.QDialog):
         self.setObjectName("Modality GUI")
         self.setWindowTitle("Modality GUI")
         self.setModal(True)
+        self.flag_emptyroom =False
         '''elements = [element for element in ["session", "modality", "acquisition", "task", "run", "space"]
                     if eval(element)]'''
         elements = keys_dict.keys()

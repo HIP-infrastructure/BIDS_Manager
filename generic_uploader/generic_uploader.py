@@ -40,10 +40,11 @@ except:
     if any(elt.startswith('PyQt5-') for elt in lib_list) and any(elt.startswith('PyQt5_sip') for elt in lib_list):
         pyqt_path = [elt for elt in lib_list if elt.startswith('PyQt5-')]
         sip_path = [elt for elt in lib_list if elt.startswith('PyQt5_sip')]
-        for file in os.listdir(os.path.join(lib_path[0], sip_path[0], 'PyQt5')):
-            if file.startswith('sip') and file.endswith('.pyd'):
-                shutil.copy(os.path.join(lib_path[0], sip_path[0], 'PyQt5', file), os.path.join(lib_path[0], pyqt_path[0], 'PyQt5'))
-                from PyQt5 import QtGui, QtCore, QtWidgets
+        if sip_path and lib_path:
+            for file in os.listdir(os.path.join(lib_path[0], sip_path[0], 'PyQt5')):
+                if file.startswith('sip') and file.endswith('.pyd'):
+                    shutil.copy(os.path.join(lib_path[0], sip_path[0], 'PyQt5', file), os.path.join(lib_path[0], pyqt_path[0], 'PyQt5'))
+                    from PyQt5 import QtGui, QtCore, QtWidgets
 from generic_uploader.generic_uploaderUI import Ui_MainWindow
 from generic_uploader.validationdialog import Ui_Dialog
 from generic_uploader.micromed import anonymize_micromed
@@ -1330,11 +1331,11 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 data_path = os.path.join(self.current_working_path, suj[key][map_line["Index"]]["fileLoc"])
                 #list_files = os.listdir(data_path)
                 #if os.path.isdir(data_path) and [key][map_line["Index"]]["modality"]:
-                if os.path.isdir(data_path) and [key][map_line["Index"]]:
+                if os.path.isdir(data_path) and suj[key][map_line["Index"]]:
                     [nom, prenom, date] = self.recursively_read_imagery_folder(data_path)
                     if nom == prenom == date == 0:
                         return 0
-                elif os.path.isfile(data_path) and map_line["Index"]:
+                elif os.path.isfile(data_path) and suj[key][map_line["Index"]]:
                     [nom, prenom, date] = read_headers(data_path)
                     if nom == prenom == date == 0:
                         return 0
@@ -1786,10 +1787,8 @@ if __name__ == "__main__":
         if len(sys.argv) > 1:
             window = GenericUploader(sys.argv[1])
         else:
-            # bids_path = r'C:\Users\Samuel\Documents\Data\BIDS_HJE'
-            bids_path = r'D:\SAMUEL\Data\test_bids_meg'
+            bids_path = r'D:\Data\demo'
             window = GenericUploader(bids_path)
-            #window = GenericUploader()
         window.show()
         sys.exit(app.exec_())
     except:
