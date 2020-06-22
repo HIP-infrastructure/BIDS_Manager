@@ -1786,7 +1786,8 @@ if __name__ == "__main__":
         if len(sys.argv) > 1:
             window = GenericUploader(sys.argv[1])
         else:
-            bids_path = r'C:\Users\Samuel\Documents\Data\BIDS_HJE'
+            # bids_path = r'C:\Users\Samuel\Documents\Data\BIDS_HJE'
+            bids_path = r'D:\SAMUEL\Data\test_bids_meg'
             window = GenericUploader(bids_path)
             #window = GenericUploader()
         window.show()
