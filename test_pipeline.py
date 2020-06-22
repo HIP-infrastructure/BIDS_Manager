@@ -1,8 +1,6 @@
-import ins_bids_class as bids
-import datetime as dtm
+from bids_manager import ins_bids_class as bids
 import shutil
 import os
-import copy
 import json
 
 

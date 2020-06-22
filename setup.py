@@ -19,7 +19,10 @@ setup(
     install_requires=[
         'PyQt5',
         'pydicom',
-        'bids_validator'
+        'bids_validator',
+        'scipy',
+        'xlrd',
+        'nibabel'
     ],
     include_package_data=True,
     #voir à quoi correspond data_files

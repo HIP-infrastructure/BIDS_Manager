@@ -1759,18 +1759,18 @@ class AnatJSON(ImagingJSON):
 
 """ Pet brick with its file-specific sidecar files. """
 
-class Pet(Imaging):
-    keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'modality', 'fileLoc', 'PetJSON']
-    required_keys = Imaging.required_keys + ['modality']
-    allowed_modalities = ['pet', 'petmr', 'petct']
-    allowed_file_formats = ['.nii']
-    readable_file_formats = allowed_file_formats + ['.dcm']
-
-    def __init__(self):
-        super().__init__()
-
-class PetJSON(ImagingJSON):
-    pass
+# class Pet(Imaging):
+#     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'modality', 'fileLoc', 'PetJSON']
+#     required_keys = Imaging.required_keys + ['modality']
+#     allowed_modalities = ['pet', 'petmr', 'petct']
+#     allowed_file_formats = ['.nii']
+#     readable_file_formats = allowed_file_formats + ['.dcm']
+#
+#     def __init__(self):
+#         super().__init__()
+#
+# class PetJSON(ImagingJSON):
+#     pass
 
 class AnatProcess(ImagingProcess):
     keylist = BidsBrick.keylist + ['ses', 'acq', 'ce', 'rec', 'run', 'mod', 'proc', 'desc', 'hemi', 'space', 'volspace', 'label', 'modality', 'fileLoc', 'AnatProcessJSON', 'AnatomicalLabels']
@@ -2098,8 +2098,8 @@ class ScansTSV(BidsTSV):
 
 class Subject(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Pet', 'Meg', 'Eeg', 'Ieeg',
-                                   'Beh', 'IeegGlobalSidecars', 'EegGlobalSidecars', 'Scans']
+    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Meg', 'Eeg', 'Ieeg',
+                                   'Beh', 'IeegGlobalSidecars', 'EegGlobalSidecars', 'Scans'] #'Pet',
     required_keys = BidsBrick.required_keys
 
     def __setitem__(self, key, value):
@@ -3094,7 +3094,15 @@ class BidsDataset(MetaBrick):
                     except:
                         shutil.copy2(src_fname, path_dst[cnt])
                     if os.path.basename(src_fname) == os.path.basename(mod_dict2import['fileLoc']):
-                        src_data_sub = bids_dst['SourceData'][-1]['Subject'][bids_dst.curr_subject['index']]
+                        try:
+                            src_data_sub = bids_dst['SourceData'][-1]['Subject'][bids_dst.curr_subject['index']]
+                        except:
+                            bids_dst['SourceData'][-1].is_subject_present(sub['sub'])
+                            if bids_dst['SourceData'][-1].curr_subject['isPresent']:
+                                src_data_sub = bids_dst['SourceData'][-1].curr_subject['Subject']
+                            else:
+                                bids_dst['SourceData'][-1]['Subject'].append(Subject())
+                                src_data_sub = bids_dst['SourceData'][-1]['Subject'][-1]
                         src_data_sub[mod_type] = eval(mod_type + '()')
                         tmp_attr = mod_dict2import.get_attributes()
                         tmp_attr['fileLoc'] = path_dst[cnt]
@@ -3528,7 +3536,7 @@ class BidsDataset(MetaBrick):
     def remove(self, element2remove, with_issues=True, in_deriv=None):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
         # a bit bulky rewrite to make it nice
-        if element2remove is self:
+        if element2remove is self and not isinstance(element2remove, Pipeline):
             shutil.rmtree(self.dirname)
             print('The whole Bids dataset ' + self['DatasetDescJSON']['Name'] + ' has been removed')
             BidsDataset.clear_log()
@@ -4522,12 +4530,13 @@ class Issue(BidsBrick):
                 if key == 'ImportIssue':
                     for issue in self[key]:
                         if issue[brick2remove.classname()] and \
-                                issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
+                                brick2remove['fileLoc'] in issue[brick2remove.classname()][0]['fileLoc']:
+                                #issue[brick2remove.classname()][0]['fileLoc'] == brick2remove['fileLoc']:
                             new_issue[key].pop(new_issue[key].index(issue))
                             break
                 else:
                     for issue in self[key]:
-                        if os.path.basename(issue['fileLoc']) == os.path.basename(brick2remove['fileLoc']):
+                        if brick2remove['fileLoc'] in issue['fileLoc']:#os.path.basename(issue['fileLoc']) == os.path.basename(brick2remove['fileLoc']):
                             new_issue[key].pop(new_issue[key].index(issue))
                             break
             # elif not key == 'ElectrodeIssue' and (isinstance(brick2remove, Imaging) or
