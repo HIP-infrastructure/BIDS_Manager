@@ -924,7 +924,7 @@ class AnyWave(Parameters):
         self['plugin'] = self.callname
         cmd_end = ''
         if not cmd_line_set:
-            cmd_line_set = ' --run'
+            cmd_line_set = ' --run ' #+ self.callname
         cmd_base = self.curr_path + cmd_line_set
 
         cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
@@ -932,7 +932,7 @@ class AnyWave(Parameters):
         return cmd, order
 
     def chaine_parameters(self, output_directory, input_dict, output_dict):
-        jsonfilename = os.path.join(self.derivatives_directory, self['plugin'] + '_parameters' + '.json')
+        jsonfilename = os.path.join(self.derivatives_directory, self.callname + '_parameters' + '.json')
         pref_flag = False
         suff_flag = False
 
@@ -955,6 +955,7 @@ class AnyWave(Parameters):
                 self['modality'] = self['modality'][-1]
                 if self['modality'] == 'Ieeg':
                     self['modality'] = 'SEEG'
+                self['modality'] = self['modality'].upper()
             json.dump(self, json_file)
         cmd_line = ' ' + jsonfilename
 

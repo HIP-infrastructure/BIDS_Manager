@@ -180,7 +180,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             else:
                 data_path = os.path.join(papa.init_path, sujet[current_action["Modality"]][current_action["Index"]]["fileLoc"])
             modality = current_action["Modality"]
-            if os.path.isdir(data_path) :
+            if os.path.isdir(data_path):
                 [nom, prenom, date] = papa.recursively_read_imagery_folder(data_path, modality)
             else:
                 [nom, prenom, date] = read_headers(data_path, modality)
@@ -567,7 +567,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                     self.MenuList.modify_identity.setVisible(False)
                     self.MenuList.modify_info_action.setVisible(False)
             else:
-                self.MenuList.force_action.setVisible(False)
+                self.MenuList.force_action.setVisible(True)
                 self.MenuList.check_and_force_action.setVisible(False)
                 self.MenuList.delete_action.setVisible(True)
                 self.MenuList.modify_identity.setVisible(False)
