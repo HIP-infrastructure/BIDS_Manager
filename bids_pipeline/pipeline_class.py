@@ -920,22 +920,32 @@ class Parameters(dict):
 class AnyWave(Parameters):
     anywave_directory = None
 
+    def __init__(self, curr_path=None, dev_path=None, callname=None):
+        if dev_path:
+            self.derivatives_directory = dev_path
+        if callname:
+            self.callname = callname
+        if curr_path:
+            self.curr_path = curr_path
+        home = os.path.expanduser('~')
+        self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
+        os.makedirs(self.anywave_directory, exist_ok=True)
+
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         self['plugin'] = self.callname
         cmd_end = ''
         if not cmd_line_set:
-            cmd_line_set = ' --run ' #+ self.callname
+            cmd_line_set = ' --run'# + self.callname
         cmd_base = self.curr_path + cmd_line_set
 
         cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
-        cmd = cmd_base + cmd_line
+        cmd = cmd_base + cmd_line + ' --log_dir ' + self.anywave_directory
         return cmd, order
 
     def chaine_parameters(self, output_directory, input_dict, output_dict):
-        jsonfilename = os.path.join(self.derivatives_directory, self.callname + '_parameters' + '.json')
+        jsonfilename = os.path.normpath(os.path.join(self.derivatives_directory, self.callname + '_parameters' + '.json'))
         pref_flag = False
         suff_flag = False
-
         if 'Input' in self.keys():
             del self['Input']
         if 'Output' in self.keys():
@@ -1008,13 +1018,13 @@ class AnyWave(Parameters):
     def verify_log_for_errors(self, input, x=None):
         log_error = ''
         # read log in Documents
-        home = os.path.expanduser('~')
-        if getpass.getuser() == 'jegou':
-            self.anywave_directory = r'Z:\AnyWave\Log'
-        else:
-            self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
-            if not os.path.exists(self.anywave_directory):
-                self.anywave_directory = os.path.join('\\dynaserv', 'home', getpass.getuser(), 'AnyWave', 'Log')
+        # home = os.path.expanduser('~')
+        # if getpass.getuser() == 'jegou':
+        #     self.anywave_directory = r'Z:\AnyWave\Log'
+        # else:
+        #     self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
+        #     if not os.path.exists(self.anywave_directory):
+        #         self.anywave_directory = os.path.join('\\dynaserv', 'home', getpass.getuser(), 'AnyWave', 'Log')
         temp_time = 0
         filename =''
         if os.path.exists(self.anywave_directory):

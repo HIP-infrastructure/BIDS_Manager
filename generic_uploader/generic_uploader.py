@@ -288,7 +288,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.progressBar.setVisible(False)
         self.progressBar.setValue(0)
-        self.generic_uploader_version = str(1.04)
+        self.generic_uploader_version = str(1.05)
         self.setWindowTitle("BIDSUploader v" + self.generic_uploader_version)
         self.MenuList = self.ListMenuObject(self)
         self.listWidget.clear()
@@ -301,7 +301,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         self.electrode_brand = []
         self.seeg_run_number = {}
         self.Subject = {}
-        self.SubjectPHRC = {}
+        self.SubjectEmpty = {}
         self.flag_validated = False
         self.protocole = []
         self.maplist = []
@@ -369,6 +369,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             curr_state = self.old_maplist[0]["curr_state"]
         else:
             curr_state = "invalid"
+
         self.maplist.append({"Modality": "", "ID": sub["sub"], "Protocole : ": self.proto_name,
                              "curr_state": curr_state})
         self.listWidget.addItem("ID : " + sub["sub"] + ", subject info : " + "Double_click => <Modify_identity> for modification")
@@ -978,6 +979,11 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             modality_gui.combobox_list.append(QtWidgets.QComboBox(self))
             modality_gui.combobox_list[-1].setObjectName('task')
             modality_gui.combobox_list[-1].addItems([empty_room_dial.task])
+            if not self.SubjectEmpty:
+                self.SubjectEmpty = ins_bids_class.Subject()
+                self.SubjectEmpty['sub'] = 'emptyroom'
+                for key in self.requirements['Requirements']['Subject']['keys']:
+                    self.SubjectEmpty[key] = 'n/a'
         try:
             sub, curr_keys_dict = import_by_modality(self, modality, modality_gui, self.Subject)
         except Exception as e:
@@ -990,11 +996,18 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 return 0
         if sub == 0:
             return 0
-        self.Subject = sub
+        # if modality_gui.flag_emptyroom:
+        #     self.SubjectEmpty = sub
+        # else:
+        #     self.Subject = sub
         # pour bien remplir la liste :
         self.mapping_subject2list(sub)
+        if modality_gui.flag_emptyroom:
+            dict2append = sub['Meg'][-1].get_attributes('sub')
+            self.SubjectEmpty['Meg'].append(ins_bids_class.Meg())
+            self.SubjectEmpty['Meg'][-1].update(dict2append)
+            self.SubjectEmpty['Meg'][-1]['sub'] = 'emptyroom'
         QtWidgets.qApp.processEvents()
-
 
     def import_neuroimagery_folder(self):
         '''
@@ -1333,11 +1346,11 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 #list_files = os.listdir(data_path)
                 #if os.path.isdir(data_path) and [key][map_line["Index"]]["modality"]:
                 if os.path.isdir(data_path) and suj[key][map_line["Index"]]:
-                    [nom, prenom, date] = self.recursively_read_imagery_folder(data_path)
+                    [nom, prenom, date] = self.recursively_read_imagery_folder(data_path, key)
                     if nom == prenom == date == 0:
                         return 0
                 elif os.path.isfile(data_path) and suj[key][map_line["Index"]]:
-                    [nom, prenom, date] = read_headers(data_path)
+                    [nom, prenom, date] = read_headers(data_path, key)
                     if nom == prenom == date == 0:
                         return 0
                 else:
@@ -1360,7 +1373,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             if str(self.maplist[action_number]["curr_state"]) not in ["valid", "forced"]:
                 data_path = os.path.join(self.current_working_path, suj[map_line['Modality']][map_line["Index"]]["fileLoc"])
                 try:
-                    [nom, prenom, date] = read_headers(os.path.join(data_path, data_path))
+                    [nom, prenom, date] = read_headers(os.path.join(data_path, data_path), map_line['Modality'])
                 except Exception as e:
                     # QtWidgets.QMessageBox.critical(self, "Erreur de lecture", "Impossible de lire les fichiers seeg")
                     return 0, e
@@ -1648,6 +1661,10 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                     local_copy_and_anonymization(classe, src_path, dest_path, self.Subject["sub"],
                                                  self.Subject[classe][item["Index"]]["modality"])
                 ins_bids_class.Data2Import._assign_import_dir(temp_patient_path)
+                if self.SubjectEmpty and item["Modality"] == 'Meg':
+                    for elt in self.SubjectEmpty['Meg']:
+                        if elt['fileLoc'] == self.Subject[item["Modality"]][item["Index"]]["fileLoc"]:
+                            elt['fileLoc'] = dest4data2import
                 self.Subject[item["Modality"]][item["Index"]]["fileLoc"] = dest4data2import
             else:
                 local_copy_and_anonymization(classe, src_path, dest_path, self.Subject["sub"], "")
@@ -1659,6 +1676,14 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         data_to_import = ins_bids_class.Data2Import(temp_patient_path)
         data_to_import['DatasetDescJSON'] = ins_bids_class.DatasetDescJSON()
         data_to_import['DatasetDescJSON'].update({'Name': self.proto_name, 'BIDSVersion': '1.0.1'})
+        #Changement Aude
+        if self.SubjectEmpty:
+            file_loc = [elt['fileLoc'] for elt in self.SubjectEmpty['Meg']]
+            dict2remove = [cnt for cnt, elt in enumerate(self.Subject['Meg']) if elt['fileLoc'] in file_loc]
+            dict2remove.sort(reverse=True)
+            for cn in dict2remove:
+                del self.Subject['Meg'][cn]
+            data_to_import['Subject'] = self.SubjectEmpty
         data_to_import['Subject'] = self.Subject
         data_to_import.save_as_json()
         # # creation du fichier electrode_company
