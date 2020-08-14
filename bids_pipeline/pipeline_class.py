@@ -113,10 +113,13 @@ class DerivativesSetting(object):
             desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
-        norm_path = os.path.normpath(directory_path)
-        os.makedirs(norm_path, exist_ok=True)
-        desc_data.write_file(jsonfilename=os.path.join(norm_path, DatasetDescPipeline.filename))
-        return norm_path, directory_name, desc_data
+        os.makedirs(directory_path, exist_ok=True)
+        desc_data.write_file(jsonfilename=os.path.join(directory_path, DatasetDescPipeline.filename))
+        return directory_path, directory_name, desc_data
+        # norm_path = os.path.normpath(directory_path)
+        # os.makedirs(norm_path, exist_ok=True)
+        # desc_data.write_file(jsonfilename=os.path.join(norm_path, DatasetDescPipeline.filename))
+        # return norm_path, directory_name, desc_data
 
     def pipeline_is_present(self, pip_name):
         is_present = False
@@ -1387,7 +1390,7 @@ class InputArguments(Parameters):
         def check_dir_existence(bids_directory, chemin):
             chemin_final = os.path.join(self.bids_directory, '\\'.join(chemin))
             if os.path.exists(chemin_final):
-                return os.path.normpath(chemin_final)
+                return chemin_final
             else:
                 del chemin[-1]
                 return check_dir_existence(bids_directory, chemin)
