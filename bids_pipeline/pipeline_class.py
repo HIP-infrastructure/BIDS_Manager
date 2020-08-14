@@ -154,7 +154,7 @@ class DerivativesSetting(object):
                             subinfo[mod_dir + 'Process'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'Process'][-1].get_attributes_from_filename()
                             subinfo[mod_dir + 'Process'][-1]['modality'] = mod_dir
-                            subinfo.check_file_in_scans(file.name, mod_dir + 'Process')
+                            #subinfo.check_file_in_scans(file.name, mod_dir + 'Process')
                             #subinfo[mod_dir + 'Process'][-1].get_sidecar_files()
                         # elif mod_dir + 'GlobalSidecars' in bids.BidsBrick.get_list_subclasses_names() and ext.lower() \
                         #         in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
@@ -202,9 +202,9 @@ class DerivativesSetting(object):
                 if entry.name.startswith('sub-') and entry.is_file():
                     directory = get_attribute_filename(entry.name)
                     shutil.move(entry, os.path.join(directory, entry.name))
-                elif entry.name.startswith(name) and entry.is_dir():
-                    for file in os.listdir(entry):
-                        shutil.move(os.path.join(entry, file), directory_path)
+                # elif entry.name.startswith(name) and entry.is_dir():
+                #     for file in os.listdir(entry):
+                #         shutil.move(os.path.join(entry, file), directory_path)
                 elif entry.name.startswith('sub-') and entry.is_dir():
                     sub, subname = entry.name.split('-')
                     pip['SubjectProcess'].append(bids.SubjectProcess())

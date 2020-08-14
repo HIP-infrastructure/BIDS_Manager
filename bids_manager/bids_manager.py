@@ -874,8 +874,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.update_text('Bids uploader crashed')
             self.make_available()
             return
-        dirname = os.path.dirname(self.curr_bids.dirname)
-        self.upload_dir = os.path.join(dirname, 'TempFolder4Upload')
+        #dirname = os.path.dirname(self.curr_bids.dirname)
+        self.upload_dir = os.path.join(self.curr_bids.dirname, 'derivatives', 'bids_uploader', 'TempFolder4Upload')
         if not os.path.exists(self.upload_dir):
             self.update_text('The importation has been cancel because there is no data to import.')
             self.make_available()

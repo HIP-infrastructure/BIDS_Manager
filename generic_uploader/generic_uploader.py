@@ -272,7 +272,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         # Lecture des requirements :
         # Pour initialiser le sujet avec les requirements ===============
         self.requirements = self.bids_dataset.requirements
-        self.importation_path = os.path.normpath(os.path.join(self.init_path, ".."))
+        self.importation_path = os.path.join(self.init_path, 'derivatives', 'bids_uploader')#os.path.normpath(os.path.join(self.init_path, ".."))
+        os.makedirs(self.importation_path, exist_ok=True)
         self.bids_requirements_path = os.path.join(self.init_path, "code", "requirements.json")
         # b = ins_bids_class.Data2Import(requirements_fileloc=self.bids_requirements_path)
         # b.get_requirements(self.bids_requirements_path)

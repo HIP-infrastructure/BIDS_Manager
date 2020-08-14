@@ -1760,7 +1760,7 @@ class AnatJSON(ImagingJSON):
 """ Pet brick with its file-specific sidecar files. """
 
 # class Pet(Imaging):
-#     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'modality', 'fileLoc', 'PetJSON']
+#     keylist = BidsBrick.keylist + ['ses', 'task', 'acq', 'rec', 'run', 'modality', 'fileLoc', 'PetJSON', 'PetBloodTSV', 'PetBloodJSON']
 #     required_keys = Imaging.required_keys + ['modality']
 #     allowed_modalities = ['pet', 'petmr', 'petct']
 #     allowed_file_formats = ['.nii']
@@ -1769,8 +1769,35 @@ class AnatJSON(ImagingJSON):
 #     def __init__(self):
 #         super().__init__()
 #
+#
 # class PetJSON(ImagingJSON):
-#     pass
+#     required_keys =['Manufacturer', 'ManufacturersmodelName', 'Unit', 'TracerName', 'TracerRadionuclide', 'InjectedRadioactivity', 'InjectedRadioactivityUnit',
+#                     'InjectedMass', 'InjectedMassUnit', 'SpecificRadioactivity', 'SpecificRadioactivityUnit', 'ModeOfAdministration', 'TimeZero', 'ScanStart',
+#                     'InjectionStart', 'FrameTimesStart', 'FrameDuration', 'AcquisitionMode', 'ImageDecayCorrected', 'ImageDecayCorrectionTime', 'ReconMethodName',
+#                     'ReconMethodParameterLabels', 'ReconMethodParameterUnit', 'ReconMethodParameterValues', 'ReconFilterType', 'ReconFilterSize', 'AttenuationCorrection',
+#                     'PlasmaAvail', 'MetaboliteAvail', 'MetaboliteMethod', 'MetaboliteRecoveryCorrectionApplied', 'ContinuousBloodAvail', 'ContinuousBloodDispersionCorrected',
+#                     'DiscreteBloodAvail']
+#     keylist = required_keys + ['Anaesthesia', 'InstitutionName', 'InstitutionAddress', 'InstitutionalDepartmentName', 'BodyPart', 'TracerRadLex',
+#                                'TracerSNOMED', 'TracerMolecularWeight', 'TracerMolecularWeightUnit', 'PharmaceuticalName', 'PharmaceuticalDoseAmount', 'PharmaceuticalDoseUnit',
+#                                'PharmaceuticalDoseRegimen', 'PharmaceuticalDoseTime', 'InjectedMassPerWeight', 'InjectedMassPerWeightUnit', 'SpecificRadioactivityMeasTime',
+#                                'MolarActivity', 'MolarActivityUnit', 'MolarActivityMeasTime', 'InfusionSpeed', 'InfusionSpeedUnit', 'InjectedVolume', 'InjectedVolumeUnit',
+#                                'Purity', 'PurityUnit', 'ScanDate', 'InjectionEnd', 'ReconMethodImplementationVersion', 'AttenuationCorrectionMethodReference', 'ScaleFactor',
+#                                'ScatterFraction', 'DecayCorrectionFactor', 'PromptRate', 'RandomRate', 'SinglesRate', 'PlasmaFreeFraction', 'PlasmaFreeFractionMethod',
+#                                'ContinuousBloodWithdrawalRate', 'ContinuousBloodTubingType', 'ContinuousBloodTubingLength', 'ContinuousBloodDispersionConstant',
+#                                'DiscreteBloodHaematocrit', 'DiscreteBloodDensity']
+#
+#
+# class PetBloodTSV(BidsTSV):
+#     required_fields = ['time', 'plasma_radioactivity', 'metabolite_parent_fraction']
+#     header = required_fields + ['metabolite_polar_fraction', 'hplc_recovery_fractions', 'whole_blood_radioactivity']
+#     modality_field = 'blood'
+#
+#
+# class PetBloodJSON(BidsJSON):
+#     required_fields = ['time', 'plasma_radioactivity', 'metabolite_parent_fraction']
+#     header = required_fields + ['metabolite_polar_fraction', 'hplc_recovery_fractions', 'whole_blood_radioactivity']
+#     modality_field = 'blood'
+
 
 class AnatProcess(ImagingProcess):
     keylist = BidsBrick.keylist + ['ses', 'acq', 'ce', 'rec', 'run', 'mod', 'proc', 'desc', 'hemi', 'space', 'volspace', 'label', 'modality', 'fileLoc', 'AnatProcessJSON', 'AnatomicalLabels']
