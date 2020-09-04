@@ -218,7 +218,7 @@ class DerivativesSetting(object):
         def is_empty(files, default_files):
             return (len(files) == 0 or all(file in default_files for file in files))
 
-        empty_dirs = False
+        empty_dirs = []
         emp_dirs = []
         pip_directory = os.path.join(self.path, pip_name)
         analyse_name = pip_name.split('-')[0].lower()
@@ -236,10 +236,15 @@ class DerivativesSetting(object):
             else:
                 all_subs_empty = (len(dirs) == 0)
             if all_subs_empty and is_empty(files, default_files):
-                empty_dirs = True
+                empty_dirs.append(True)
                 emp_dirs.append(root)
+            else:
+                empty_dirs.append(False)
                 # yield root
-        return empty_dirs
+        if all(empty_dirs):
+            return True
+        else:
+            return False
 
 
 class DatasetDescPipeline(bids.DatasetDescJSON):
