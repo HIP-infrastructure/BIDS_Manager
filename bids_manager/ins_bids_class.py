@@ -2275,7 +2275,7 @@ class DatasetDescJSON(BidsJSON):
                'ReferencesAndLinks', 'DatasetDOI']
     required_keys = ['Name', 'BIDSVersion']
     filename = 'dataset_description.json'
-    bids_version = '1.2.2'
+    bids_version = '1.4.0'
 
     def __init__(self):
         super().__init__()
