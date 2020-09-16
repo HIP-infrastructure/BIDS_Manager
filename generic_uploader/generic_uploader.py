@@ -51,6 +51,7 @@ from generic_uploader.micromed import anonymize_micromed
 from generic_uploader.deltamed import anonymize_deltamed
 from generic_uploader.read_seeg_images_header import read_headers
 from generic_uploader.anonymizeDicom import anonymize as anonymize_dcm
+from generic_uploader.anonymize_edf import anonymize_edf
 # import pysftp
 # import paramiko
 from bids_manager import ins_bids_class
@@ -996,150 +997,150 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         QtWidgets.qApp.processEvents()
 
 
-    def import_neuroimagery_folder(self):
-        '''
-        # gérer ici le type de dossier à importer
-        current_item_index = self.comboBoxImagerie.currentIndex()
-        if current_item_index == 0:
-            return 0
-        selected_type = self.comboBoxImagerie.itemText(current_item_index)
-        modality = str(selected_type.split('_')[0])
-        session = str(selected_type.split('_')[-1])
-        if modality == "dwi":
-            modalite_class = "Dwi"
-        else:
-            modalite_class = "Anat"
-        imagery_folder = QtGui.QFileDialog.getExistingDirectory(None, "Choisir le dossier d'imagerie",
-                                                                self.last_path)
-        self.last_path = imagery_folder
-        if imagery_folder == "":
-            self.comboBoxImagerie.setCurrentIndex(0)
-            return 0
-        folder_list = [str(imagery_folder)]
-        files_status = self.return_error_if_accent_in_name(folder_list)
-        if files_status == 0:
-            self.comboBoxImplantation.setCurrentIndex(0)
-            return
-        '''
-        keys_to_avoid = ["keys", "IeegGlobalSidecars", "Ieeg", "Meg", "Eeg", "Subject"]
-        modality_class_list = [key for key in self.requirements['Requirements'].keys()
-                               if key not in keys_to_avoid]
-        [ses_list, modality_list, acq_list, task_list, run_list] = \
-            self.define_bids_needs_for_import(modality_class_list)
-
-        neuroimagery_gui = ModalityGui(ses_list, modality_list, acq_list, task_list, run_list)
-        res = neuroimagery_gui.exec_()
-        if res == 0:
-            return 0
-        imagery_folder = QtWidgets.QFileDialog.getExistingDirectory(None, "Choisir le dossier d'imagerie",
-                                                                self.last_path)
-        # Sauvegarde dans le patient des différentes chemin des fichiers :
-        modality_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
-                        if neuroimagery_gui.combobox_list[idx].objectName() == "modality"]
-        if (modality_idx.__len__() == 1) and modality_idx:
-            modality = str(neuroimagery_gui.combobox_list[modality_idx[0]].currentText())
-            if modality == "Dwi":
-                modalite_class = "Dwi"
-            else:
-                modalite_class = "Anat"
-        else:
-            modality = ""
-        session_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
-                       if neuroimagery_gui.combobox_list[idx].objectName() == "session"]
-        if session_idx:
-            session = str(neuroimagery_gui.combobox_list[session_idx[0]].currentText())
-        else:
-            session = ""
-        acq_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
-                   if neuroimagery_gui.combobox_list[idx].objectName() == "acq"]
-        if acq_idx:
-            acq = str(neuroimagery_gui.combobox_list[acq_idx[0]].objectName())
-        else:
-            acq = ''
-        task_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
-                   if neuroimagery_gui.combobox_list[idx].objectName() == "task"]
-        if task_idx:
-            task = str(neuroimagery_gui.combobox_list[task_idx[0]].objectName())
-        else:
-            task = ''
-        # !!! IL FAUDRAIT LIRE ICI CE QUIL Y A DANS LE FICHIER
-        cur_type_nb = self.sidecar_parser(self.Subject, modalite_class, "modality", modality)
-        self.Subject[modalite_class] = eval("ins_bids_class." + modalite_class + "()")
-        self.Subject[modalite_class][-1].update({'sub': self.Subject['sub'], 'ses': session, 'acq': acq,
-                                                 'modality': modality, 'fileLoc': str(imagery_folder)})
-        suj = self.Subject
-        self.mapping_subject2list(suj)
-        QtWidgets.qApp.processEvents()
-
-    def import_ieeg_files(self):
-        key = 'Ieeg'
-        modality_class_list = [key]
-        [ses_list, modality_list, acq_list, task_list, run_list] = \
-            self.define_bids_needs_for_import(modality_class_list)
-        ieeg_gui = ModalityGui(ses_list, modality_list, acq_list, task_list, run_list)
-        res = ieeg_gui.exec_()
-        if res == 0:
-            return 0
-        files_type_allowed = "(*.trc *.eeg *.vhdr *.vmrk *.dat)"
-        seeg_filename = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more seeg files",
-                                                           self.last_path, files_type_allowed)
-        if not seeg_filename:
-            return
-        self.last_path = os.path.dirname(str(seeg_filename[0]))
-        nb_file = seeg_filename.count()
-        if nb_file == 0:
-            return
-        file_list = [str(seeg_filename[i]) for i in range(0, nb_file)]
-        files_status = self.return_error_if_accent_in_name(file_list)
-        if files_status == 0:
-            return
-        # Sauvegarde dans le patient des différentes chemin des fichiers :
-        modality_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
-                        if ieeg_gui.combobox_list[idx].objectName() == "modality"]
-        if (modality_idx.__len__() == 1) and modality_idx:
-            modality = str(ieeg_gui.combobox_list[modality_idx[0]].currentText())
-            modalite_class = modality_class_list[0]
-        else:
-            modality = ""
-        session_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
-                       if ieeg_gui.combobox_list[idx].objectName() == "session"]
-        if session_idx:
-            session = str(ieeg_gui.combobox_list[session_idx[0]].currentText())
-        else:
-            session = ""
-        acq_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
-                   if ieeg_gui.combobox_list[idx].objectName() == "acq"]
-        if acq_idx:
-            acq = str(ieeg_gui.combobox_list[acq_idx[0]].currentText())
-        else:
-            acq = ''
-        task_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
-                    if ieeg_gui.combobox_list[idx].objectName() == "task"]
-        if task_idx:
-            task = str(ieeg_gui.combobox_list[task_idx[0]].currentText())
-        else:
-            task = ''
-        # Sauvegarde dans le patient des différentes chemin des fichiers :
-        for i in range(nb_file):
-            filename, file_ext = os.path.splitext(file_list[i])
-            if file_ext == ".dat" or file_ext == ".vmrk" or (
-                    file_ext == ".eeg" and os.path.isfile(filename + '.vhdr')):
-                continue
-            ## DEMANDER ICI LE RUN !!! ==================================================================
-            # !!! IL FAUDRAIT LIRE ICI EC QUIL Y A DANS LE FICHIER
-            cur_type_nb = self.sidecar_parser(self.Subject, modalite_class, "modality", modality)
-            self.Subject[modalite_class] = eval("ins_bids_class." + modalite_class + "()")
-            self.Subject[modalite_class][-1].update({'sub': self.Subject['sub'], 'ses': session, 'acq': acq,
-                                                 'modality': modality, 'task': task, 'fileLoc': file_list[i]})
-            suj = self.Subject
-            self.mapping_subject2list(suj)
-            QtWidgets.qApp.processEvents()
-
-    def import_meg_files(self):
-        print("toto")
-
-    def import_eeg_files(self):
-        print("toto")
+    # def import_neuroimagery_folder(self):
+    #     '''
+    #     # gérer ici le type de dossier à importer
+    #     current_item_index = self.comboBoxImagerie.currentIndex()
+    #     if current_item_index == 0:
+    #         return 0
+    #     selected_type = self.comboBoxImagerie.itemText(current_item_index)
+    #     modality = str(selected_type.split('_')[0])
+    #     session = str(selected_type.split('_')[-1])
+    #     if modality == "dwi":
+    #         modalite_class = "Dwi"
+    #     else:
+    #         modalite_class = "Anat"
+    #     imagery_folder = QtGui.QFileDialog.getExistingDirectory(None, "Choisir le dossier d'imagerie",
+    #                                                             self.last_path)
+    #     self.last_path = imagery_folder
+    #     if imagery_folder == "":
+    #         self.comboBoxImagerie.setCurrentIndex(0)
+    #         return 0
+    #     folder_list = [str(imagery_folder)]
+    #     files_status = self.return_error_if_accent_in_name(folder_list)
+    #     if files_status == 0:
+    #         self.comboBoxImplantation.setCurrentIndex(0)
+    #         return
+    #     '''
+    #     keys_to_avoid = ["keys", "IeegGlobalSidecars", "Ieeg", "Meg", "Eeg", "Subject"]
+    #     modality_class_list = [key for key in self.requirements['Requirements'].keys()
+    #                            if key not in keys_to_avoid]
+    #     [ses_list, modality_list, acq_list, task_list, run_list] = \
+    #         self.define_bids_needs_for_import(modality_class_list)
+    #
+    #     neuroimagery_gui = ModalityGui(ses_list, modality_list, acq_list, task_list, run_list)
+    #     res = neuroimagery_gui.exec_()
+    #     if res == 0:
+    #         return 0
+    #     imagery_folder = QtWidgets.QFileDialog.getExistingDirectory(None, "Choisir le dossier d'imagerie",
+    #                                                             self.last_path)
+    #     # Sauvegarde dans le patient des différentes chemin des fichiers :
+    #     modality_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
+    #                     if neuroimagery_gui.combobox_list[idx].objectName() == "modality"]
+    #     if (modality_idx.__len__() == 1) and modality_idx:
+    #         modality = str(neuroimagery_gui.combobox_list[modality_idx[0]].currentText())
+    #         if modality == "Dwi":
+    #             modalite_class = "Dwi"
+    #         else:
+    #             modalite_class = "Anat"
+    #     else:
+    #         modality = ""
+    #     session_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
+    #                    if neuroimagery_gui.combobox_list[idx].objectName() == "session"]
+    #     if session_idx:
+    #         session = str(neuroimagery_gui.combobox_list[session_idx[0]].currentText())
+    #     else:
+    #         session = ""
+    #     acq_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
+    #                if neuroimagery_gui.combobox_list[idx].objectName() == "acq"]
+    #     if acq_idx:
+    #         acq = str(neuroimagery_gui.combobox_list[acq_idx[0]].objectName())
+    #     else:
+    #         acq = ''
+    #     task_idx = [idx for idx in range(0, len(neuroimagery_gui.combobox_list))
+    #                if neuroimagery_gui.combobox_list[idx].objectName() == "task"]
+    #     if task_idx:
+    #         task = str(neuroimagery_gui.combobox_list[task_idx[0]].objectName())
+    #     else:
+    #         task = ''
+    #     # !!! IL FAUDRAIT LIRE ICI CE QUIL Y A DANS LE FICHIER
+    #     cur_type_nb = self.sidecar_parser(self.Subject, modalite_class, "modality", modality)
+    #     self.Subject[modalite_class] = eval("ins_bids_class." + modalite_class + "()")
+    #     self.Subject[modalite_class][-1].update({'sub': self.Subject['sub'], 'ses': session, 'acq': acq,
+    #                                              'modality': modality, 'fileLoc': str(imagery_folder)})
+    #     suj = self.Subject
+    #     self.mapping_subject2list(suj)
+    #     QtWidgets.qApp.processEvents()
+    #
+    # def import_ieeg_files(self):
+    #     key = 'Ieeg'
+    #     modality_class_list = [key]
+    #     [ses_list, modality_list, acq_list, task_list, run_list] = \
+    #         self.define_bids_needs_for_import(modality_class_list)
+    #     ieeg_gui = ModalityGui(ses_list, modality_list, acq_list, task_list, run_list)
+    #     res = ieeg_gui.exec_()
+    #     if res == 0:
+    #         return 0
+    #     files_type_allowed = "(*.trc *.eeg *.vhdr *.vmrk *.dat)"
+    #     seeg_filename = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more seeg files",
+    #                                                        self.last_path, files_type_allowed)
+    #     if not seeg_filename:
+    #         return
+    #     self.last_path = os.path.dirname(str(seeg_filename[0]))
+    #     nb_file = seeg_filename.count()
+    #     if nb_file == 0:
+    #         return
+    #     file_list = [str(seeg_filename[i]) for i in range(0, nb_file)]
+    #     files_status = self.return_error_if_accent_in_name(file_list)
+    #     if files_status == 0:
+    #         return
+    #     # Sauvegarde dans le patient des différentes chemin des fichiers :
+    #     modality_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
+    #                     if ieeg_gui.combobox_list[idx].objectName() == "modality"]
+    #     if (modality_idx.__len__() == 1) and modality_idx:
+    #         modality = str(ieeg_gui.combobox_list[modality_idx[0]].currentText())
+    #         modalite_class = modality_class_list[0]
+    #     else:
+    #         modality = ""
+    #     session_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
+    #                    if ieeg_gui.combobox_list[idx].objectName() == "session"]
+    #     if session_idx:
+    #         session = str(ieeg_gui.combobox_list[session_idx[0]].currentText())
+    #     else:
+    #         session = ""
+    #     acq_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
+    #                if ieeg_gui.combobox_list[idx].objectName() == "acq"]
+    #     if acq_idx:
+    #         acq = str(ieeg_gui.combobox_list[acq_idx[0]].currentText())
+    #     else:
+    #         acq = ''
+    #     task_idx = [idx for idx in range(0, len(ieeg_gui.combobox_list))
+    #                 if ieeg_gui.combobox_list[idx].objectName() == "task"]
+    #     if task_idx:
+    #         task = str(ieeg_gui.combobox_list[task_idx[0]].currentText())
+    #     else:
+    #         task = ''
+    #     # Sauvegarde dans le patient des différentes chemin des fichiers :
+    #     for i in range(nb_file):
+    #         filename, file_ext = os.path.splitext(file_list[i])
+    #         if file_ext == ".dat" or file_ext == ".vmrk" or (
+    #                 file_ext == ".eeg" and os.path.isfile(filename + '.vhdr')):
+    #             continue
+    #         ## DEMANDER ICI LE RUN !!! ==================================================================
+    #         # !!! IL FAUDRAIT LIRE ICI EC QUIL Y A DANS LE FICHIER
+    #         cur_type_nb = self.sidecar_parser(self.Subject, modalite_class, "modality", modality)
+    #         self.Subject[modalite_class] = eval("ins_bids_class." + modalite_class + "()")
+    #         self.Subject[modalite_class][-1].update({'sub': self.Subject['sub'], 'ses': session, 'acq': acq,
+    #                                              'modality': modality, 'task': task, 'fileLoc': file_list[i]})
+    #         suj = self.Subject
+    #         self.mapping_subject2list(suj)
+    #         QtWidgets.qApp.processEvents()
+    #
+    # def import_meg_files(self):
+    #     print("toto")
+    #
+    # def import_eeg_files(self):
+    #     print("toto")
 
     def find_position_on_screen(self, widget):
         ancetre = widget
@@ -1150,100 +1151,100 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         pos_on_screen = widget_position + self.pos()
         return pos_on_screen
 
-    def import_seeg_file(self):
-        # gérer ici le type de fichier à importer
-        current_item_index = self.comboBoxSeeg.currentIndex()
-        files_type_allowed = "(*.trc *.eeg *.vhdr *.vmrk *.dat)"
-        if current_item_index == 0:
-            return 0
-        # elif current_item_index == 1:
-        #     files_type = "seizure"
-        #     acquisition = "type"
-        #     widget_pos_on_screen = self.find_position_on_screen(self.comboBoxSeeg)
-        #     seeg_type_dialog = DialogSeizureType(widget_pos_on_screen)
-        #     seeg_type_dialog_status = seeg_type_dialog.exec_()
-        #     if seeg_type_dialog_status == 0:
-        #         return 0
-        #     seizure_type = seeg_type_dialog.seizure_type
-        # elif current_item_index == 2:
-        #     files_type = "rest"
-        #     seizure_type = ""
-        #     acquisition = ""
-        # elif current_item_index == 3:
-        #     files_type = "sleep"
-        #     seizure_type = ""
-        #     acquisition = ""
-        else:
-            files_type = str(self.comboBoxSeeg.currentText()).split('_')
-            files_type = files_type[1]
-            if files_type == "seizure":
-                acquisition = "type"
-                widget_pos_on_screen = self.find_position_on_screen(self.comboBoxSeeg)
-                seeg_type_dialog = DialogSeizureType(widget_pos_on_screen)
-                seeg_type_dialog_status = seeg_type_dialog.exec_()
-                if seeg_type_dialog_status == 0:
-                    return 0
-                seizure_type = seeg_type_dialog.seizure_type
-            else:
-                seizure_type = ""
-                acquisition = ""
-        seeg_filename = QtWidgets.QFileDialog.getOpenFileNames(None,
-                                                           "Selectionner un ou plusieurs fichiers SEEG",
-                                                           self.last_path,
-                                                           files_type_allowed)
-        if not seeg_filename:
-            self.comboBoxSeeg.setCurrentIndex(0)
-            return
-        self.last_path = os.path.dirname(str(seeg_filename[0]))
-        nb_file = seeg_filename.count()
-        if nb_file == 0:
-            self.comboBoxSeeg.setCurrentIndex(0)
-            return
-        file_list = [str(seeg_filename[i]) for i in range(0, nb_file)]
-        files_status = self.return_error_if_accent_in_name(file_list)
-        if files_status == 0:
-            self.comboBoxSeeg.setCurrentIndex(0)
-            return
-        # Sauvegarde dans le patient des différentes chemin des fichiers :
-        acq = acquisition + str(seizure_type)
-        for i in range(nb_file):
-            filename, file_ext = os.path.splitext(file_list[i])
-            if file_ext == ".dat" or file_ext == ".vmrk" or (file_ext == ".eeg" and os.path.isfile(filename+'.vhdr')):
-                continue
-            cur_type_nb = self.sidecar_parser(self.Subject, "Ieeg", "task", files_type, acq)
-            self.Subject["Ieeg"] = ins_bids_class.Ieeg()
-            self.Subject['Ieeg'][-1].update({'sub': self.Subject['sub'], 'ses': '01',
-                                                    'acq': acq, 'task': files_type,
-                                                    'fileLoc': file_list[i], 'run': str(cur_type_nb + 1)})
-            suj = self.Subject
-            self.mapping_subject2list(suj)
-            QtWidgets.qApp.processEvents()
-        # remise à 0 du combobox et remplissage de la liste
-        self.comboBoxSeeg.setCurrentIndex(0)
-
-    def import_addi_files(self):
-        addi_files = QtWidgets.QFileDialog.getOpenFileNames(None, "Selectionner le/les fichiers additionels",
-                                                        self.last_path)
-        if not addi_files:
-            return 0
-        self.last_path = os.path.dirname(str(addi_files[0]))
-        suj = self.Subject
-        for files in addi_files:
-            self.addi_files.append(str(files))
-        self.mapping_subject2list(suj)
-        QtWidgets.qApp.processEvents()
-
-    def import_fiche_patient(self):
-        fiche_patient_files = QtWidgets.QFileDialog.getOpenFileNames(None, "Selectionner la/les fiche patient",
-                                                                 self.last_path)
-        if not fiche_patient_files:
-            return 0
-        self.last_path = os.path.dirname(str(fiche_patient_files[0]))
-        suj = self.Subject
-        for files in fiche_patient_files:
-            self.fiche_patient.append(str(files))
-        self.mapping_subject2list(suj)
-        QtWidgets.qApp.processEvents()
+    # def import_seeg_file(self):
+    #     # gérer ici le type de fichier à importer
+    #     current_item_index = self.comboBoxSeeg.currentIndex()
+    #     files_type_allowed = "(*.trc *.eeg *.vhdr *.vmrk *.dat)"
+    #     if current_item_index == 0:
+    #         return 0
+    #     # elif current_item_index == 1:
+    #     #     files_type = "seizure"
+    #     #     acquisition = "type"
+    #     #     widget_pos_on_screen = self.find_position_on_screen(self.comboBoxSeeg)
+    #     #     seeg_type_dialog = DialogSeizureType(widget_pos_on_screen)
+    #     #     seeg_type_dialog_status = seeg_type_dialog.exec_()
+    #     #     if seeg_type_dialog_status == 0:
+    #     #         return 0
+    #     #     seizure_type = seeg_type_dialog.seizure_type
+    #     # elif current_item_index == 2:
+    #     #     files_type = "rest"
+    #     #     seizure_type = ""
+    #     #     acquisition = ""
+    #     # elif current_item_index == 3:
+    #     #     files_type = "sleep"
+    #     #     seizure_type = ""
+    #     #     acquisition = ""
+    #     else:
+    #         files_type = str(self.comboBoxSeeg.currentText()).split('_')
+    #         files_type = files_type[1]
+    #         if files_type == "seizure":
+    #             acquisition = "type"
+    #             widget_pos_on_screen = self.find_position_on_screen(self.comboBoxSeeg)
+    #             seeg_type_dialog = DialogSeizureType(widget_pos_on_screen)
+    #             seeg_type_dialog_status = seeg_type_dialog.exec_()
+    #             if seeg_type_dialog_status == 0:
+    #                 return 0
+    #             seizure_type = seeg_type_dialog.seizure_type
+    #         else:
+    #             seizure_type = ""
+    #             acquisition = ""
+    #     seeg_filename = QtWidgets.QFileDialog.getOpenFileNames(None,
+    #                                                        "Selectionner un ou plusieurs fichiers SEEG",
+    #                                                        self.last_path,
+    #                                                        files_type_allowed)
+    #     if not seeg_filename:
+    #         self.comboBoxSeeg.setCurrentIndex(0)
+    #         return
+    #     self.last_path = os.path.dirname(str(seeg_filename[0]))
+    #     nb_file = seeg_filename.count()
+    #     if nb_file == 0:
+    #         self.comboBoxSeeg.setCurrentIndex(0)
+    #         return
+    #     file_list = [str(seeg_filename[i]) for i in range(0, nb_file)]
+    #     files_status = self.return_error_if_accent_in_name(file_list)
+    #     if files_status == 0:
+    #         self.comboBoxSeeg.setCurrentIndex(0)
+    #         return
+    #     # Sauvegarde dans le patient des différentes chemin des fichiers :
+    #     acq = acquisition + str(seizure_type)
+    #     for i in range(nb_file):
+    #         filename, file_ext = os.path.splitext(file_list[i])
+    #         if file_ext == ".dat" or file_ext == ".vmrk" or (file_ext == ".eeg" and os.path.isfile(filename+'.vhdr')):
+    #             continue
+    #         cur_type_nb = self.sidecar_parser(self.Subject, "Ieeg", "task", files_type, acq)
+    #         self.Subject["Ieeg"] = ins_bids_class.Ieeg()
+    #         self.Subject['Ieeg'][-1].update({'sub': self.Subject['sub'], 'ses': '01',
+    #                                                 'acq': acq, 'task': files_type,
+    #                                                 'fileLoc': file_list[i], 'run': str(cur_type_nb + 1)})
+    #         suj = self.Subject
+    #         self.mapping_subject2list(suj)
+    #         QtWidgets.qApp.processEvents()
+    #     # remise à 0 du combobox et remplissage de la liste
+    #     self.comboBoxSeeg.setCurrentIndex(0)
+    #
+    # def import_addi_files(self):
+    #     addi_files = QtWidgets.QFileDialog.getOpenFileNames(None, "Selectionner le/les fichiers additionels",
+    #                                                     self.last_path)
+    #     if not addi_files:
+    #         return 0
+    #     self.last_path = os.path.dirname(str(addi_files[0]))
+    #     suj = self.Subject
+    #     for files in addi_files:
+    #         self.addi_files.append(str(files))
+    #     self.mapping_subject2list(suj)
+    #     QtWidgets.qApp.processEvents()
+    #
+    # def import_fiche_patient(self):
+    #     fiche_patient_files = QtWidgets.QFileDialog.getOpenFileNames(None, "Selectionner la/les fiche patient",
+    #                                                              self.last_path)
+    #     if not fiche_patient_files:
+    #         return 0
+    #     self.last_path = os.path.dirname(str(fiche_patient_files[0]))
+    #     suj = self.Subject
+    #     for files in fiche_patient_files:
+    #         self.fiche_patient.append(str(files))
+    #     self.mapping_subject2list(suj)
+    #     QtWidgets.qApp.processEvents()
 
     def raz_gui(self):
         self.TextPrenom.setPlainText("")
@@ -1540,6 +1541,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                         anonymize_micromed(dest_filename)
                     elif file_extension == ".eeg":
                         anonymize_deltamed(dest_filename)
+                    elif file_extension == ".edf":
+                        anonymize_edf(dest_filename)
                 except Exception as e:
                     QtWidgets.qApp.processEvents()
                     qmesbox = QtWidgets.QMessageBox(self)
@@ -1791,7 +1794,7 @@ if __name__ == "__main__":
             window = GenericUploader(sys.argv[1])
         else:
             # bids_path = r'D:\Data\demo'
-            bids_path = r'D:\SAMUEL\Data\test_bids_meg'
+            bids_path = r'D:\SAMUEL\Data\test_bids\DATA_EPINOV'
             window = GenericUploader(bids_path)
         window.show()
         sys.exit(app.exec_())
