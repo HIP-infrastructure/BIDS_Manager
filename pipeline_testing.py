@@ -206,7 +206,7 @@ class ParameterTest(unittest.TestCase):
         #assert intermediate instance
         analyse = pip.PipelineSetting(__bids_dataset__, 'h2')
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'C:/anywave_december_2019/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1}'
+        cmd_tmp = 'C:/anywave_july/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
         self.assertIsInstance(cmd_arg, pip.AnyWave)
         self.assertEqual(cmd_line, cmd_tmp)
 
@@ -357,7 +357,7 @@ class DerivativesTest(unittest.TestCase):
         log_analysis, output_name, file_to_write = analyse.set_everything_for_analysis(self.results)
         datadesc = pip.DatasetDescPipeline(os.path.join(__bids_dir__, 'derivatives', output_name, 'dataset_description.json'))
         self.assertNotEqual(self.subject['Input_--input_file'], datadesc['SourceDataset']['Input_--input_file'])
-        self.assertEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['02', '01', '03']})
+        self.assertEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['02', '03', '01']})
 
 
 class RunSoftwareTest(unittest.TestCase):
