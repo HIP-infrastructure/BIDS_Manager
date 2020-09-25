@@ -250,7 +250,7 @@ class DerivativesSetting(object):
 class DatasetDescPipeline(bids.DatasetDescJSON):
     keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Author', 'Date']
     filename = 'dataset_description.json'
-    bids_version = '1.3.0'
+    bids_version = '1.4.0'
 
     def __init__(self, filename=None, param_vars=None, subject_list=None):
         super().__init__()

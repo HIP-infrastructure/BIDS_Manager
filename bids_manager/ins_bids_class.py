@@ -1602,8 +1602,8 @@ class Ieeg(Electrophy):
                                    'IeegChannelsTSV', 'IeegEventsTSV']
     required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['ieeg']
-    allowed_file_formats = ['.edf', '.gdf', '.fif', '.vhdr']
-    readable_file_formats = allowed_file_formats + ['.eeg', '.trc', '.ades', '.mat']
+    allowed_file_formats = ['.edf', '.vhdr', '.set']
+    readable_file_formats = allowed_file_formats + ['.trc', '.mff'] #'.ades', '.mat', '.eeg',
     channel_type = ['ECOG', 'SEEG', 'DBS', 'PD', 'ADC', 'DAC', 'REF', 'OTHER'] + Electrophy.channel_type
     mod_channel_type = ['ECOG', 'SEEG']
     required_protocol_keys = []
@@ -1676,7 +1676,7 @@ class Eeg(Electrophy):
     required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['eeg']
     allowed_file_formats = ['.edf', '.vhdr', '.set']
-    readable_file_formats = allowed_file_formats + ['.eeg', '.trc', '.ades', '.cnt', '.mat', '.set', '.mff', '.fif', '.ds']
+    readable_file_formats = allowed_file_formats + ['.eeg', '.trc', '.mff', '.fif', '.ds'] #'.ades', '.cnt', '.mat',
     channel_type = Electrophy.channel_type + ['GSR', 'REF', 'RESP', 'TEMP']
     mod_channel_type = ['EEG']
     required_protocol_keys = []
@@ -1971,7 +1971,7 @@ class Meg(Electrophy):
     # keybln = BidsBrick.create_keytype(keylist)
     required_keys = Imaging.required_keys + ['task', 'modality']
     allowed_modalities = ['meg']
-    allowed_file_formats = ['.ctf', '.ds', '.fif', '.kdf', '.raw', '.mhd', '.sqd', '.con', '.ave', '.mrk', '']
+    allowed_file_formats = [''] #'.ctf', '.ds', '.fif', '.kdf', '.raw', '.mhd', '.sqd', '.con', '.ave', '.mrk',
     readable_file_formats = allowed_file_formats
     channel_type = ['MEGMAG', 'MEGGRADAXIAL', 'MEGGRADPLANAR', 'MEGREFMAG', 'MEGREFGRADAXIAL', 'MEGREFGRADPLANAR',
                     'MEGOTHER', 'ECOG', 'SEEG', 'DBS', 'PD', 'ADC', 'DAC', 'HLU', 'FITERR', 'OTHER'] + Electrophy.channel_type
@@ -3241,6 +3241,23 @@ class BidsDataset(MetaBrick):
                         return True
             return False
 
+        def check_self_after_error(bids_dict, modality):
+            if bids_dict.curr_subject['Subject']['sub'] == modality['sub']:
+                attr_dict = modality.get_attributes('fileLoc')
+                idx_in = [cnt for cnt, elt in enumerate(bids_dict['Subject'][bids_dict.curr_subject['index']][modality.classname()]) if elt.get_attributes('fileLoc') == attr_dict]
+                if idx_in:
+                    bids_dict['Subject'][bids_dict.curr_subject['index']][modality.classname()].pop(idx_in[0])
+                if bids_dict['Subject'][bids_dict.curr_subject['index']].is_empty():
+                    bids_dict['Subject'].pop(bids_dict.curr_subject['index'])
+                    is_in, sub_info, sub_index = bids_dict['ParticipantsTSV'].is_subject_present(modality['sub'])
+                    if is_in:
+                        bids_dict['ParticipantsTSV'].pop(sub_index)
+                    shutil.rmtree(os.path.join(bids_dict.dirname, 'sub-' + modality['sub']))
+                else:
+                    for sc in bids_dict['Subject'][bids_dict.curr_subject['index']]['Scans']:
+                        sc.write_file()
+
+
         # if True:
         self.__class__.clear_log()
         self.write_log(10*'=' + '\nImport of ' + data2import.dirname + '\n' + 10*'=')
@@ -3567,6 +3584,9 @@ class BidsDataset(MetaBrick):
             err_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             self.write_log('Error type: ' + str(exc_type) + ', scriptname: ' + err_name + ', line number, '+ str(exc_tb.tb_lineno) + ': ' + str(err))
             copy_data2import.save_as_json()
+            #Check if the modality is not in the parsing
+            if ('modality' in locals() or 'modality' in globals()):
+                check_self_after_error(self, modality)
 
         # could make it faster by just appending a new line instead of writing the whole file again
         self['ParticipantsTSV'].write_file()
@@ -4171,22 +4191,32 @@ class BidsDataset(MetaBrick):
         else:
             state = 'not verified'
         self._assign_bids_dir(self.dirname)
+        list_upld = [os.path.normpath(elt['fileLoc']) for elt in self.issues['UpldFldrIssue']]
         for sub in data2import['Subject']:
             for key in sub:
                 if key in ModalityType.get_list_subclasses_names() + GlobalSidecars.get_list_subclasses_names():
                     for mod_brick in sub[key]:
-                        self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
+                        if os.path.normpath(os.path.join(data2import.dirname, mod_brick['fileLoc'])) not in list_upld:
+                            self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
                                               sub=mod_brick['sub'], path=data2import.dirname,
                                               state=state)
+                        else:
+                            idx = list_upld.index(os.path.normpath(os.path.join(data2import.dirname, mod_brick['fileLoc'])))
+                            self.issues['UpldFldrIssue'][idx]['Action'] = []
+                            self.issues['UpldFldrIssue'][idx]['state'] = state
         for dev in data2import['Derivatives']:
             for pip in dev['Pipeline']:
                 for sub in pip['SubjectProcess']:
                     for key in sub:
                         if key in Process.get_list_subclasses_names():
                             for mod_brick in sub[key]:
-                                self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
+                                if os.path.normpath(os.path.join(data2import.dirname, mod_brick['fileLoc'])) not in list_upld:
+                                    self.issues.add_issue('UpldFldrIssue', fileLoc=mod_brick['fileLoc'],
                                                       sub=mod_brick['sub'], path=data2import.dirname,
                                                       state=state)
+                                else:
+                                    idx = list_upld.index(os.path.normpath(os.path.join(data2import.dirname, mod_brick['fileLoc'])))
+                                    self.issues['UpldFldrIssue'][idx]['Action'] = []
 
     def verif_upload_issues(self, import_dir):
         return self.issues.verif_upload_issues(import_dir)
@@ -4595,7 +4625,7 @@ class Issue(BidsBrick):
         self.copy_values(new_issue)
 
     def verif_upload_issues(self, import_dir):
-        state_list = [up_iss['state'] == 'verified' for up_iss in self['UpldFldrIssue'] if up_iss['path'] == import_dir]
+        state_list = [up_iss['state'] == 'verified' for up_iss in self['UpldFldrIssue'] if os.path.normpath(up_iss['path']) == os.path.normpath(import_dir)]
         if state_list:
             return all(state_list)
         else:  # all([]) => True; means that if verif issue was removed than you can import it, not the wanted behaviour

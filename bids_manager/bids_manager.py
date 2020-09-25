@@ -25,6 +25,7 @@
 
 import bids_manager.ins_bids_class as bids
 from bids_pipeline import pipeline_class as pip
+import bids_pipeline.export_merge as exp
 import os
 import json
 import platform
@@ -34,6 +35,7 @@ from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrol
     TOP, BOTTOM, BROWSE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, \
     Variable, Canvas, font
 from bids_pipeline.convert_process_file import write_big_table
+from ctypes import windll
 try:
     from importlib import reload
 except:
@@ -45,13 +47,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
     version = '0.2.7'
-    if bids.BidsBrick.curr_user.lower() == 'roehri':
-        bids_startfile = r'\\dynaserv\SPREAD\SPREAD'
-        import_startfile = r'\\dynaserv\SPREAD\uploaded_data'
-    else:
-        bids_startfile = os.path.join(os.getcwd(), 'Data')
-        import_startfile = os.path.join(os.getcwd(), 'Data')
-        folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
+    bids_startfile = os.path.join(os.getcwd(), 'Data')
+    import_startfile = os.path.join(os.getcwd(), 'Data')
+    folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
 
     def __init__(self, root, monitor_width, monitor_height):
         super().__init__()
@@ -123,11 +121,14 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 name, ext = os.path.splitext(entry.name)
                 if ext == '.json':
                     pipeline_menu.add_command(label=name, command=lambda nm=name: self.run_analysis(nm), state=DISABLED)
+        pipeline_menu.add_command(label='Export/Merge BIDS dataset', command= lambda: self.manipulate_data(),
+                                  state=DISABLED)
         pipeline_menu.add_command(label='Create processing batch', command=lambda nm='batch': self.run_analysis(nm), state=DISABLED)
         pipeline_menu.add_command(label='Upload batch file or analysis file', command=lambda: self.select_batch_file(), state=DISABLED)
 
         #sattistic menu
         statistic_menu.add_command(label='Create statistic table', command= lambda: self.createtablestats(), state=DISABLED)
+
         menu_bar.add_cascade(label="BIDS", underline=0, menu=bids_menu)
         menu_bar.add_cascade(label="Uploader", underline=0, menu=uploader_menu)
         menu_bar.add_cascade(label="Issues", underline=0, menu=issue_menu)
@@ -195,9 +196,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.make_available()
         if import_data_flag:
             flag_import = False
-            upload_dir = [elt['path'] for elt in self.curr_bids.issues['UpldFldrIssue'] + self.curr_bids.issues['ImportIssue']]
+            upload_dir = [os.path.normpath(elt['path']) for elt in self.curr_bids.issues['UpldFldrIssue'] + self.curr_bids.issues['ImportIssue']]
             upload_dir = list(set(upload_dir))
-            if len(upload_dir) > 1 or (len(upload_dir) == 1 and self.upload_dir != upload_dir[0]):
+            if len(upload_dir) > 1 or (len(upload_dir) == 1 and os.path.normpath(self.upload_dir) != upload_dir[0]):
                 if self.upload_dir is not None and self.upload_dir not in upload_dir:
                     upload_dir.append(self.upload_dir)
                 self.upload_dir = None
@@ -827,7 +828,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             # if not os.path.isfile(os.path.join(self.curr_bids.dirname, self.curr_bids.log_path,
             #                                    'bids_' + self.curr_bids.access["access_time"] + '.log')):
             #     self.curr_bids.write_log(self.curr_bids.curr_log)
-            self.curr_bids.write_log('Bids Manager was closed')
+            self.curr_bids.write_log('BIDS Manager was closed')
             self.curr_bids.save_as_json()
         self.quit()
         self.root.destroy()
@@ -870,8 +871,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.make_idle('BIDS Uploader is running')
         try:
             call_generic_uplader(self.curr_bids)
+            self.update()
         except:
-            self.update_text('Bids uploader crashed')
+            self.update_text('BIDS uploader crashed')
             self.make_available()
             return
         #dirname = os.path.dirname(self.curr_bids.dirname)
@@ -968,9 +970,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         messagebox.showinfo('License', notice_license)
 
     def cite_paper(self):
-        citation = 'Roehri, N., Villalon, S. M., Jegou, A., Colombet, B., Giusiano, B., Ponz, A., & Bénar, C. G. (2020)\n' \
+        citation = 'Roehri, N., Medina-Villalon, S., Jegou, A., Colombet, B., Giusiano, B., Ponz, A., & Bénar, C. G. (2020)\n' \
                    'Transfer , collection and organisation of electrophysiological and imaging data for multicenter studies.\n'\
-                    'submitted.'
+                    '(submitted)'
         messagebox.showinfo('Citation', citation)
 
     def run_analysis(self, nameS, batch_file=None):
@@ -1076,6 +1078,25 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             messagebox.showerror('ERROR', err)
             self.make_available()
             return
+
+    def manipulate_data(self):
+        self.make_idle('Export/Merge data in process')
+        if self.curr_bids is None:
+            self.update_text('The menu Export/Merge cannot be selected without setting a bids directory.\n')
+            self.make_available()
+            return
+        output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict='Export/Merge')
+        if output_dict.log_error:
+            self.update_text(output_dict.log_error)
+            self.make_available()
+            return
+        try:
+            exp.export_data(self.curr_bids, output_dict.results)
+        except Exception as err:
+            messagebox.showerror('ERROR', err)
+            self.make_available()
+            return
+        self.make_available()
 
     @staticmethod
     def make_table(table):
@@ -2375,7 +2396,13 @@ class BidsSelectDialog(TemplateDialog):
             if any(elt in self.batch_file.keys() for elt in ['analysis_param', 'input_param', 'subject-selected']):
                 temp_batch = {self.batch_file['JsonName']: self.batch_file}
                 self.batch_file = temp_batch
-
+        ##Add possibility for the merge/anonymise/export part
+        elif analysis_dict and analysis_dict == 'Export/Merge':
+            self.soft_name = 'exp'
+            self.parameter_interface['Parameters'] = exp.ParametersInterface(bids_data)
+            self.parameter_interface['Input'] = {}
+            self.copy_values_in_list(self.soft_name)
+            self.parameter_list['exp']['Software'] = analysis_dict
         super().__init__(parent)
 
     def copy_values_in_list(self, soft_name):
@@ -2391,6 +2418,7 @@ class BidsSelectDialog(TemplateDialog):
                     if isinstance(self.parameter_interface[key][clef], pip.Interface):
                         self.parameter_list[soft_name][key][clef] = type(self.parameter_interface[key][clef])(self.bids_data)
                         self.parameter_list[soft_name][key][clef].copy_values(self.parameter_interface[key][clef])
+
 
     def body(self, parent):
         if self.batch:
@@ -2754,8 +2782,12 @@ class BidsSelectDialog(TemplateDialog):
         return max_col, cnt
 
     def ask4file(self, file):
-        filetypes = ('Files', file)
-        filename = filedialog.askopenfilename(title='Select file', initialdir=self.bids_data.cwdir, filetypes=[filetypes])
+        #ajouter directory ask
+        if file == ['dir']:
+            filename = filedialog.askdirectory(title='Select directory', initialdir=self.bids_data.cwdir)
+        else:
+            filetypes = ('Files', file)
+            filename = filedialog.askopenfilename(title='Select file', initialdir=self.bids_data.cwdir, filetypes=[filetypes])
         if len(file) <= 1:
             file.append(filename)
         else:
@@ -3660,7 +3692,6 @@ def enable(frame, state):
         except:
             pass
 
-
 def enable_frames(frame, button):
     if isinstance(button, int):
         button_value = button
@@ -3731,6 +3762,8 @@ def run_app():
                      'or any later version.\n'
     print(notice_license)
     sleep(0.2)
+    if platform.system() == 'Windows':
+        windll.shcore.SetProcessDpiAwareness(1)
     root = Tk()
     width = root.winfo_screenwidth()
     height = root.winfo_screenheight()
