@@ -63,7 +63,7 @@ from generic_uploader.empty_room_dialog import EmptyRoomImportDialog
 if 0:  # Used to compile, otherwise, it crashes
     pass
 
-
+#just to be able to commit and push
 class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
     class ListMenuObject(QtWidgets.QMenu):
         def __init__(self, papa):
