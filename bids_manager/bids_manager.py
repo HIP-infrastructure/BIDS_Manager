@@ -25,6 +25,7 @@
 
 import bids_manager.ins_bids_class as bids
 from bids_pipeline import pipeline_class as pip
+import bids_pipeline.interface_class as itf
 import bids_pipeline.export_merge as exp
 import os
 import json
@@ -1094,6 +1095,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             exp.export_data(self.curr_bids, output_dict.results)
         except Exception as err:
             messagebox.showerror('ERROR', err)
+            self.curr_bids._assign_bids_dir(self.curr_bids.dirname)
             self.make_available()
             return
         self.make_available()
@@ -2371,17 +2373,17 @@ class BidsSelectDialog(TemplateDialog):
         self.frame_soft = {}
         self.batch = False
         self.batch_file = None
-        self.subject_interface = pip.Interface(self.bids_data)
+        self.subject_interface = itf.Interface(self.bids_data)
         if analysis_dict and isinstance(analysis_dict, pip.PipelineSetting):
             self.soft_name = analysis_dict.jsonfilename
             try:
-                self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
+                self.parameter_interface['Parameters'] = itf.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
                 for cnt, elt in enumerate(analysis_dict['Parameters']['Input']):
                     tag_val = elt['tag']
                     if not tag_val:
                         tag_val = 'in'+str(cnt)
-                    self.parameter_interface['Input']['Input_'+tag_val] = pip.InputParameterInterface(self.bids_data, elt)
+                    self.parameter_interface['Input']['Input_'+tag_val] = itf.InputParameterInterface(self.bids_data, elt)
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
@@ -2409,13 +2411,13 @@ class BidsSelectDialog(TemplateDialog):
         self.parameter_list[soft_name] = {}
         self.parameter_list[soft_name]['JsonName'] = soft_name
         for key in self.parameter_interface:
-            if isinstance(self.parameter_interface[key], pip.Interface):
+            if isinstance(self.parameter_interface[key], itf.Interface):
                 self.parameter_list[soft_name][key] = type(self.parameter_interface[key])(self.bids_data)
                 self.parameter_list[soft_name][key].copy_values(self.parameter_interface[key])
             elif isinstance(self.parameter_interface[key], dict):
                 self.parameter_list[soft_name][key] = {}
                 for clef in self.parameter_interface[key]:
-                    if isinstance(self.parameter_interface[key][clef], pip.Interface):
+                    if isinstance(self.parameter_interface[key][clef], itf.Interface):
                         self.parameter_list[soft_name][key][clef] = type(self.parameter_interface[key][clef])(self.bids_data)
                         self.parameter_list[soft_name][key][clef].copy_values(self.parameter_interface[key][clef])
 
@@ -2508,13 +2510,13 @@ class BidsSelectDialog(TemplateDialog):
             try:
                 nbr_soft = len(self.frame_soft.keys())
                 analysis_dict = pip.PipelineSetting(self.bids_data, soft_name)
-                self.parameter_interface['Parameters'] = pip.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
+                self.parameter_interface['Parameters'] = itf.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
                 self.parameter_interface['Input'] = {}
                 for cnt, elt in enumerate(analysis_dict['Parameters']['Input']):
                     tag_val = elt['tag']
                     if not tag_val:
                         tag_val = 'in' + str(cnt)
-                    self.parameter_interface['Input']['Input_' + tag_val] = pip.InputParameterInterface(self.bids_data, elt)
+                    self.parameter_interface['Input']['Input_' + tag_val] = itf.InputParameterInterface(self.bids_data, elt)
                     if 'deriv-folder' in self.parameter_interface['Input']['Input_' + tag_val]:
                         if nbr_soft >= 1:
                             for nb in range(1, nbr_soft+1, 1):
@@ -2669,6 +2671,8 @@ class BidsSelectDialog(TemplateDialog):
             return
         else:
             name = self.parameter_list[self.soft_name]['Software']
+            if '/' in name:
+                name = name.replace('/', '-')
             bp_an = os.path.join(bp_dir, 'analysis_done')
             os.makedirs(bp_an, exist_ok=True)
             filename = name + '_' + author + '_' + date + '_saved.json'

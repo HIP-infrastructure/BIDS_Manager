@@ -3,6 +3,7 @@ import os
 import shutil
 from bids_pipeline import pipeline_class as pip
 from bids_manager import ins_bids_class as bids
+from bids_pipeline import interface_class as itf
 
 __main_dir__ = r'D:\Data\testing'
 __bids_dir__ = r'D:\Data\testing\test_dataset'
@@ -46,15 +47,15 @@ class PipelineTest(unittest.TestCase):
     def test_get_arguments(self):
         with self.assertRaises(EOFError):
             soft = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
-            param_vars = pip.ParameterInterface(__bids_dataset__, soft['Parameters'])
+            param_vars = itf.ParameterInterface(__bids_dataset__, soft['Parameters'])
             in_vars = {}
             for inp in soft['Parameters']['Input']:
-                in_vars['Input_'+inp['tag']] = pip.InputParameterInterface(__bids_dataset__, inp)
+                in_vars['Input_'+inp['tag']] = itf.InputParameterInterface(__bids_dataset__, inp)
         soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
-        param_vars = pip.ParameterInterface(__bids_dataset__, soft_analyse['Parameters'])
+        param_vars = itf.ParameterInterface(__bids_dataset__, soft_analyse['Parameters'])
         in_vars = {}
         for inp in soft_analyse['Parameters']['Input']:
-            in_vars['Input_' + inp['tag']] = pip.InputParameterInterface(__bids_dataset__, inp)
+            in_vars['Input_' + inp['tag']] = itf.InputParameterInterface(__bids_dataset__, inp)
         param_tmp = dict()
         in_tmp = dict()
         keys = ['Mode', '--participants', 'Input_--input_ieeg', 'Input_--input_anat', '--duration', '--criteria', '--criteriadata', '--task', '--file']
@@ -376,7 +377,7 @@ class RunSoftwareTest(unittest.TestCase):
 def suite_init():
     suite = unittest.TestSuite()
     #Test the def to create the gui to select the parameters
-    suite.addTest(PipelineTest('test_init'))
+    # suite.addTest(PipelineTest('test_init'))
     suite.addTest(PipelineTest('test_read_json'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected

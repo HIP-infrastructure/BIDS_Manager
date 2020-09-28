@@ -1,6 +1,8 @@
 import bids_manager.ins_bids_class as bids
-import bids_pipeline.pipeline_class as pip
+# from .pipeline_class import DatasetDescPipeline
+from .interface_class import Interface
 from generic_uploader import deltamed, micromed, anonymize_edf, anonymizeDicom
+from tkinter import messagebox
 import hashlib
 import os
 import shutil
@@ -36,13 +38,13 @@ def export_data(bids_data, output_select):
                    bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() if mod for elt
                    in sub[mod]]
             ses = list(set(ses))
-            if 'all' in param['selected_session']:
+            if 'all' in param['select_session']:
                 ses_old = [elt['ses'] for sub in bids_data['Subject'] for mod in
                    bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() if mod for elt
                    in sub[mod]]
                 ses_old = list(set(ses_old))
             else:
-                ses_old = param['selected_session']
+                ses_old = param['select_session']
             if not all(so in ses for so in ses_old):
                 raise EOFError('The BIDS dataset cannot be merged because the session names are different.')
         except:
@@ -58,14 +60,16 @@ def export_data(bids_data, output_select):
             dataset = bids.DatasetDescJSON()
             dataset.read_file(os.path.join(param['output_directory'], dataset.filename))
             secret_key = dataset['Name']
-            other_part = bids.ParticipantsTSV()
+            other_part = bids.ParticipantsTSV(header=['participant_id'], required_fields=['participant_id'])
             other_part.read_file(os.path.join(param['output_directory'], other_part.filename))
         if param['anonymise'] == 'full-anonymisation':
             full = True
         sub_anonymize, new_partTSV = anonymize_data(sub_selected, bids_data['ParticipantsTSV'], secret_key=secret_key, otherpart=other_part, full=full)
+        if not sub_anonymize and not new_partTSV:
+            return
     else:
         header = [elt for elt in bids_data['ParticipantsTSV'].header if not elt.endswith('_ready') and not elt.endswith('_integrity')]
-        new_partTSV = bids.ParticipantsTSV(header=header)
+        new_partTSV = bids.ParticipantsTSV(header=header, required_fields=['participant_id'])
         for sub in sub_selected:
             idx_part = [cnt for cnt, line in enumerate(bids_data['ParticipantsTSV']) if line[0].replace('sub-', '') == sub]
             tmp_dict = {elt: bids_data['ParticipantsTSV'][idx_part[0]][bids_data['ParticipantsTSV'][0].index(elt)] for elt in bids_data['ParticipantsTSV'].header}
@@ -106,9 +110,14 @@ def export_data(bids_data, output_select):
                     if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace(
                             'GlobalSidecars', '') in param['select_modality']) and sub[mod]:
                         get_files(sub[mod], param['select_session'], tmp_directory, sub['sub'], new_name, bids_data.dirname,
-                                  sdcar=True, anonymize=True)
-
+                                  sdcar=True, anonymize=anonymize, in_src=True)
+        os.makedirs(os.path.join(param['output_directory'], 'sourcedata'), exist_ok=True)
+        for dir in os.listdir(os.path.join(tmp_directory, 'sourcedata')):
+            shutil.move(os.path.join(tmp_directory, 'sourcedata', dir), os.path.join(param['output_directory'], 'sourcedata'))
         new_srctrck = bids.SrcDataTrack()
+        srctrack_file = os.path.join(param['output_directory'], 'sourcedata', bids.SrcDataTrack.filename)
+        if param['import_in_bids'] and os.path.exists(srctrack_file):
+            new_srctrck.read_file(tsv_full_filename=srctrack_file)
         for line in bids_data['SourceData'][0]['SrcDataTrack'][1::]:
             file_split = line[1].split('_')
             sub = file_split[0].replace('sub-', '')
@@ -121,8 +130,8 @@ def export_data(bids_data, output_select):
                     tmp_dict['bids_filename'] = line[1]
                 tmp_dict['upload_date'] = line[2]
                 new_srctrck.append(tmp_dict)
-        new_srctrck.write_file(tsv_full_filename=os.path.join(tmp_directory, 'sourcedata', bids.SrcDataTrack.filename))
-        shutil.move(os.path.join(tmp_directory, 'sourcedata'), param['output_directory'])
+        new_srctrck.write_file(tsv_full_filename=srctrack_file)
+
     if param['derivatives'] != 'None':
         for dev in bids_data['Derivatives'][0]['Pipeline']:
             if 'all' in param['derivatives'] or dev['name'] in param['derivatives'] and dev['name'] not in ['log', 'parsing', 'log_old', 'parsing_old']:
@@ -135,26 +144,30 @@ def export_data(bids_data, output_select):
                             if ('all' in param['select_modality'] or mod.replace('Process', '') in param['select_modality']) and sub[mod]:
                                 get_files(sub[mod], param['select_session'], param['output_directory'], sub['sub'], new_name, bids_data.dirname,
                                           sdcar=True)
-                new_datsetdesc = pip.DatasetDescPipeline()
-                for key in dev['DatasetDescJSON']:
-                    if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
-                        new_datsetdesc[key].copy_values(dev['DatasetDescJSON'][key])
-                    else:
-                        new_datsetdesc[key] = dev['DatasetDescJSON'][key]
-                if 'SourceDataset' in dev['DatasetDescJSON']:
-                    if anonymize:
-                        new_datsetdesc['SourceDataset'] = [sub_anonymize[elt] for elt in dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                    else:
-                        new_datsetdesc['SourceDataset'] = [elt for elt in
-                                                           dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                new_datsetdesc.write_file(os.path.join(param['output_directory'], 'derivatives', dev['name'], new_datsetdesc.filename))
+                # new_datsetdesc = DatasetDescPipeline()
+                # for key in dev['DatasetDescJSON']:
+                #     if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
+                #         new_datsetdesc[key].copy_values(dev['DatasetDescJSON'][key])
+                #     else:
+                #         new_datsetdesc[key] = dev['DatasetDescJSON'][key]
+                # if 'SourceDataset' in dev['DatasetDescJSON']:
+                #     if anonymize:
+                #         new_datsetdesc['SourceDataset'] = [sub_anonymize[elt] for elt in dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
+                #     else:
+                #         new_datsetdesc['SourceDataset'] = [elt for elt in
+                #                                            dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
+                # new_datsetdesc.write_file(os.path.join(param['output_directory'], 'derivatives', dev['name'], new_datsetdesc.filename))
 
     new_partTSV.write_file(tsv_full_filename=os.path.join(param['output_directory'], bids.ParticipantsTSV.filename))
+    if param['import_in_bids']:
+        new_bids_data._assign_bids_dir(new_bids_data.dirname)
+        new_bids_data.parse_bids()
+        bids_data._assign_bids_dir(bids_data.dirname)
 
 
-def get_files(mod_list, ses_list,  output_dir, sub_id, new_name, bidsdirname, sdcar=True, anonymize=False):
+def get_files(mod_list, ses_list,  output_dir, sub_id, new_name, bidsdirname, sdcar=True, anonymize=False, in_src=False):
     for elt in mod_list:
-        if elt['ses'] in ses_list or 'all' in ses_list:
+        if (elt['ses'] in ses_list or 'all' in ses_list) or (in_src and not elt['ses']):
             path = os.path.dirname(elt['fileLoc'])
             file = os.path.basename(elt['fileLoc'])
             filename, ext = os.path.splitext(file)
@@ -162,9 +175,14 @@ def get_files(mod_list, ses_list,  output_dir, sub_id, new_name, bidsdirname, sd
             new_filename = filename.replace(sub_id, new_name)
             sub_dir = sub_dir.replace(sub_id, new_name)
             os.makedirs(sub_dir, exist_ok=True)
-            out_file = os.path.join(sub_dir, new_filename + ext)
-            shutil.copy2(os.path.join(bidsdirname, path, filename + ext),
-                         out_file)
+            if ext == '.vhdr':
+                extension = ['.vhdr', '.vmrk', '.eeg']
+            else:
+                extension = [ext]
+            for ex in extension:
+                out_file = os.path.join(sub_dir, new_filename + ex)
+                shutil.copy2(os.path.join(bidsdirname, path, filename + ex),
+                             out_file)
             if sdcar:
                 sidecar = elt.get_modality_sidecars()
                 for sidecar_key in sidecar:
@@ -193,8 +211,14 @@ def anonymize_data(sub_selected, part_list, secret_key=None, otherpart=None, ful
     anonym_dict = {}
     if not full:
         header = [elt for elt in part_list.header if not elt.endswith('_ready') and not elt.endswith('_integrity')]
+    elif full and otherpart is not None:
+        yesno = messagebox.askyesno(title='Warning', message='Full-anonymisation is not possible with merging option.\n A pseudo-anonymisation will be done.\n Do you want to continue?')
+        if yesno:
+            header = [elt for elt in otherpart.header if not elt.endswith('_ready') and not elt.endswith('_integrity')]
+        else:
+            return {}, {}
     else:
-        header = bids.ParticipantsTSV.header
+        header = ['participant_id']
     if otherpart is None:
         otherpart = bids.ParticipantsTSV(header=header)
     if secret_key is None:
@@ -203,7 +227,7 @@ def anonymize_data(sub_selected, part_list, secret_key=None, otherpart=None, ful
         idx_part = [cnt for cnt, line in enumerate(part_list[1::]) if line[0].replace('sub-', '') == sub]
         new_id = hash_object(sub+secret_key)
         anonym_dict[sub] = new_id
-        tmp_dict = {elt: part_list[idx_part[0]][part_list[0].index(elt)] for elt in header}
+        tmp_dict = {elt: part_list[idx_part[0]][part_list[0].index(elt)] for elt in header if elt in part_list[0]}
         tmp_dict['participant_id'] = 'sub-' + new_id
         otherpart.append(tmp_dict)
     return anonym_dict, otherpart
@@ -216,7 +240,7 @@ def hash_object(obj):
     return clef
 
 
-class ParametersInterface(pip.Interface):
+class ParametersInterface(Interface):
     def __init__(self, bids_data):
         self.bids_data = bids_data
         self.subject = [sub['sub'] for sub in self.bids_data['Subject']]
