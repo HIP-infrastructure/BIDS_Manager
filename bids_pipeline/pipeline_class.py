@@ -301,11 +301,15 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
         is_same = all(is_same)
         sub_not_in = []
         elt_not_in = []
+        same_deriv = True
         for key in subject_list:
             if key in self['SourceDataset'].keys():
                 if isinstance(subject_list[key], dict):
                     for elt in subject_list[key]:
-                        if elt in self['SourceDataset'][key]:
+                        if elt == 'deriv-folder' and elt in self['SourceDataset'][key]:
+                            if any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]):
+                                same_deriv = False
+                        elif elt in self['SourceDataset'][key]:
                             elt_not_in.append(any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]))
                 else:
                     sub_not_in.append(all(elt not in self['SourceDataset'][key] for elt in subject_list[key]))
@@ -314,7 +318,7 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
         #subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
         if all(sub_not_in):
             subject_inside = False
-        elif any(elt_not_in):
+        elif any(elt_not_in) and same_deriv:
             subject_inside = False
         else:
             subject_inside = True

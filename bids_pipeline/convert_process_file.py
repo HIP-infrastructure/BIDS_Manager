@@ -188,6 +188,7 @@ def convert_xls_file(filename):
         nrow = worksheet.nrows
         if ncol == 0:
             continue
+
         for j in range(0, len(worksheet._cell_values), 1):
             tmp_dict = {worksheet._cell_values[j].index(key): key for key in worksheet._cell_values[j] if key}
             if check_header_continu(tmp_dict):

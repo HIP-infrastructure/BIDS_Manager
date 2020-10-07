@@ -862,7 +862,7 @@ class BidsBrick(dict):
                 os.makedirs(os.path.join(dest_change, dirname))
             if os.path.exists(os.path.join(Data2Import.dirname, name+'.json')) and not self['ElectrophyProcessJSON']:
                 self['ElectrophyProcessJSON'] = ElectrophyProcessJSON(jsonfile=os.path.join(Data2Import.dirname, name+'.json'))
-            shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(dest_change, dirname, fname))
+            shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']), os.path.join(Data2Import.dirname, fname))
             list_filename = [fname]
             process_flag = True
             #return [fname]
@@ -873,6 +873,10 @@ class BidsBrick(dict):
 
         if list_filename is None:
             list_filename = [filename + ext for ext in conv_ext]
+        if not all(os.path.exists(os.path.join(Data2Import.dirname, file)) for file in list_filename):
+            str_issue = 'file: ' + str(filename) + ' does not exist after conversion. Please verify the ' + \
+                        ' converter and the original file (' + os.path.join(Data2Import.dirname, self['fileLoc']) + ')'
+            raise FileNotFoundError(str_issue)
         # store sidecars that were already present in the data2import (those have higher priority than the ones created
         # by converters)
         curr_sdcrs = self.get_modality_sidecars()
@@ -3252,7 +3256,8 @@ class BidsDataset(MetaBrick):
                     is_in, sub_info, sub_index = bids_dict['ParticipantsTSV'].is_subject_present(modality['sub'])
                     if is_in:
                         bids_dict['ParticipantsTSV'].pop(sub_index)
-                    shutil.rmtree(os.path.join(bids_dict.dirname, 'sub-' + modality['sub']))
+                    if os.path.exists(os.path.join(bids_dict.dirname, 'sub-' + modality['sub'])):
+                        shutil.rmtree(os.path.join(bids_dict.dirname, 'sub-' + modality['sub']))
                 else:
                     for sc in bids_dict['Subject'][bids_dict.curr_subject['index']]['Scans']:
                         sc.write_file()
@@ -3297,6 +3302,7 @@ class BidsDataset(MetaBrick):
         copy_data2import = Data2Import()
         copy_data2import.copy_values(data2import)
         copy_data2import.dirname = data2import.dirname
+        sublist = set()  # list to store subject who received new data
         try:
             data2import.save_as_json(write_date=True)
             if keep_sourcedata:
@@ -3306,7 +3312,6 @@ class BidsDataset(MetaBrick):
                         self['SourceData'][-1]['SrcDataTrack'] = SrcDataTrack()
 
             self._assign_bids_dir(self.dirname)  # make sure to import in the current bids_dir
-            sublist = set()  # list to store subject who received new data
             for sub in data2import['Subject']:
                 import_sub_idx = data2import['Subject'].index(sub)
                 # test if subject is already present
@@ -3572,9 +3577,6 @@ class BidsDataset(MetaBrick):
             # not useful
             # if self['DatasetDescJSON']:
             #     self['DatasetDescJSON'].write_file()
-            if sublist:
-                sublist = list(sublist)
-                self.check_requirements(specif_subs=sublist)
             # data2import.clear()
             # self.parse_bids()
 
@@ -3587,6 +3589,10 @@ class BidsDataset(MetaBrick):
             #Check if the modality is not in the parsing
             if ('modality' in locals() or 'modality' in globals()):
                 check_self_after_error(self, modality)
+
+        if sublist:
+            sublist = list(sublist)
+            self.check_requirements(specif_subs=sublist)
 
         # could make it faster by just appending a new line instead of writing the whole file again
         self['ParticipantsTSV'].write_file()
