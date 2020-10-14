@@ -3342,6 +3342,7 @@ class RequirementsDialog(TemplateDialog):
                                 keys[key].append(val.replace(' ', ''))
                             else:
                                 keys[key].append(val)
+                        keys[key].sort()
                         # if len(list_val) < 2:
                         #     list_val = value.split(',')
                         #keys[key] = [val.replace(' ', '') for val in list_val]
@@ -3428,6 +3429,7 @@ class RequirementsDialog(TemplateDialog):
                                     else:
                                         key_dict[key].append(val)
                             key_dict[key] = list(set(key_dict[key]))
+                            key_dict[key].sort()
                         else:
                             if mod in verif_type:
                                 if key in verif_type[mod] and key != 'run':
