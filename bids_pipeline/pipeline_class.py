@@ -316,7 +316,7 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
             else:
                 elt_not_in.append(False)
         #subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
-        if all(sub_not_in):
+        if all(sub_not_in) and same_deriv:
             subject_inside = False
         elif any(elt_not_in) and same_deriv:
             subject_inside = False
@@ -331,6 +331,7 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
             if isinstance(subject2add[elt], list) and elt in self['SourceDataset'].keys():
                 self['SourceDataset'][elt].extend(subject2add[elt])
                 self['SourceDataset'][elt] = list(set(self['SourceDataset'][elt]))
+                self['SourceDataset'][elt].sort()
             elif isinstance(subject2add[elt], dict):
                 if elt in self['SourceDataset'].keys():
                     for clef in subject2add[elt]:
@@ -339,6 +340,7 @@ class DatasetDescPipeline(bids.DatasetDescJSON):
                         else:
                             self['SourceDataset'][elt][clef] = subject2add[elt][clef]
                         self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
+                        self['SourceDataset'][elt][clef].sort()
 
 
 class PipelineSetting(dict):
@@ -821,7 +823,18 @@ class Parameters(dict):
         return curr_path
 
     def command_arg(self, key, cmd_dict, subject_list):
-        if 'value_selected' in self.keys():
+        if 'incommandline' in self.keys():
+            if self['incommandline']:
+                if 'value_selected' in self.keys():
+                    cmd_dict[key] = self['value_selected']
+                else:
+                    cmd_dict[key] = self['default']
+            else:
+                if 'value_selected' not in self.keys():
+                    self['value_selected'] = self['default']
+                if self['value_selected']:
+                    cmd_dict[key] = ''
+        elif 'value_selected' in self.keys():
             # if isinstance(self['value_selected'], list):
             #     cmd_dict[key] = ', '.join(self['value_selected'])
             # else:
@@ -894,7 +907,7 @@ class Parameters(dict):
                 #cmd_line += determine_input_output_type(output_dict, cnt_tot, order)
                 #order.append(output_dict)
             elif isinstance(self[clef], bool):
-                cmd_line += ' ' + clef
+                cmd_line += ' ' + clef + ' ' + '{}'.format(self[clef])
             elif isinstance(self[clef], int) or isinstance(self[clef], float):
                 cmd_line += ' ' + clef + ' ' + '{}'.format(self[clef])
             elif isinstance(self[clef], list):
@@ -1729,7 +1742,7 @@ class Arguments(Parameters):
     read_value = ['read', 'elementstoread', 'multipleselection']
     list_value = ['possible_value', 'multipleselection']
     file_value = ['fileLoc', 'extension']
-    bool_value = ['default']
+    bool_value = ['default', 'incommandline']
     bids_value = ['readbids', 'type']
 
     def copy_values(self, input_dict):

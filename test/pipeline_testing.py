@@ -110,9 +110,6 @@ class PipelineTest(unittest.TestCase):
             elif cnt ==1:
                 self.assertEqual(elt['modality'], ['Eeg', 'Meg', 'Ieeg'])
 
-    def test_run_analysis(self):
-        pass
-
 
 class ParameterTest(unittest.TestCase):
 
@@ -221,6 +218,12 @@ class ParameterTest(unittest.TestCase):
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = "matlab -wait -nosplash -nodesktop -r \"cd('D:\\Matlab'); averaging_EP('{0}', '{1}'); exit\""
         self.assertIsInstance(cmd_arg, pip.Matlab)
+        self.assertEqual(cmd_line, cmd_tmp)
+
+        analyse = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd_bool', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_tmp = 'D:/Software/Bids_Manager/statistics_bdd.exe --participants False --bidsdirectory D:\\Data\\testing\\test_dataset --outputdirectory D:\\Data\\testing\\test_dataset\\derivatives\\testing --subjectlist "01, 02, 03"'
+        self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertEqual(cmd_line, cmd_tmp)
 
     def test_validity_input_parameters(self):
@@ -358,7 +361,7 @@ class DerivativesTest(unittest.TestCase):
         log_analysis, output_name, file_to_write = analyse.set_everything_for_analysis(self.results)
         datadesc = pip.DatasetDescPipeline(os.path.join(__bids_dir__, 'derivatives', output_name, 'dataset_description.json'))
         self.assertNotEqual(self.subject['Input_--input_file'], datadesc['SourceDataset']['Input_--input_file'])
-        self.assertEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['02', '03', '01']})
+        self.assertEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['01', '02', '03']})
 
 
 class RunSoftwareTest(unittest.TestCase):

@@ -156,7 +156,7 @@ class ParameterInterface(Interface):
     read_value = ['read', 'elementstoread', 'multipleselection']
     list_value = ['possible_value', 'multipleselection']
     file_value = ['fileLoc', 'extension']
-    bool_value = ['default']
+    bool_value = ['default', 'incommandline']
     bids_value = ['readbids', 'type']
 
     def __init__(self, bids_data, parameter_soft=None):

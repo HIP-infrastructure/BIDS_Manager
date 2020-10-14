@@ -1607,7 +1607,7 @@ class Ieeg(Electrophy):
     required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['ieeg']
     allowed_file_formats = ['.edf', '.vhdr', '.set']
-    readable_file_formats = allowed_file_formats + ['.trc', '.mff'] #'.ades', '.mat', '.eeg',
+    readable_file_formats = allowed_file_formats + ['.trc', '.eeg', '.mff'] #'.ades', '.mat', '.eeg',
     channel_type = ['ECOG', 'SEEG', 'DBS', 'PD', 'ADC', 'DAC', 'REF', 'OTHER'] + Electrophy.channel_type
     mod_channel_type = ['ECOG', 'SEEG']
     required_protocol_keys = []

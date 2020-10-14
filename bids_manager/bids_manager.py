@@ -1100,6 +1100,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             return
         self.make_available()
 
+
     @staticmethod
     def make_table(table):
         string_table = ''
@@ -1695,6 +1696,40 @@ class ModifDialog(TemplateDialog):
         self.destroy()
 
 
+class ModifName(TemplateDialog):
+
+    def __init__(self, parent, name):
+        self.dev_name = name
+        super().__init__(parent)
+
+    def body(self, parent):
+        self.title = Label(parent, text='You are about to change the name of {}'.format(self.dev_name), foreground='blue')
+        self.title.grid(row=1, column=1)
+        variant = self.dev_name.split('-')
+        if len(variant) >1:
+            self.explanation = Label(parent, text='Warning: Only the variant can be changed, in this case {}'.format(variant[1]))
+        else:
+            self.explanation = Label(parent, text='Warning: The pipeline name cannot be changed, only a variant can be added.')
+        self.explanation.grid(row=2, column=1)
+        self.change_name = Label(parent, text='New variant name for {}:'.format(self.dev_name))
+        self.new_name = Entry(parent)
+        self.change_name.grid(row=3, column=1)
+        self.new_name.grid(row=3, column=2)
+        self.ok_cancel_button(parent, row=4)
+
+    def ok(self):
+        self.results = self.new_name.get()
+        self.new_name.delete(0, END)
+        self.destroy()
+
+    def cancel(self):
+        if self.parent is not None:
+            self.parent.focus_set()
+        self.results = None
+        self.new_name.delete(0, END)
+        self.destroy()
+
+
 class FormDialog(TemplateDialog):
 
     def __init__(self, parent, input_dict, disabled=None, options=None, required_keys=None, required_protocol_keys=None, title=None):
@@ -1906,6 +1941,8 @@ class BidsBrickDialog(FormDialog):
         pop_menu = Menu(self.key_listw[key], tearoff=0)
         pop_menu.add_command(label='Show {}'.format(key), command=lambda ev=event, k=key: self.open_new_window(k, ev))
         pop_menu.add_command(label='Delete {}'.format(key), command=lambda k=key: self.remove_element(k))
+        if key == 'Derivatives':
+            pop_menu.add_command(label='Rename {}'.format(key), command=lambda k=key: self.rename_derivatives(k))
         pop_menu.post(event.x_root, event.y_root)
 
     @staticmethod
@@ -2202,6 +2239,44 @@ class BidsBrickDialog(FormDialog):
             else:
                 if isinstance(self.key_entries[key], Entry) and not self.key_entries[key].get() == self.main_brick[key]:
                     self.main_brick[key] = self.key_entries[key].get()
+
+    def rename_derivatives(self, k):
+        idx = self.key_listw[k].curselection()[0]
+        dev_name = self.main_brick['Derivatives'][0]['Pipeline'][idx]['name']
+        modif_name = ModifName(self, dev_name)
+        pip_variant = dev_name.split('-')
+        pip_name = pip_variant[0]
+        if modif_name.results is not None:
+            new_variant = modif_name.results
+            if pip_name in new_variant:
+                new_variant = new_variant.replace(pip_name, '')
+            if '-' in new_variant:
+                new_variant = new_variant.replace('-', '')
+            new_pip_name = pip_name + '-' + new_variant
+            #rename in parsing and change the folder name and dataset_desc
+            if os.path.exists(os.path.join(self.main_brick.dirname, 'derivatives', dev_name)):
+                os.rename(os.path.join(self.main_brick.dirname, 'derivatives', dev_name), os.path.join(self.main_brick.dirname, 'derivatives', new_pip_name))
+                self.main_brick['Derivatives'][0]['Pipeline'][idx]['name'] = new_pip_name
+                for sub in self.main_brick['Derivatives'][0]['Pipeline'][idx]['SubjectProcess']:
+                    for mod in sub:
+                        if mod in bids.Process.get_list_subclasses_names() and sub[mod]:
+                            for elt in sub[mod]:
+                                elt['fileLoc'] = elt['fileLoc'].replace(dev_name, new_pip_name)
+                        elif mod == 'Scans' and sub[mod]:
+                            for scan in sub[mod]:
+                                scan['fileLoc'] = scan['fileLoc'].replace(dev_name, new_pip_name)
+                self.main_brick['Derivatives'][0]['Pipeline'][idx]['DatasetDescJSON']['Name'] = new_pip_name
+                if 'PipelineDescription' in self.main_brick['Derivatives'][0]['Pipeline'][idx]['DatasetDescJSON'].keys():
+                    if 'fileLoc' in self.main_brick['Derivatives'][0]['Pipeline'][idx]['DatasetDescJSON']['PipelineDescription']:
+                        self.main_brick['Derivatives'][0]['Pipeline'][idx]['DatasetDescJSON']['PipelineDescription']['fileLoc'] = \
+                        self.main_brick['Derivatives'][0]['Pipeline'][idx]['DatasetDescJSON']['PipelineDescription'][
+                            'fileLoc'].replace(dev_name, new_pip_name)
+                self.main_brick['Derivatives'][0]['Pipeline'][idx]['DatasetDescJSON'].write_file(os.path.join(self.main_brick.dirname, 'derivatives', new_pip_name, bids.DatasetDescJSON.filename))
+                self.main_brick.save_as_json()
+            else:
+                messagebox.showerror('Error', 'The derivative {} doesn"t exist'.format(dev_name))
+        self.populate_list(self.key_listw[k], self.main_brick[k])
+        self.config(cursor="")
 
 
 class SmallDialog(TemplateDialog):
