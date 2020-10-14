@@ -818,9 +818,22 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 self.update_text('No upload directory is set.')
         except Exception as err:
             self.update_text(self.curr_bids.curr_log + str(err))
-        self.curr_data2import = None
-        self.upload_dir = None
-        self.change_menu_state(self.uploader_menu, start_idx=3, state=DISABLED)
+        if not os.path.exists(self.curr_data2import.dirname):
+            self.curr_data2import = None
+            self.upload_dir = None
+            self.change_menu_state(self.uploader_menu, start_idx=3, state=DISABLED)
+        else:
+            req_path = os.path.join(self.curr_bids.dirname, 'code', 'requirements.json')
+            self.curr_data2import = bids.Data2Import(self.upload_dir, req_path)
+            flag=False
+            if not self.curr_data2import.is_empty():
+                flag = messagebox.askyesno('Upload directory', 'Do you want to continue with the upload directory {}?'.format(self.upload_dir))
+            if self.curr_data2import.is_empty() or not flag:
+                self.curr_data2import = None
+                self.upload_dir = None
+                self.change_menu_state(self.uploader_menu, start_idx=3, state=DISABLED)
+            else:
+                self.update_text('Verify your upload directory {}.'.format(self.curr_data2import.dirname), delete_flag=False)
         self.make_available()
 
     def close_window(self):
