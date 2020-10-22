@@ -1497,7 +1497,8 @@ if __name__ == "__main__":
             window = GenericUploader(sys.argv[1])
         else:
             # bids_path = r'D:\Data\demo'
-            bids_path = r'D:\SAMUEL\Data\test_bids_meg'
+            # bids_path = r'D:\SAMUEL\Data\test_bids_meg'
+            bids_path = r'C:\Users\Samuel\Documents\Data\test_bids\DATA_EPINOV'
             window = GenericUploader(bids_path)
         window.show()
         sys.exit(app.exec_())
