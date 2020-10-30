@@ -47,7 +47,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.2.7'
+    version = '0.2.8'
     bids_startfile = os.path.join(os.getcwd(), 'Data')
     import_startfile = os.path.join(os.getcwd(), 'Data')
     folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
@@ -2093,6 +2093,10 @@ class BidsBrickDialog(FormDialog):
         if key == 'Derivatives':
             input_dict = self.main_brick[key][0]['Pipeline'][curr_idx]
             to_display = input_dict['name']
+            if to_display in ['log', 'parsing']:
+                messagebox.showwarning('Warning !!',
+                                       to_display + ' folder cannot be deleted.')
+                return
         else:
             input_dict = self.main_brick[key][curr_idx]
             to_display = input_dict['sub']
