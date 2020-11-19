@@ -1339,25 +1339,46 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                         and os.path.isfile(filename + '.vmrk'):
                     local_copy_and_anonymization(classe, src_path, dest_path, self.Subject["sub"],
                                                  self.Subject[classe][item["Index"]]["modality"])
-                    src = filename + '.vmrk'
-                    vmrk_name = os.path.split(filename)[1] + '.vmrk'
-                    dest_path_vmrk = os.path.split(dest_path)
-                    dest_path_vmrk = os.path.join(dest_path_vmrk[0], vmrk_name)
-                    local_copy_and_anonymization(classe, src, dest_path_vmrk, self.Subject["sub"],
+                    for ext in ['.vmrk', '.eeg', '.dat']:
+                        if os.path.exists(filename+ext):
+                            src = filename + ext
+                            vmrk_name = os.path.split(filename)[1] + ext
+                            dest_path_vmrk = os.path.split(dest_path)
+                            dest_path_vmrk = os.path.join(dest_path_vmrk[0], vmrk_name)
+                            local_copy_and_anonymization(classe, src, dest_path_vmrk, self.Subject["sub"],
+                                                         self.Subject[classe][item["Index"]]["modality"])
+                    # if os.path.isfile(filename + '.dat'):
+                    #     dat_name = os.path.split(filename)[1] + '.dat'
+                    #     src = filename + '.dat'
+                    # elif os.path.isfile(filename + '.eeg'):
+                    #     dat_name = os.path.split(filename)[1] + '.eeg'
+                    #     src = filename + '.eeg'
+                    # dest_path_dat = os.path.split(dest_path)
+                    # dest_path_dat = os.path.join(dest_path_dat[0], dat_name)
+                    # local_copy_and_anonymization(classe, src, dest_path_dat, self.Subject["sub"],
+                    #                              self.Subject[classe][item["Index"]]["modality"])
+                elif file_ext == '.ades': #and (os.path.isfile(filename + '.dat')):
+                    local_copy_and_anonymization(classe, src_path, dest_path, self.Subject["sub"],
                                                  self.Subject[classe][item["Index"]]["modality"])
-                    if os.path.isfile(filename + '.dat'):
-                        dat_name = os.path.split(filename)[1] + '.dat'
-                        src = filename + '.dat'
-                    elif os.path.isfile(filename + '.eeg'):
-                        dat_name = os.path.split(filename)[1] + '.eeg'
-                        src = filename + '.eeg'
-                    dest_path_dat = os.path.split(dest_path)
-                    dest_path_dat = os.path.join(dest_path_dat[0], dat_name)
-                    local_copy_and_anonymization(classe, src, dest_path_dat, self.Subject["sub"],
-                                                 self.Subject[classe][item["Index"]]["modality"])
+                    for ext in ['.dat']:
+                        if os.path.exists(filename + ext):
+                            src = filename + ext
+                            dat_name = os.path.split(filename)[1] + ext
+                            dest_path_dat = os.path.split(dest_path)
+                            dest_path_dat = os.path.join(dest_path_dat[0], dat_name)
+                            local_copy_and_anonymization(classe, src, dest_path_dat, self.Subject["sub"],
+                                                         self.Subject[classe][item["Index"]]["modality"])
                 else:
                     local_copy_and_anonymization(classe, src_path, dest_path, self.Subject["sub"],
                                                  self.Subject[classe][item["Index"]]["modality"])
+                for ext in ['.mrk', '.bad']:
+                    if os.path.exists(filename+ext):
+                        src = filename + ext
+                        dat_name = os.path.split(filename)[1] + ext
+                        dest_path_dat = os.path.split(dest_path)
+                        dest_path_dat = os.path.join(dest_path_dat[0], dat_name)
+                        local_copy_and_anonymization(classe, src, dest_path_dat, self.Subject["sub"],
+                                                     self.Subject[classe][item["Index"]]["modality"])
                 ins_bids_class.Data2Import._assign_import_dir(temp_patient_path)
                 if self.SubjectEmpty and item["Modality"] == 'Meg':
                     for elt in self.SubjectEmpty['Meg']:
@@ -1474,7 +1495,7 @@ class DialogSeizureType(QtWidgets.QDialog):
             self.accept()
 
 
-def call_generic_uplader(bids_path):
+def call_generic_uploader(bids_path):
     # print(sys.argv)
     # print(len(sys.argv))
     QtCore.pyqtRemoveInputHook()

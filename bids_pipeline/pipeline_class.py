@@ -248,7 +248,7 @@ class DerivativesSetting(object):
 
 
 class DatasetDescPipeline(bids.DatasetDescJSON):
-    keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Author', 'Date']
+    keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Authors', 'Date']
     filename = 'dataset_description.json'
     bids_version = '1.4.0'
 

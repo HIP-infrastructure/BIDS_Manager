@@ -1607,7 +1607,7 @@ class Ieeg(Electrophy):
     required_keys = Electrophy.required_keys + ['task', 'modality']
     allowed_modalities = ['ieeg']
     allowed_file_formats = ['.edf', '.vhdr', '.set']
-    readable_file_formats = allowed_file_formats + ['.trc', '.eeg', '.mff'] #'.ades', '.mat', '.eeg',
+    readable_file_formats = allowed_file_formats + ['.trc', '.eeg', '.mff', '.ades'] #, '.mat', '.eeg',
     channel_type = ['ECOG', 'SEEG', 'DBS', 'PD', 'ADC', 'DAC', 'REF', 'OTHER'] + Electrophy.channel_type
     mod_channel_type = ['ECOG', 'SEEG']
     required_protocol_keys = []
@@ -1738,7 +1738,7 @@ class EegGlobalSidecars(GlobalSidecars):
     required_keys = BidsBrick.required_keys
     allowed_file_formats = ['.tsv', '.json'] + EegPhoto.allowed_file_formats
     allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
-
+    required_protocol_keys = []
 
 """ Anat brick with its file-specific sidecar files."""
 
@@ -2030,13 +2030,17 @@ class MegHeadShape(BidsFreeFile):
         if self and isinstance(self[0], bytes):
             self.clear()
 
-# class MegGlobalSidecars(GlobalSidecars):
-#     complementary_keylist = ['Headshape']
-#     required_keys = BidsBrick.required_keys
-#     allowed_file_formats = ['.pos']
-#     allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
-#     required_protocol_keys = []
 
+class MegPhoto(Photo):
+    pass
+
+
+class MegGlobalSidecars(GlobalSidecars):
+    complementary_keylist = ['MegPhoto']
+    required_keys = BidsBrick.required_keys
+    allowed_file_formats = MegPhoto.allowed_file_formats
+    allowed_modalities = [eval(elmt).modality_field for elmt in complementary_keylist]
+    required_protocol_keys = []
 
 """ Behaviour brick with its file-specific sidecar files (To be finalized). """
 
@@ -2140,7 +2144,7 @@ class ScansTSV(BidsTSV):
 class Subject(BidsBrick):
 
     keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Pet', 'Meg', 'Eeg', 'Ieeg',
-                                   'Beh', 'IeegGlobalSidecars', 'EegGlobalSidecars', 'PetGlobalSidecars', 'Scans'] #'Pet',
+                                   'Beh', 'IeegGlobalSidecars', 'EegGlobalSidecars', 'PetGlobalSidecars', 'MegGlobalSidecars','Scans'] #'Pet',
     required_keys = BidsBrick.required_keys
 
     def __setitem__(self, key, value):
@@ -3671,7 +3675,8 @@ class BidsDataset(MetaBrick):
                     self['Subject'].pop(self.curr_subject['index'])
                     self.save_as_json()
                     self.write_log('Subject ' + element2remove['sub'] + ' has been removed from Bids dataset ' +
-                               self['DatasetDescJSON']['Name'] + ' raw folder.')
+                                   self['DatasetDescJSON']['Name'] + ' raw folder.')
+                    self.is_subject_present(element2remove['sub'])
             else:
                 if isinstance(self, Pipeline):
                     pip = self
