@@ -2874,7 +2874,13 @@ class BidsDataset(MetaBrick):
                                 subinfo[mod_dir][-1]['MegHeadShape'].clear_head()
 
             for scan in subinfo['Scans']:
-                scan['ScansTSV'].write_file(os.path.join(BidsDataset.dirname, scan['fileLoc']))
+                try:
+                    scan['ScansTSV'].write_file(os.path.join(BidsDataset.dirname, scan['fileLoc']))
+                except PermissionError:
+                    # if not os.path.exists(os.path.join(BidsDataset.dirname, scan['fileLoc'])):
+                    #     raise PermissionError('You don"t have the permission to write {} file and {} doesn"t exist.'.format(scan['fileLoc']))
+                    # else:
+                    continue
 
         def parse_bids_dir(bids_brick, currdir, is_bids, sourcedata=False, flag_process=False):
 
@@ -2948,7 +2954,12 @@ class BidsDataset(MetaBrick):
                                      self['ParticipantsTSV'].required_fields[1:]
             self.requirements['Requirements']['Subject'] = dict()
             self.requirements['Requirements']['Subject']['keys'] = {key: '' for key in keylist}
-            self.requirements.save_as_json()
+            try:
+                self.requirements.save_as_json()
+            except PermissionError:
+                if not os.path.exists(os.path.join(self.dirname, 'code', 'requirements.json')):
+                    log_warning = 'WARNING !! The requirements file couldn"t be saved because you don"t have the permission.'
+                    self.write_log(log_warning)
             self.get_requirements()
         else:
             # modify also for incomplete requirements !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2959,7 +2970,12 @@ class BidsDataset(MetaBrick):
             if keylist:
                 for key in keylist:
                     self.requirements['Requirements']['Subject']['keys'][key] = ''
-                self.requirements.save_as_json()
+                try:
+                    self.requirements.save_as_json()
+                except PermissionError:
+                    if not os.path.exists(os.path.join(self.dirname, 'code', 'requirements.json')):
+                        log_warning = 'WARNING !! The requirements file couldn"t be saved because you don"t have the permission.'
+                        self.write_log(log_warning)
 
         is_bids = []
         parse_bids_dir(self, self.dirname, is_bids)
