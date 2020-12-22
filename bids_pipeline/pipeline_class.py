@@ -28,6 +28,7 @@ def save_batch(bids_dir, batch_dict):
 class DerivativesSetting(object):
     path = None
     pipelines = []
+    log = ''
 
     def __init__(self, bids_dev):
         if isinstance(bids_dev, bids.Derivatives):
@@ -36,20 +37,24 @@ class DerivativesSetting(object):
         elif isinstance(bids_dev, str):
             if os.path.exists(bids_dev) and bids_dev.endswith('derivatives'):
                 self.path = bids_dev
-                self.read_directory(bids_dev)
+                self.log = self.read_directory(bids_dev)
 
     def read_directory(self, dev_dir):
+        log_reading = ''
         with os.scandir(dev_dir) as it:
             for entry in it:
                 if entry.is_dir():
                     pip = bids.Pipeline()
                     pip.dirname = entry.path
-                    empty_dir = self.empty_dirs(entry.name, recursive=True)
+                    empty_dir, log = self.empty_dirs(entry.name)#, recursive=True)
+                    log_reading += log
                     if not empty_dir:
                         self.parse_pipeline(pip.dirname, entry.name)
                     else:
+                        log_reading += 'Folder {} has been removed from the derivatives BIDS dataset because it is empty.\n'.format(entry.name)
                         shutil.rmtree(entry.path, ignore_errors=True)
                     #self.pipelines.append(pip)
+        return log_reading
 
     def is_empty(self):
         default = ['log', 'parsing']
@@ -85,10 +90,10 @@ class DerivativesSetting(object):
                     #     desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                     #     desc_data['Name'] = directory_name
                     #     break
-                    dataset_file = os.path.join(self.path, elt, DatasetDescPipeline.filename)
+                    dataset_file = os.path.join(self.path, elt, bids.DatasetDescPipeline.filename)
                     if not os.path.exists(dataset_file):
                         dataset_file = None
-                    desc_data = DatasetDescPipeline(filename=dataset_file)
+                    desc_data = bids.DatasetDescPipeline(filename=dataset_file)
                     same_param, sub_inside = desc_data.compare_parameters(param_var, subject_list)
                     if (same_param and not sub_inside) or mode:
                         directory_name = elt
@@ -98,7 +103,7 @@ class DerivativesSetting(object):
                         break
                 if not directory_name:
                     directory_name = pip_name.lower() + '-v' + str(len(variant_list) + 1)
-                    desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+                    desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                     desc_data['Name'] = directory_name
             # if it_exist and not variant_list:
             #     directory_name = pip_name + '-v1'
@@ -106,15 +111,15 @@ class DerivativesSetting(object):
             #     directory_name = pip_name + '-v' + str(len(variant_list)+1)
             else:
                 directory_name = pip_name.lower()
-                desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+                desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
                 desc_data['Name'] = directory_name
         else:
             directory_name = pip_name.lower()
-            desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+            desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
         os.makedirs(directory_path, exist_ok=True)
-        desc_data.write_file(jsonfilename=os.path.join(directory_path, DatasetDescPipeline.filename))
+        desc_data.write_file(jsonfilename=os.path.join(directory_path, bids.DatasetDescPipeline.filename))
         return directory_path, directory_name, desc_data
         # norm_path = os.path.normpath(directory_path)
         # os.makedirs(norm_path, exist_ok=True)
@@ -214,133 +219,108 @@ class DerivativesSetting(object):
                     pip['SubjectProcess'][-1]['sub'] = subname
                     parse_sub_bids_dir(entry.path, pip['SubjectProcess'][-1])
 
-    def empty_dirs(self, pip_name, recursive=False):
-        def is_empty(files, default_files):
-            return (len(files) == 0 or all(file in default_files for file in files))
+    # def empty_dirs(self, pip_name, recursive=False):
+    #     def is_empty(files, default_files):
+    #         return (len(files) == 0 or all(file in default_files for file in files))
+    #
+    #     empty_dirs = []
+    #     emp_dirs = []
+    #     pip_directory = os.path.join(self.path, pip_name)
+    #     analyse_name = pip_name.split('-')[0].lower()
+    #     default_files = [DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename, 'log_error_analyse.log', analyse_name + '_parameters.json']
+    #     for root, dirs, files in os.walk(pip_directory, topdown=False):
+    #         # print root, dirs, files
+    #         if recursive:
+    #             all_subs_empty = True  # until proven otherwise
+    #             for sub in dirs:
+    #                 full_sub = os.path.join(root, sub)
+    #                 if full_sub not in emp_dirs:
+    #                     # print full_sub, "not empty"
+    #                     all_subs_empty = False
+    #                     break
+    #         else:
+    #             all_subs_empty = (len(dirs) == 0)
+    #         if all_subs_empty and is_empty(files, default_files):
+    #             empty_dirs.append(True)
+    #             emp_dirs.append(root)
+    #         else:
+    #             empty_dirs.append(False)
+    #             # yield root
+    #     if all(empty_dirs):
+    #         return True
+    #     else:
+    #         return False
 
-        empty_dirs = []
-        emp_dirs = []
-        pip_directory = os.path.join(self.path, pip_name)
-        analyse_name = pip_name.split('-')[0].lower()
-        default_files = [DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename, 'log_error_analyse.log', analyse_name + '_parameters.json']
-        for root, dirs, files in os.walk(pip_directory, topdown=False):
-            # print root, dirs, files
-            if recursive:
-                all_subs_empty = True  # until proven otherwise
-                for sub in dirs:
-                    full_sub = os.path.join(root, sub)
-                    if full_sub not in emp_dirs:
-                        # print full_sub, "not empty"
-                        all_subs_empty = False
-                        break
-            else:
-                all_subs_empty = (len(dirs) == 0)
-            if all_subs_empty and is_empty(files, default_files):
-                empty_dirs.append(True)
-                emp_dirs.append(root)
-            else:
-                empty_dirs.append(False)
-                # yield root
-        if all(empty_dirs):
-            return True
-        else:
-            return False
-
-
-class DatasetDescPipeline(bids.DatasetDescJSON):
-    keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Authors', 'Date']
-    filename = 'dataset_description.json'
-    bids_version = '1.4.0'
-
-    def __init__(self, filename=None, param_vars=None, subject_list=None):
-        super().__init__()
-        if filename:
-            self.read_file(filename)
-        else:
-            self['PipelineDescription'] = {}
-            self['Author'] = getpass.getuser()
-            self['Date'] = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-            if param_vars and subject_list:
-                for key in param_vars:
-                    if key == 'Callname':
-                        self['PipelineDescription']['Name'] = param_vars[key]
+## nouvelle fonction empty dirs a tester
+    def empty_dirs(self, pip_name, rmemptysub=False):
+        def sub_empty(subdir):
+            empty_dirs = []
+            emp_dirs = []
+            dir2check = os.path.join(pip_directory, subdir)
+            for root, dirs, files in os.walk(dir2check, topdown=False):
+                # print root, dirs, files
+                if not dirs:
+                    all_subs_empty = True  # until proven otherwise
+                    for sub in dirs:
+                        full_sub = os.path.join(root, sub)
+                        if full_sub not in emp_dirs:
+                            # print full_sub, "not empty"
+                            all_subs_empty = False
+                            break
+                    if all_subs_empty and len(files) == 0:  # Add something about if it's in empty_dirs True,
+                        # Aouter un truc pour remove les sujets vide
+                        empty_dirs.append(True)
+                        emp_dirs.append(root)
                     else:
-                        self['PipelineDescription'][key] = param_vars[key]
-                self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
-
-    def read_file(self, jsonfilename):
-        if os.path.splitext(jsonfilename)[1] == '.json':
-            if not os.path.exists(jsonfilename):
-                print('datasetdescription.json does not exists.')
-                return
-            with open(jsonfilename, 'r') as file:
-                read_json = json.load(file)
-                for key in read_json:
-                    if key == 'Authors' and isinstance(self[key], list) and self[key] == ['n/a']:
-                        self[key] = read_json[key]
-                    elif (key in self.keylist and self[key] == 'n/a') or key not in self.keylist:
-                        self[key] = read_json[key]
-        else:
-            raise TypeError('File is not ".json".')
-
-    def compare_parameters(self, param_vars, subject_list):
-        keylist = [key for key in param_vars if not key == 'Callname']
-        is_same = []
-        if isinstance(self['PipelineDescription'], str):
-            is_same = False
-            no_subject = False
-            return is_same, no_subject
-        for key in keylist:
-            if key in self['PipelineDescription']:
-                if self['PipelineDescription'][key] == param_vars[key]:
-                    is_same.append(True)
+                        empty_dirs.append(False)
+                        # yield root
+            return empty_dirs
+        pip_directory = os.path.join(self.path, pip_name)
+        subdir = {sub: True for sub in os.listdir(pip_directory) if sub.startswith('sub-')}
+        all_files = []
+        analyse_name = pip_name.split('-')[0].lower()
+        default_files = [bids.DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename,
+                         'log_error_analyse.log', analyse_name + '_parameters.json']
+        log = ''
+        with os.scandir(pip_directory) as it:
+            for entry in it:
+                if entry.is_dir():
+                    isempty = sub_empty(entry.path)
+                    if all(isempty):
+                        subdir[entry.name] = True
+                    else:
+                        subdir[entry.name] = False
                 else:
-                    is_same.append(False)
-            else:
-                return False, False
-        is_same = all(is_same)
-        sub_not_in = []
-        elt_not_in = []
-        same_deriv = True
-        for key in subject_list:
-            if key in self['SourceDataset'].keys():
-                if isinstance(subject_list[key], dict):
-                    for elt in subject_list[key]:
-                        if elt == 'deriv-folder' and elt in self['SourceDataset'][key]:
-                            if any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]):
-                                same_deriv = False
-                        elif elt in self['SourceDataset'][key]:
-                            elt_not_in.append(any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]))
-                else:
-                    sub_not_in.append(all(elt not in self['SourceDataset'][key] for elt in subject_list[key]))
-            else:
-                elt_not_in.append(False)
-        #subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
-        if all(sub_not_in) and same_deriv:
-            subject_inside = False
-        elif any(elt_not_in) and same_deriv:
-            subject_inside = False
+                    if entry.name in default_files:
+                        all_files.append(True)
+                    else:
+                        all_files.append(False)
+        if all(subdir[sub] for sub in subdir) and all(all_files):
+            return True, log
         else:
-            subject_inside = True
-        #subject_inside = all(sub_not_in and elt_in)
-
-        return is_same, subject_inside
-
-    def update(self, subject2add):
-        for elt in subject2add:
-            if isinstance(subject2add[elt], list) and elt in self['SourceDataset'].keys():
-                self['SourceDataset'][elt].extend(subject2add[elt])
-                self['SourceDataset'][elt] = list(set(self['SourceDataset'][elt]))
-                self['SourceDataset'][elt].sort()
-            elif isinstance(subject2add[elt], dict):
-                if elt in self['SourceDataset'].keys():
-                    for clef in subject2add[elt]:
-                        if clef in self['SourceDataset'][elt]:
-                            self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
-                        else:
-                            self['SourceDataset'][elt][clef] = subject2add[elt][clef]
-                        self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
-                        self['SourceDataset'][elt][clef].sort()
+            #remove sub directory
+            if rmemptysub:
+                for sub in subdir:
+                    if subdir[sub]:
+                        shutil.rmtree(os.path.join(pip_directory, sub))
+                        log += 'Subject {} has been removed from the derivatives folder {}\n'.format(sub, pip_directory)
+                        #remove from dataste_desc
+                        for pip in self.pipelines:
+                            if pip['name'] == pip_name:
+                                if 'SourceDataset' in pip['DatasetDescJSON'] and 'sub' in pip['DatasetDescJSON']['SourceDataset']:
+                                    try:
+                                        subname = sub.replace('sub-', '')
+                                        pip['DatasetDescJSON']['SourceDataset']['sub'].remove(subname)
+                                        pip['DatasetDescJSON'].write_file(os.path.join(pip_directory, bids.DatasetDescPipeline.filename))
+                                        break
+                                    except:
+                                        continue
+                                if 'ParticipantsProcessTSV' in pip.keys():
+                                    ids = [cnt for cnt, line in enumerate(pip['ParticipantsProcessTSV']) if line[0] == sub]
+                                    if ids:
+                                        pip['ParticipantsProcessTSV'].pop(ids[0])
+                                        pip['ParticipantsProcessTSV'].write_file(os.path.join(pip_directory, bids.ParticipantsTSV.filename))
+            return False, log
 
 
 class PipelineSetting(dict):
@@ -478,7 +458,13 @@ class PipelineSetting(dict):
 
 
 
-        param_vars = results['analysis_param']
+        param_vars = {}
+        for key in results['analysis_param']:
+            if key[0].isdigit() and key[1] == '_':
+                lab = key[2::]
+            else:
+                lab = key
+            param_vars[lab] = results['analysis_param'][key]
         output_name = ''
         try:
             # update the parameters and get the subjects
@@ -555,18 +541,18 @@ class PipelineSetting(dict):
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             self.write_log()
             return self.log_error, output_name, {}
-        empty_dir = dev.empty_dirs(output_name, recursive=True)
+        empty_dir, log_empty = dev.empty_dirs(output_name, rmemptysub=True)
         if not empty_dir:
+            #remove the empty directory
             sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
             sub2remove = [sub for sub in subject_to_analyse['sub'] if sub not in sub_analysed]
             for subid in sub2remove:
                 subject_to_analyse['sub'].remove(subid)
                 self.log_error += 'The {} subject has finally not be analysed.\n'.format(subid)
-            for sub in subject_to_analyse['sub']:
-                participants.append({'participant_id': sub})
+            participants.update_after_analysis(sub_analysed, sub2remove)
             participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
-            dataset_desc.update(subject_to_analyse)
-            dataset_desc.write_file(jsonfilename=os.path.join(output_directory, DatasetDescPipeline.filename))
+            dataset_desc.update(subject_to_analyse, sub2remove, sub_analysed)
+            dataset_desc.write_file(jsonfilename=os.path.join(output_directory, bids.DatasetDescPipeline.filename))
             try:
                 go_throught_dir_to_convert(output_directory)
             except:
@@ -1790,6 +1776,7 @@ class Arguments(Parameters):
 class SubjectToAnalyse(Parameters):
     #required_keys = 'sub'
     keylist = ['ses', 'task', 'acq', 'proc', 'run', 'modality']
+    subdict = {}
 
     def __init__(self, sub_list, input_dict=None):
         if isinstance(sub_list, list):
@@ -1822,6 +1809,26 @@ class SubjectToAnalyse(Parameters):
         with open(filename, 'w+') as f:
             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
             f.write(json_str)
+
+    #Write the value by subject
+    def update_sub_dict(self, sub_list, input_dict=None):
+        self.subdict = {sub:{} for sub in sub_list}
+        if input_dict is not None:
+            for key in input_dict:
+                for sub in self.subdict:
+                    self.curr_bids.is_subject_present(sub)
+                    self.subdict[sub][key] = {}
+                    modality = input_dict[key]['modality']
+                    keylist = [mod for mod in input_dict[key] if mod != 'modality']
+                    for mod in keylist:
+                        modelt_inbids = [elt[mod] for m in modality for elt in self.curr_bids.curr_subject['Subject'][m] if elt[mod]]
+                        modelt_inbids = list(set(modelt_inbids))
+                        modelt_inbids.sort()
+                        if input_dict[key][mod]:
+                            self.subdict[sub][key][mod] = [elt for elt in input_dict[key][mod] if elt in modelt_inbids]
+                        else:
+                            #ajouter la fonction check_input
+                            pass
 
 
 def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
@@ -1924,6 +1931,31 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
 
     return warn_txt, err_txt
 
+# def check_dict_modalities(subdict, input_dict):
+#         is_equal = []
+#         for key in subdict:
+#             if key == 'modality':
+#                 continue
+#             elif key == 'mod':
+#                 if elt['modality'] in subject[key]:
+#                     is_equal.append(True)
+#                 else:
+#                     is_equal.append(False)
+#             elif elt[key] in subject[key]:
+#                 is_equal.append(True)
+#             else:
+#                 is_equal.append(False)
+#         if all(is_equal):
+#             key_attributes = [clef for clef in SubjectToAnalyse.keylist if not clef == 'modality']
+#             for key in key_attributes:
+#                 if key in elt and elt[key] and key not in temp_att:
+#                     temp_att[key] = [elt[key]]
+#                 elif key in elt and elt[key] and elt[key] not in temp_att[key]:
+#                     temp_att[key].append(elt[key])
+#             input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
+#             if mod == 'Meg' and os.path.isdir(input_files[-1]):
+#                 input_files[-1] = os.path.join(input_files[-1], 'c,rfDC')
+#     pass
 
 def main(argv):
     bidsdirectory = None

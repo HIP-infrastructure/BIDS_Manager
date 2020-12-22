@@ -363,6 +363,21 @@ class DerivativesTest(unittest.TestCase):
         self.assertNotEqual(self.subject['Input_--input_file'], datadesc['SourceDataset']['Input_--input_file'])
         self.assertEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['01', '02', '03']})
 
+    def test_empty_dirs(self):
+        outdev = os.path.join(__main_dir__, 'testempty', 'derivatives')
+        shutil.copytree(os.path.join(__main_dir__, 'testempty', 'orig'), outdev)
+        deriv = pip.DerivativesSetting(outdev)
+        self.assertEqual(deriv.log, 'Folder empty has been removed from the derivatives BIDS dataset because it is empty.\n')
+        self.assertTrue(len(os.listdir(outdev)) == 2)
+        isempty, loghalf = deriv.empty_dirs('half-empty', rmemptysub=True)
+        self.assertFalse(isempty)
+        self.assertEqual(loghalf, 'Subject sub-01 has been removed from the derivatives folder half-empty\n')
+        self.assertTrue(len(os.listdir(os.path.join(outdev, 'half-empty'))) == 4)
+        isempty, lognot = deriv.empty_dirs('notempty', rmemptysub=True)
+        self.assertFalse(isempty)
+        self.assertEqual(lognot, '')
+        shutil.rmtree(outdev)
+
 
 class RunSoftwareTest(unittest.TestCase):
     def setUp(self):
@@ -395,6 +410,7 @@ def suite_init():
     ##test the derivatives folder creation
     suite.addTest(DerivativesTest('test_create_output_directory'))
     suite.addTest(DerivativesTest('test_update_dataset_after_analysis_input_files'))
+    suite.addTest(DerivativesTest('test_empty_dirs'))
     #Test run analysis
     suite.addTest(RunSoftwareTest('test_run_analysis'))
     return suite

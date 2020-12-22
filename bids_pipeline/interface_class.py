@@ -159,16 +159,19 @@ class ParameterInterface(Interface):
     bool_value = ['default', 'incommandline']
     bids_value = ['readbids', 'type']
 
-    def __init__(self, bids_data, parameter_soft=None):
+    def __init__(self, bids_data, parameter_soft=None, nbr=None):
+        nb = ''
+        if nbr is not None:
+            nb = str(nbr) + '_'
         self.bids_data = bids_data
         if parameter_soft:
-            self.parameters = {key: value for key, value in parameter_soft.items() if key not in ['Input', 'Output', 'Callname', 'command_line_base', 'Intermediate']}
+            self.parameters = {nb+key: value for key, value in parameter_soft.items() if key not in ['Input', 'Output', 'Callname', 'command_line_base', 'Intermediate']}
             self.vars_interface()
 
     def vars_interface(self):
         for key in self.parameters:
             self[key] = {}
-            if key == 'Mode':
+            if 'Mode' in key:
                 if len(self.parameters[key]) > 1:
                     self[key]['attribut'] = 'Listbox'
                     self[key]['value'] = self.parameters[key]

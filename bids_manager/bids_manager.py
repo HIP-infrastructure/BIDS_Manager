@@ -1032,7 +1032,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             last_out = {i: '' for i, key in enumerate(output_dict.results)}
             batch_file = {key: {} for key in output_dict.results}
             for ind, key in enumerate(output_dict.results):
-                soft_analyse = pip.PipelineSetting(self.curr_bids, key)
+                tmp = key.split('_')
+                soft_name = '_'.join(tmp[1::])
+                soft_analyse = pip.PipelineSetting(self.curr_bids, soft_name)
                 for clef in output_dict.results[key]['input_param']:
                     if 'deriv-folder' in output_dict.results[key]['input_param'][clef] and 'Previous analysis results' in output_dict.results[key]['input_param'][clef]['deriv-folder'][0]:
                         idx_prev = int(output_dict.results[key]['input_param'][clef]['deriv-folder'][0].split('-')[0]) - 1
@@ -2135,6 +2137,8 @@ class BidsBrickDialog(FormDialog):
             messagebox.askyesno('Remove {}'.format(key), 'Are you sure you want to remove ' + to_display + ' from the dataset?'):
             self.config(cursor="wait")
             BidsBrickDialog.bidsdataset.remove(input_dict, in_deriv=in_deriv)
+            if BidsBrickDialog.meta_brick == 'Pipeline':
+                self.master.main_brick.save_as_json()
             self.populate_list(self.key_listw[key], self.main_brick[key])
             self.config(cursor="")
 
@@ -2527,8 +2531,8 @@ class BidsSelectDialog(TemplateDialog):
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
-            self.copy_values_in_list(self.soft_name)
-            self.parameter_list[self.soft_name]['Software'] = analysis_dict['Name']
+            soft_name_key = self.copy_values_in_list(self.soft_name)
+            self.parameter_list[soft_name_key]['Software'] = analysis_dict['Name']
         elif analysis_dict and analysis_dict == 'batch' and batch_file is None:
             self.batch = True
         elif analysis_dict and analysis_dict == 'batch' and batch_file:
@@ -2543,23 +2547,26 @@ class BidsSelectDialog(TemplateDialog):
             self.soft_name = 'exp'
             self.parameter_interface['Parameters'] = exp.ParametersInterface(bids_data)
             self.parameter_interface['Input'] = {}
-            self.copy_values_in_list(self.soft_name)
-            self.parameter_list['exp']['Software'] = analysis_dict
+            soft_name_key = self.copy_values_in_list(self.soft_name)
+            self.parameter_list[soft_name_key]['Software'] = analysis_dict
         super().__init__(parent)
 
     def copy_values_in_list(self, soft_name):
-        self.parameter_list[soft_name] = {}
-        self.parameter_list[soft_name]['JsonName'] = soft_name
+        nbr = len(self.parameter_list)
+        soft_name_key = str(nbr) +'_' + soft_name
+        self.parameter_list[soft_name_key] = {}
+        self.parameter_list[soft_name_key]['JsonName'] = soft_name
         for key in self.parameter_interface:
             if isinstance(self.parameter_interface[key], itf.Interface):
-                self.parameter_list[soft_name][key] = type(self.parameter_interface[key])(self.bids_data)
-                self.parameter_list[soft_name][key].copy_values(self.parameter_interface[key])
+                self.parameter_list[soft_name_key][key] = type(self.parameter_interface[key])(self.bids_data)
+                self.parameter_list[soft_name_key][key].copy_values(self.parameter_interface[key])
             elif isinstance(self.parameter_interface[key], dict):
-                self.parameter_list[soft_name][key] = {}
+                self.parameter_list[soft_name_key][key] = {}
                 for clef in self.parameter_interface[key]:
                     if isinstance(self.parameter_interface[key][clef], itf.Interface):
-                        self.parameter_list[soft_name][key][clef] = type(self.parameter_interface[key][clef])(self.bids_data)
-                        self.parameter_list[soft_name][key][clef].copy_values(self.parameter_interface[key][clef])
+                        self.parameter_list[soft_name_key][key][clef] = type(self.parameter_interface[key][clef])(self.bids_data)
+                        self.parameter_list[soft_name_key][key][clef].copy_values(self.parameter_interface[key][clef])
+        return soft_name_key
 
     def body(self, parent):
         if self.batch:
@@ -2643,13 +2650,17 @@ class BidsSelectDialog(TemplateDialog):
         save.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
 
     def create_frame_parameters(self, parent, soft_name=None, soft_dict=None):
+        if len(self.parameter_list) == 9:
+            messagebox.showinfo('Information', 'You cannot add a new process in your batch, the limitation is 10.')
+            return
         frame_parameters = Frame(parent.frame, relief=GROOVE, borderwidth=2)
         if soft_name:
             self.soft_name = soft_name
             try:
+                nbr = len(self.parameter_list)
                 nbr_soft = len(self.frame_soft.keys())
                 analysis_dict = pip.PipelineSetting(self.bids_data, soft_name)
-                self.parameter_interface['Parameters'] = itf.ParameterInterface(self.bids_data, analysis_dict['Parameters'])
+                self.parameter_interface['Parameters'] = itf.ParameterInterface(self.bids_data, analysis_dict['Parameters'], nbr=nbr)
                 self.parameter_interface['Input'] = {}
                 for cnt, elt in enumerate(analysis_dict['Parameters']['Input']):
                     tag_val = elt['tag']
@@ -2663,57 +2674,59 @@ class BidsSelectDialog(TemplateDialog):
             except EOFError as err:
                 messagebox.showerror('ERROR', err)
                 return
-            self.copy_values_in_list(self.soft_name)
-            self.parameter_list[self.soft_name]['Software'] = analysis_dict['Name']
-            self.frame_soft[self.soft_name] = frame_parameters
+            soft_name_key = self.copy_values_in_list(self.soft_name)
+            self.parameter_list[soft_name_key]['Software'] = analysis_dict['Name']
+            self.frame_soft[soft_name_key] = frame_parameters
             frame_title = Frame(frame_parameters)
             Label(frame_title, text=self.soft_name, justify='center', fg='#2E006C').grid(row=0, column=0)
-            Button(frame_title, text='-', command=lambda: self.delete_software_in_batch(self.soft_name)).grid(row=0, column=1)
+            Button(frame_title, text='-', command=lambda: self.delete_software_in_batch(soft_name_key)).grid(row=0, column=1)
             #Button(frame_title, text='valid', command=parent.Frame_to_scrollbar.master.master.grab_set()).grid(row=0, column=2)
             frame_title.pack(side=TOP)
+        else:
+            soft_name_key ='0_' + self.soft_name
 
-        if self.parameter_interface['Input']:
+        if self.parameter_list[soft_name_key]['Input']:
             frame_input_criteria = Frame(frame_parameters)
             Label(frame_input_criteria, text='Select input criteria', font='bold', fg='#1F618D').pack()
             frame_dict = dict()
-            for cnt, key in enumerate(self.parameter_interface['Input']):
+            for cnt, key in enumerate(self.parameter_list[soft_name_key]['Input']):
                 frame_dict[key] = Frame(frame_input_criteria)
                 Label(frame_dict[key], text='{0}: '.format(' '.join(key.split('_')[1:])), font='bold',
                       fg='#21177D').grid(row=0)
                 if soft_dict:
-                    max_req, cntR = self.create_button(frame_dict[key], self.parameter_interface['Input'][key], value_dict=soft_dict['input_param'][key])
+                    max_req, cntR = self.create_button(frame_dict[key], self.parameter_list[soft_name_key]['Input'][key], value_dict=soft_dict['input_param'][key])
                 else:
-                    max_req, cntR = self.create_button(frame_dict[key], self.parameter_interface['Input'][key])
+                    max_req, cntR = self.create_button(frame_dict[key], self.parameter_list[soft_name_key]['Input'][key])
                 frame_dict[key].pack(side=LEFT)
             frame_input_criteria.pack(side=LEFT)
 
         #Frame with the parameter selection
-        self.param_script[self.soft_name] = IntVar()
-        self.param_gui[self.soft_name] = IntVar()
+        self.param_script[soft_name_key] = IntVar()
+        self.param_gui[soft_name_key] = IntVar()
         frame_parameters_criteria = Frame(frame_parameters)
         Label(frame_parameters_criteria, text='Select parameters for analysis', font='bold', fg='#1F618D').pack(side=TOP)
         frame_param_check = Frame(frame_parameters_criteria)
         frame_param_check.pack(side=TOP)
         frame_param_select = Frame(frame_parameters_criteria)
         frame_param_select.pack(side=TOP)
-        self.param_file[self.soft_name] = ['.json']
-        param_file = Button(frame_param_check, text='Filename path', command=lambda: self.ask4file(self.param_file[self.soft_name]))
+        self.param_file[soft_name_key] = ['.json']
+        param_file = Button(frame_param_check, text='Filename path', command=lambda: self.ask4file(self.param_file[soft_name_key]))
         import_param_button = Checkbutton(frame_param_check, text='Select your script with parameters values',
-                                          variable=self.param_script[self.soft_name],
+                                          variable=self.param_script[soft_name_key],
                                           command=lambda: param_file.configure(state='active'))
         import_param_button.pack(side=LEFT)
         param_file.pack(side=LEFT)
         param_file.configure(state='disabled')
         select_param_button = Checkbutton(frame_param_check, text='Use the GUI to determine analysis parameters',
-                                          variable=self.param_gui[self.soft_name],
-                                          command=lambda: enable_frames(frame_param_select, self.param_gui[self.soft_name]))
+                                          variable=self.param_gui[soft_name_key],
+                                          command=lambda: enable_frames(frame_param_select, self.param_gui[soft_name_key]))
         select_param_button.pack(side=LEFT)
         if soft_dict:
             select_param_button.select()
-            max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'], value_dict=soft_dict['analysis_param'])
+            max_param, cntP = self.create_button(frame_param_select, self.parameter_list[soft_name_key]['Parameters'], value_dict=soft_dict['analysis_param'])
             enable(frame_param_select, 'normal')
         else:
-            max_param, cntP = self.create_button(frame_param_select, self.parameter_interface['Parameters'])
+            max_param, cntP = self.create_button(frame_param_select, self.parameter_list[soft_name_key]['Parameters'])
             enable(frame_param_select, 'disabled')
         frame_parameters_criteria.pack(side=LEFT)
         frame_parameters.pack(side=TOP)
@@ -2848,7 +2861,11 @@ class BidsSelectDialog(TemplateDialog):
             max_col = 1
         label_dict = {clef: '' for clef in var_dict.keys() if var_dict[clef]['attribut'] != 'Label'}
         for cnt, key in enumerate(label_dict):
-            label_dict[key] = Label(frame, text=key)
+            if key[0].isdigit() and key[1] == '_':
+                lab = key[2::]
+            else:
+                lab = key
+            label_dict[key] = Label(frame, text=lab)
             label_dict[key].grid(row=cnt + 1, sticky=W)
             att_type = var_dict[key]['attribut']
             val_temp = var_dict[key]['value']

@@ -17,8 +17,8 @@ def export_data(bids_data, output_select):
     if isinstance(bids_data, str):
         bids_data = bids.BidsDataset(bids_data)
     #Get the value from user
-    param = output_select['exp']['analysis_param']
-    sub_selected = output_select['exp']['subject_selected']
+    param = output_select['0_exp']['analysis_param']
+    sub_selected = output_select['0_exp']['subject_selected']
     if 'output_directory' not in param:
         raise EOFError('The output directory is missing.')
     if 'anonymise' not in param:
@@ -144,19 +144,19 @@ def export_data(bids_data, output_select):
                             if ('all' in param['select_modality'] or mod.replace('Process', '') in param['select_modality']) and sub[mod]:
                                 get_files(sub[mod], param['select_session'], param['output_directory'], sub['sub'], new_name, bids_data.dirname,
                                           sdcar=True)
-                # new_datsetdesc = DatasetDescPipeline()
-                # for key in dev['DatasetDescJSON']:
-                #     if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
-                #         new_datsetdesc[key].copy_values(dev['DatasetDescJSON'][key])
-                #     else:
-                #         new_datsetdesc[key] = dev['DatasetDescJSON'][key]
-                # if 'SourceDataset' in dev['DatasetDescJSON']:
-                #     if anonymize:
-                #         new_datsetdesc['SourceDataset'] = [sub_anonymize[elt] for elt in dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                #     else:
-                #         new_datsetdesc['SourceDataset'] = [elt for elt in
-                #                                            dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                # new_datsetdesc.write_file(os.path.join(param['output_directory'], 'derivatives', dev['name'], new_datsetdesc.filename))
+                new_datsetdesc = bids.DatasetDescPipeline()
+                for key in dev['DatasetDescJSON']:
+                    if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
+                        new_datsetdesc[key].copy_values(dev['DatasetDescJSON'][key])
+                    else:
+                        new_datsetdesc[key] = dev['DatasetDescJSON'][key]
+                if 'SourceDataset' in dev['DatasetDescJSON']:
+                    if anonymize:
+                        new_datsetdesc['SourceDataset'] = [sub_anonymize[elt] for elt in dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
+                    else:
+                        new_datsetdesc['SourceDataset'] = [elt for elt in
+                                                           dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
+                new_datsetdesc.write_file(os.path.join(param['output_directory'], 'derivatives', dev['name'], new_datsetdesc.filename))
 
     new_partTSV.write_file(tsv_full_filename=os.path.join(param['output_directory'], bids.ParticipantsTSV.filename))
     if param['import_in_bids']:

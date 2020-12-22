@@ -2337,6 +2337,115 @@ class DatasetDescJSON(BidsJSON):
         return value
 
 
+class DatasetDescPipeline(DatasetDescJSON):
+    keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Authors', 'Date']
+    filename = 'dataset_description.json'
+    bids_version = '1.4.0'
+
+    def __init__(self, filename=None, param_vars=None, subject_list=None):
+        super().__init__()
+        if filename:
+            self.read_file(filename)
+        else:
+            self['PipelineDescription'] = {}
+            self['Author'] = getpass.getuser()
+            self['Date'] = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            if param_vars and subject_list:
+                for key in param_vars:
+                    if key == 'Callname':
+                        self['PipelineDescription']['Name'] = param_vars[key]
+                    else:
+                        self['PipelineDescription'][key] = param_vars[key]
+                self['SourceDataset'] = {key: subject_list[key] for key in subject_list}
+
+    def read_file(self, jsonfilename):
+        if os.path.splitext(jsonfilename)[1] == '.json':
+            if not os.path.exists(jsonfilename):
+                print('datasetdescription.json does not exists.')
+                return
+            with open(jsonfilename, 'r') as file:
+                read_json = json.load(file)
+                for key in read_json:
+                    if key == 'Authors' and isinstance(self[key], list) and self[key] == ['n/a']:
+                        self[key] = read_json[key]
+                    elif (key in self.keylist and self[key] == 'n/a') or key not in self.keylist:
+                        self[key] = read_json[key]
+        else:
+            raise TypeError('File is not ".json".')
+
+    def compare_parameters(self, param_vars, subject_list):
+        keylist = [key for key in param_vars if not key == 'Callname']
+        is_same = []
+        if isinstance(self['PipelineDescription'], str):
+            is_same = False
+            no_subject = False
+            return is_same, no_subject
+        for key in keylist:
+            if key in self['PipelineDescription']:
+                if self['PipelineDescription'][key] == param_vars[key]:
+                    is_same.append(True)
+                else:
+                    is_same.append(False)
+            else:
+                return False, False
+        is_same = all(is_same)
+        sub_not_in = []
+        elt_not_in = []
+        same_deriv = True
+        for key in subject_list:
+            if key in self['SourceDataset'].keys():
+                if isinstance(subject_list[key], dict):
+                    for elt in subject_list[key]:
+                        if elt == 'deriv-folder' and elt in self['SourceDataset'][key]:
+                            if any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]):
+                                same_deriv = False
+                        elif elt in self['SourceDataset'][key]:
+                            elt_not_in.append(any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]))
+                else:
+                    sub_not_in.append(all(elt not in self['SourceDataset'][key] for elt in subject_list[key]))
+            else:
+                elt_not_in.append(False)
+        #subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
+        if all(sub_not_in) and same_deriv:
+            subject_inside = False
+        elif any(elt_not_in) and same_deriv:
+            subject_inside = False
+        else:
+            subject_inside = True
+        #subject_inside = all(sub_not_in and elt_in)
+
+        return is_same, subject_inside
+
+    def update(self, subject2add, subject2remove=None, sub2add=None):
+        idx2remove = []
+        for elt in subject2add:
+            if isinstance(subject2add[elt], list) and elt in self['SourceDataset'].keys():
+                self['SourceDataset'][elt].extend(subject2add[elt])
+                self['SourceDataset'][elt] = list(set(self['SourceDataset'][elt]))
+                self['SourceDataset'][elt].sort()
+            elif isinstance(subject2add[elt], dict):
+                if elt in self['SourceDataset'].keys():
+                    for clef in subject2add[elt]:
+                        if clef in self['SourceDataset'][elt]:
+                            self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
+                        else:
+                            self['SourceDataset'][elt][clef] = subject2add[elt][clef]
+                        self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
+                        self['SourceDataset'][elt][clef].sort()
+        #A tester
+            if elt == 'sub' and not subject2remove is None and subject2remove:
+                addsub = [sub for sub in sub2add if sub not in self['SourceDataset'][elt]]
+                if addsub:
+                    self['SourceDataset'][elt].extend(addsub)
+                for sub in self['SourceDataset'][elt]:
+                    if sub in subject2remove:
+                        idx2remove.append(self['SourceDataset'][elt].index(sub))
+        for ids in idx2remove:
+            self['SourceDataset']['sub'].pop(ids)
+
+    # def remove_sub(self, subject2remove):
+    #Verifier tout les éléments du input et qui ne sont pas commun mais specifique au sujet mais comment faire??
+
 ''' TSV bricks '''
 
 
@@ -2449,6 +2558,7 @@ class ParticipantsTSV(BidsTSV):
                 if 'sub-' not in line[idx]:
                     line[idx] = 'sub-' + line[idx]
 
+
 class ParticipantsProcessTSV(ParticipantsTSV):
     header = ['participant_id']
     required_fields = ['participant_id']
@@ -2469,6 +2579,20 @@ class ParticipantsProcessTSV(ParticipantsTSV):
     def read_file(self, tsv_full_filename=None):
         super().read_file(tsv_full_filename=tsv_full_filename)
         self.simplify_participants()
+
+    def update_after_analysis(self, sub2add, sub2remove):
+        self.update_ids()
+        idx_line2remove = []
+        for cnt, line in enumerate(self[1::]):
+            if line[0].replace('sub-', '') in sub2remove:
+                idx_line2remove.append(cnt)
+            elif line[0].replace('sub-', '') in sub2add:
+                sub2add.remove(line[0])
+        for elt in idx_line2remove:
+            self.pop(elt)
+        for sub in sub2add:
+            self.append({'participant_id': 'sub-' + sub})
+
 
 
 class MetaBrick(BidsBrick):
@@ -3707,13 +3831,23 @@ class BidsDataset(MetaBrick):
                     #self.save_as_json()
                     self.write_log('Subject ' + element2remove['sub'] + ' has been removed from derivatives folder ' +
                                    pip['name'])
-                    _, _, sub_idx = pip['ParticipantsProcessTSV'].is_subject_present(element2remove['sub'])
-                    if sub_idx:
-                        pip['ParticipantsProcessTSV'].pop(sub_idx)
-                        pip['ParticipantsProcessTSV'].write_file(os.path.join(self.dirname, 'derivatives', in_deriv, ParticipantsProcessTSV.filename))
-                        #self.save_as_json()
-                        self.write_log('Subject ' + element2remove['sub'] + ' has been removed from derivatives folder ' +
-                        pip['name'] + ' ' + self['ParticipantsProcessTSV'].filename + '.')
+                    if 'ParticipantsProcessTSV' in pip and pip['ParticipantsProcessTSV']:
+                        isin, _, sub_idx = pip['ParticipantsProcessTSV'].is_subject_present(element2remove['sub'])
+                        if isin:
+                            pip['ParticipantsProcessTSV'].pop(sub_idx)
+                            pip['ParticipantsProcessTSV'].write_file(os.path.join(self.dirname, 'derivatives', in_deriv, ParticipantsProcessTSV.filename))
+                            #self.save_as_json()
+                            self.write_log('Subject ' + element2remove['sub'] + ' has been removed from derivatives folder ' +
+                            pip['name'] + ' ' + self['ParticipantsProcessTSV'].filename + '.')
+                    #A tester
+                    if 'SourceDataset' in pip['DatasetDescJSON'] and 'sub' in pip['DatasetDescJSON']['SourceDataset']:
+                        if element2remove['sub'] in pip['DatasetDescJSON']['SourceDataset']['sub']:
+                            id_insource = pip['DatasetDescJSON']['SourceDataset']['sub'].index(element2remove['sub'])
+                            pip['DatasetDescJSON']['SourceDataset']['sub'].pop(id_insource)
+                            pip['DatasetDescJSON'].write_file(os.path.join(pip.cwdir, 'derivatives', pip['name'], DatasetDescJSON.filename))
+                            self.write_log(
+                                'Subject ' + element2remove['sub'] + ' has been removed from derivatives folder ' +
+                                pip['name'] + ' ' + DatasetDescJSON.filename + '.')
                 if not isinstance(self, Pipeline):
                     self.save_as_json()
         elif isinstance(element2remove, ModalityType) and element2remove.classname() in Subject.keylist:
