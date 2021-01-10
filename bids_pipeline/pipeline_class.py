@@ -1,3 +1,26 @@
+#!/usr/bin/python3
+# -*-coding:Utf-8 -*
+
+#     BIDS Pipeline select and analyse data in BIDS format.
+#     Copyright © 2018-2020 Aix-Marseille University, INSERM, INS
+#
+#     This file is part of BIDS Pipeline. This file manages the analysis.
+#
+#     BIDS Pipeline is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     any later version
+#
+#     BIDS Pipeline is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with BIDS Pipeline.  If not, see <https://www.gnu.org/licenses/>
+#
+#     Authors: Aude Jegou, 2019-2020
+
 from bids_manager import ins_bids_class as bids
 import json
 import os
