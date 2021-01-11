@@ -31,6 +31,7 @@ import hashlib
 import datetime
 import re
 import unicodedata
+import paramiko
 try:
     from PyQt5 import QtGui, QtCore, QtWidgets
 except:
@@ -59,6 +60,7 @@ from generic_uploader import patient_requirements_class
 from generic_uploader.modality_gui import ModalityGui
 from generic_uploader.import_by_modality import import_by_modality
 from generic_uploader.empty_room_dialog import EmptyRoomImportDialog
+from generic_uploader.data_transfert import data_transfert_sftp
 
 if 0:  # Used to compile, otherwise, it crashes
     pass
@@ -252,12 +254,31 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         f = open(self.log_filename, "a+")
         f.close()
         self.Subject = {}
+        if not self.bids_manager_mode:
+            # initialisation des paramètres d'upload
+            self.host = "gitlab-dynamap.timone.univ-amu.fr"
+            self.port = '22'
+            self.username = 'opstimvag'
+            self.private_key_path = r"C:\Users\Samuel\Documents\dev\priv_key_opstimvag"
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            key = paramiko.RSAKey.from_private_key_file(self.private_key_path)
+            try:
+                ssh.connect(self.host, self.port, self.username, pkey=key)
+                ssh.close()
+            except Exception as e:
+                #QtWidgets.QMessageBox.critical(self, "connection error", str(e))
+                exit()
 
-    def __init__(self, bids_path):
+    def __init__(self, bids_path, bids_manager_mode):
     # def __init__(self, bids_path=None):
                     # requirement_name="requirements_new.json"):
         # print("Generic Uploader is starting")
         # print(bids_path)
+        if bids_manager_mode:
+            self.bids_manager_mode = True
+        else:
+            self.bids_manager_mode = False
         QtWidgets.QMainWindow.__init__(self)
         if isinstance(bids_path, str):
             if not os.path.exists(bids_path):
@@ -290,7 +311,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.progressBar.setVisible(False)
         self.progressBar.setValue(0)
-        self.generic_uploader_version = str(1.05)
+        self.generic_uploader_version = str(1.1)
         self.setWindowTitle("BIDSUploader v" + self.generic_uploader_version)
         self.MenuList = self.ListMenuObject(self)
         self.listWidget.clear()
@@ -1417,7 +1438,9 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         #         f.write(company_list[a] + "\n")
         #     f.close()
         # AJOUTER ICI LE TRANSFERT PAR SFTP
-
+        if not self.bids_manager_mode:
+            data_transfert_sftp(self.host, self.port, self.username, self.private_key_path, '',
+                            temp_patient_path, 'uploader_folder')
         # ====================================================
         # rajouter ici la RAZ GUI
         self.progressBar.setValue(0)
@@ -1501,7 +1524,7 @@ def call_generic_uploader(bids_path):
     QtCore.pyqtRemoveInputHook()
     # app = QtWidgets.QApplication(sys.argv)
     app = QtWidgets.QApplication(sys.argv)
-    window = GenericUploader(bids_path)
+    window = GenericUploader(bids_path, bids_manager_mode=True)
     window.show()
     app.exec_()
     #sys.exit(app.exec_())
@@ -1515,12 +1538,12 @@ if __name__ == "__main__":
         # app = QtWidgets.QApplication(sys.argv)
         app = QtWidgets.QApplication(sys.argv)
         if len(sys.argv) > 1:
-            window = GenericUploader(sys.argv[1])
+            window = GenericUploader(sys.argv[1],bids_manager_mode=False)
         else:
             # bids_path = r'D:\Data\demo'
             # bids_path = r'D:\SAMUEL\Data\test_bids_meg'
             bids_path = r'C:\Users\Samuel\Documents\Data\test_bids\DATA_EPINOV'
-            window = GenericUploader(bids_path)
+            window = GenericUploader(bids_path,bids_manager_mode=False)
         window.show()
         sys.exit(app.exec_())
     except:
