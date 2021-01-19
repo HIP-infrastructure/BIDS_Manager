@@ -47,3 +47,17 @@ If you wish to compile these scripts using PyInstaller 4.0 or above, use the com
 pyinstaller --onefile --icon=bids_manager.ico --hidden-import PyQt5.sip bids_manager\\bids_manager.py
 ```
 An **example dataset** is available here: https://figshare.com/articles/Example_Dataset_for_BIDS_Manager/11687064
+
+# BIDS Uploader
+Package to transfer data and prepare them for importation in BIDS Dataset. It can be used in local through BIDS Manager
+or it can be used in sFTP mode to send data to another center.
+
+## sFTP Mode
+To distribute BIDS uploader to different center, you have to compile it with the good information (host(IP), port, ssh key, protocole name). These informations have to be filled in the code
+generic_uploader\\generic_uploader.py at the lines 239-249. Then, you can compile it with the command below:
+```
+pyinstaller --onefile --name BIDS_Uploader generic_uploader\\generic_uploader.py
+```
+The executable BIDS_uploader.exe can be distributed to the centers with the following files (stored in "config" folder):
+* config\\requirements.json (Requirements of the BIDS dataset)
+* config\\private_ssh_key
