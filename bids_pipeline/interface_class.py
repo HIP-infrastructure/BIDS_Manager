@@ -19,7 +19,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with BIDS Pipeline.  If not, see <https://www.gnu.org/licenses/>
 #
-#     Authors: Aude Jegou, 2019-2020
+#     Authors: Aude Jegou, 2019-2021
 
 import os
 import bids_manager.ins_bids_class as bids

@@ -322,33 +322,94 @@ class DerivativesTest(unittest.TestCase):
             shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
         if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v3'):
             shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v3')
+        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v4'):
+            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v4')
         __bids_dataset__.parse_bids()
         dev = pip.DerivativesSetting(__bids_dataset__['Derivatives'][0])
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory', self.results['analysis_param'], self.subject)
         self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
         dev.parse_pipeline(output_directory, output_name)
-        #Add subject with same parameter
+        # Add subject with same parameter
         new_subject = pip.SubjectToAnalyse(['03'], input_dict=self.results['input_param'])
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory', self.results['analysis_param'], new_subject)
         self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
         dev.parse_pipeline(output_directory, output_name)
         sub_in = dataset_desc['SourceDataset']['sub']
         sub_in.sort()
-        self.assertEqual(sub_in, ['01', '02', '03'])
-        #Create new directory
-        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
-                                                                                    self.results['analysis_param'],
-                                                                                    self.subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
-        dev.parse_pipeline(output_directory, output_name)
+        self.assertCountEqual(sub_in, ['01', '02', '03'])
+        # Add different acq and run with same subject
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '02'}
         self.results['input_param']['Input_--input_anat'] = {'modality': 'Anat', 'acq': ['postimp'], 'mod': ['T1w']}
-        new_subject = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
+        new_subject = pip.SubjectToAnalyse(['03'], input_dict=self.results['input_param'])
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     new_subject)
         self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        dataset_desc.update(new_subject, subanalysed=['01', '02', '03'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01', '02', '03'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_anat']['acq'], ['preimp', 'postimp'], 'The acq in dataset_description was not well updated')
+        self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_ieeg']['run'], ['01', '02'],
+                         'The run in dataset_description was not well updated')
+        dev.parse_pipeline(output_directory, output_name)
+        # Change the input modality with same subject
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'Dwi', 'acq': ['preimp'], 'mod': ['T1w']}
+        new_subject = pip.SubjectToAnalyse(['03'], input_dict=self.results['input_param'])
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
+                                                                                    self.results['analysis_param'],
+                                                                                    new_subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        dataset_desc.update(new_subject, subanalysed=['01', '02', '03'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01', '02', '03'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_anat']['modality'], ['Anat', 'Dwi'],
+                         'The modality in dataset_description was not well updated')
+        dev.parse_pipeline(output_directory, output_name)
+        # Change the input session with same subject
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '02', 'run': '01'}
+        new_subject = pip.SubjectToAnalyse(['01'], input_dict=self.results['input_param'])
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
+                                                                                    self.results['analysis_param'],
+                                                                                    new_subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        dataset_desc.update(new_subject, subanalysed=['01', '02', '03'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01', '02', '03'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_ieeg']['ses'], ['01', '02'],
+                         'The modality in dataset_description was not well updated')
+        dev.parse_pipeline(output_directory, output_name)
+        # New directory : Change the input session with same subject but with all session
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': ['01','02'], 'run': '01'}
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
+        new_subject = pip.SubjectToAnalyse(['01'], input_dict=self.results['input_param'])
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
+                                                                                    self.results['analysis_param'],
+                                                                                    new_subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
+        dataset_desc.update(new_subject, subanalysed=['01'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_ieeg']['ses'], ['01', '02'],
+                         'The modality in dataset_description was not well updated')
+        dev.parse_pipeline(output_directory, output_name)
+        # Create new directory
+        self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
+        self.results['input_param']['Input_--input_anat'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
+        self.subject = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
+                                                                                    self.results['analysis_param'],
+                                                                                    self.subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v3')
+        dev.parse_pipeline(output_directory, output_name)
+        # Create new directory because not same parameters
+        self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '40', '--criteria': ['Stim', 'stim'],
+                                          '--criteriadata': 'ses', '--task': 'acq'}
+        output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
+                                                                                    self.results['analysis_param'],
+                                                                                    self.subject)
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v4')
+        dev.parse_pipeline(output_directory, output_name)
+        # test the dataset update by removing an elements
+        self.subject.remove('02')
+        dataset_desc.update(self.subject, subject2remove=['02'], subanalysed=['01'])
+        self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01'])
 
     def test_update_dataset_after_analysis_input_files(self):
         analyse = pip.PipelineSetting(__bids_dataset__, 'ica')
@@ -359,19 +420,21 @@ class DerivativesTest(unittest.TestCase):
         self.subject = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         self.assertEqual(self.subject['Input_--input_file'], self.results['input_param']['Input_--input_file'])
         log_analysis, output_name, file_to_write = analyse.set_everything_for_analysis(self.results)
-        datadesc = pip.DatasetDescPipeline(os.path.join(__bids_dir__, 'derivatives', output_name, 'dataset_description.json'))
+        datadesc = bids.DatasetDescPipeline(os.path.join(__bids_dir__, 'derivatives', output_name, 'dataset_description.json'))
         self.assertNotEqual(self.subject['Input_--input_file'], datadesc['SourceDataset']['Input_--input_file'])
-        self.assertEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['01', '02', '03']})
+        self.assertCountEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['01', '02', '03']})
 
     def test_empty_dirs(self):
         outdev = os.path.join(__main_dir__, 'testempty', 'derivatives')
+        if os.path.exists(outdev):
+            shutil.rmtree(outdev)
         shutil.copytree(os.path.join(__main_dir__, 'testempty', 'orig'), outdev)
         deriv = pip.DerivativesSetting(outdev)
         self.assertEqual(deriv.log, 'Folder empty has been removed from the derivatives BIDS dataset because it is empty.\n')
         self.assertTrue(len(os.listdir(outdev)) == 2)
         isempty, loghalf = deriv.empty_dirs('half-empty', rmemptysub=True)
         self.assertFalse(isempty)
-        self.assertEqual(loghalf, 'Subject sub-01 has been removed from the derivatives folder half-empty\n')
+        self.assertEqual(loghalf, 'Subject sub-01 has been removed from the derivatives folder D:\\Data\\testing\\testempty\\derivatives\\half-empty\n')
         self.assertTrue(len(os.listdir(os.path.join(outdev, 'half-empty'))) == 4)
         isempty, lognot = deriv.empty_dirs('notempty', rmemptysub=True)
         self.assertFalse(isempty)
@@ -395,7 +458,7 @@ class RunSoftwareTest(unittest.TestCase):
 def suite_init():
     suite = unittest.TestSuite()
     #Test the def to create the gui to select the parameters
-    # suite.addTest(PipelineTest('test_init'))
+    suite.addTest(PipelineTest('test_init'))
     suite.addTest(PipelineTest('test_read_json'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected

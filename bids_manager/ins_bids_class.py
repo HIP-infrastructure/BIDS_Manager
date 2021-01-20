@@ -2349,7 +2349,7 @@ class DatasetDescPipeline(DatasetDescJSON):
         else:
             self['PipelineDescription'] = {}
             self['Author'] = getpass.getuser()
-            self['Date'] = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            self['Date'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             if param_vars and subject_list:
                 for key in param_vars:
                     if key == 'Callname':
@@ -2373,50 +2373,55 @@ class DatasetDescPipeline(DatasetDescJSON):
         else:
             raise TypeError('File is not ".json".')
 
-    def compare_parameters(self, param_vars, subject_list):
+    def compare_parameters(self, param_vars, subject_to_analyse):
         keylist = [key for key in param_vars if not key == 'Callname']
-        is_same = []
+        is_same_param = []
         if isinstance(self['PipelineDescription'], str):
-            is_same = False
+            is_same_param = False
             no_subject = False
-            return is_same, no_subject
+            # mettre qqch comme quoi on en peut pas comparer, est-ce que vous voulez ajouter à ce dossier
+            return is_same_param, no_subject
+        # compare the parameters selected by the user and the one in the dataset_description
         for key in keylist:
             if key in self['PipelineDescription']:
                 if self['PipelineDescription'][key] == param_vars[key]:
-                    is_same.append(True)
+                    is_same_param.append(True)
                 else:
-                    is_same.append(False)
+                    is_same_param.append(False)
             else:
                 return False, False
-        is_same = all(is_same)
-        sub_not_in = []
-        elt_not_in = []
-        same_deriv = True
-        for key in subject_list:
-            if key in self['SourceDataset'].keys():
-                if isinstance(subject_list[key], dict):
-                    for elt in subject_list[key]:
-                        if elt == 'deriv-folder' and elt in self['SourceDataset'][key]:
-                            if any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]):
-                                same_deriv = False
-                        elif elt in self['SourceDataset'][key]:
-                            elt_not_in.append(any(el not in self['SourceDataset'][key][elt] for el in subject_list[key][elt]))
-                else:
-                    sub_not_in.append(all(elt not in self['SourceDataset'][key] for elt in subject_list[key]))
-            else:
-                elt_not_in.append(False)
-        #subject_inside = all(sub in self['SourceDataset']['sub'] for sub in subject_list['sub'])
-        if all(sub_not_in) and same_deriv:
-            subject_inside = False
-        elif any(elt_not_in) and same_deriv:
-            subject_inside = False
+        is_same_param = all(is_same_param)
+
+        # check the subject list
+        subject_inside = False
+        if isinstance(self['SourceDataset'], str):
+            # cannot compare
+            return is_same_param, True
         else:
-            subject_inside = True
-        #subject_inside = all(sub_not_in and elt_in)
+            if any(sub in self['SourceDataset']['sub'] for sub in subject_to_analyse['sub']):
+                # compare the type of input
+                input_key = [key for key in subject_to_analyse if key != 'sub']
+                same_input = {key: True for key in input_key}
+                for inp in input_key:
+                    if 'deriv-folder' in subject_to_analyse[inp]:
+                        if not all(mod in self['SourceDataset'][inp]['deriv-folder'] for mod in
+                                   subject_to_analyse[inp]['deriv-folder']):
+                            return False, False
+                    if 'modality' in subject_to_analyse[inp] and 'modality' in self['SourceDataset'][inp] and not all(mod in self['SourceDataset'][inp]['modality'] for mod in subject_to_analyse[inp]['modality']):
+                        same_input[inp] = False
+                    elif 'ses' in subject_to_analyse[inp] and 'ses' in self['SourceDataset'][inp] and not all(ses in self['SourceDataset'][inp]['ses'] for ses in subject_to_analyse[inp]['ses']):
+                        same_input[inp] = False
+                    else:
+                        keylist = [key for key in subject_to_analyse[inp] if key not in ['modality', 'ses']]
+                        for key in keylist:
+                            if not all(elt in self['SourceDataset'][inp][key] for elt in subject_to_analyse[inp][key]):
+                                same_input[inp] = False
+                if all(same_input[inp] for inp in input_key):
+                    subject_inside = True
+        # Voir pour proposer à l'utilisateur de rajouter que les sujets qui ne sont pas anlyser ou si créer un nouveau dossier
+        return is_same_param, subject_inside
 
-        return is_same, subject_inside
-
-    def update(self, subject2add, subject2remove=None, sub2add=None):
+    def update(self, subject2add, subject2remove=None, subanalysed=None):
         idx2remove = []
         for elt in subject2add:
             if isinstance(subject2add[elt], list) and elt in self['SourceDataset'].keys():
@@ -2433,18 +2438,14 @@ class DatasetDescPipeline(DatasetDescJSON):
                         self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
                         self['SourceDataset'][elt][clef].sort()
         #A tester
-            if elt == 'sub' and not subject2remove is None and subject2remove:
-                addsub = [sub for sub in sub2add if sub not in self['SourceDataset'][elt]]
+            if elt == 'sub' and subject2remove is not None and subject2remove:
+                if subanalysed is not None:
+                    addsub = [sub for sub in subanalysed if sub not in self['SourceDataset'][elt]]
                 if addsub:
                     self['SourceDataset'][elt].extend(addsub)
-                for sub in self['SourceDataset'][elt]:
-                    if sub in subject2remove:
-                        idx2remove.append(self['SourceDataset'][elt].index(sub))
+                idx2remove = [cnt for cnt, sub in enumerate(self['SourceDataset'][elt]) if sub in subject2remove]
         for ids in idx2remove:
             self['SourceDataset']['sub'].pop(ids)
-
-    # def remove_sub(self, subject2remove):
-    #Verifier tout les éléments du input et qui ne sont pas commun mais specifique au sujet mais comment faire??
 
 ''' TSV bricks '''
 

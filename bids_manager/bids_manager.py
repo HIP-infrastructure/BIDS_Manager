@@ -2750,7 +2750,11 @@ class BidsSelectDialog(TemplateDialog):
             messagebox.showerror('Error Subjects', 'Please select subjects to analyse')
             return
         if not self.select_sub:
-            self.select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
+            flag = messagebox.askyesno('Subject selection', 'Do you want to run the analysis on all subject?')
+            if flag:
+                self.select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
+            else:
+                self.select_sub = []
 
     def get_results(self):
         self.results = {key: {'input_param': {}, 'analysis_param': {}, 'subject_selected': []} for key in
@@ -2803,6 +2807,10 @@ class BidsSelectDialog(TemplateDialog):
         if str_warn:
             flag = messagebox.askyesno('Warning',
                                        'Your parameter selection has created warnings.\n' + str_warn + 'Do you want to modify your selection?')
+            if flag:
+                return
+        if not self.select_sub:
+            flag = messagebox.askyesno('No subject selected', 'Do you want to modify your selection?')
             if flag:
                 return
         self.destroy()

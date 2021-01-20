@@ -53,7 +53,7 @@ Package to transfer data and prepare them for importation in BIDS Dataset. It ca
 or it can be used in sFTP mode to send data to another center.
 
 ## sFTP Mode
-To distribute BIDS uploader to different center, you have to compile it with the good information (host(IP), port, ssh key, protocole name). These informations have to be filled in the code
+To distribute BIDS uploader to different center, you have to compile it with the good information (host(IP), port, ssh key, protocole name, and secret key). These informations have to be filled in the code
 generic_uploader\\generic_uploader.py at the lines 239-249. Then, you can compile it with the command below:
 ```
 pyinstaller --onefile --name BIDS_Uploader generic_uploader\\generic_uploader.py

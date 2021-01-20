@@ -19,7 +19,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with BIDS Pipeline.  If not, see <https://www.gnu.org/licenses/>
 #
-#     Authors: Aude Jegou, 2019-2020
+#     Authors: Aude Jegou, 2019-2021
 
 from bids_manager import ins_bids_class as bids
 import json
@@ -88,15 +88,12 @@ class DerivativesSetting(object):
             is_empty = True
         return is_empty, pip_list
 
-    def create_pipeline_directory(self, pip_name, param_var, subject_list):
+    def create_pipeline_directory(self, pip_name, param_var, subject_to_analyse):
         def check_pipeline_variant(pip_list, pip_name):
             variant_list = []
             it_exist = False
             for pip in pip_list:
                 if pip.startswith(pip_name.lower()):
-                    # variant = pip.split('-')
-                    # if len(variant) > 1:
-                    #     variant_list.append(variant[1:])
                     variant_list.append(pip)
                     it_exist=True
             return it_exist, variant_list
@@ -107,38 +104,28 @@ class DerivativesSetting(object):
             it_exist, variant_list = check_pipeline_variant(pip_list, pip_name)
             if it_exist:
                 for elt in variant_list:
-                    # empty_dirs = self.empty_dirs(elt, recursive=True)
-                    # if empty_dirs:
-                    #     directory_name = elt
-                    #     desc_data = DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
-                    #     desc_data['Name'] = directory_name
-                    #     break
                     dataset_file = os.path.join(self.path, elt, bids.DatasetDescPipeline.filename)
                     if not os.path.exists(dataset_file):
                         dataset_file = None
                     desc_data = bids.DatasetDescPipeline(filename=dataset_file)
-                    same_param, sub_inside = desc_data.compare_parameters(param_var, subject_list)
+                    same_param, sub_inside = desc_data.compare_parameters(param_var, subject_to_analyse)
                     if (same_param and not sub_inside) or mode:
                         directory_name = elt
                         if not mode:
                             #desc_data['SourceDataset']['sub'].append(subject_list['sub'])
-                            desc_data.update(subject_list)
+                            desc_data.update(subject_to_analyse)
                         break
                 if not directory_name:
                     directory_name = pip_name.lower() + '-v' + str(len(variant_list) + 1)
-                    desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+                    desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_to_analyse)
                     desc_data['Name'] = directory_name
-            # if it_exist and not variant_list:
-            #     directory_name = pip_name + '-v1'
-            # elif it_exist and variant_list:
-            #     directory_name = pip_name + '-v' + str(len(variant_list)+1)
             else:
                 directory_name = pip_name.lower()
-                desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+                desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_to_analyse)
                 desc_data['Name'] = directory_name
         else:
             directory_name = pip_name.lower()
-            desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_list)
+            desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_to_analyse)
             desc_data['Name'] = directory_name
         directory_path = os.path.join(self.path, directory_name)
         os.makedirs(directory_path, exist_ok=True)
@@ -185,16 +172,6 @@ class DerivativesSetting(object):
                             subinfo[mod_dir + 'Process'][-1]['fileLoc'] = file.path
                             subinfo[mod_dir + 'Process'][-1].get_attributes_from_filename()
                             subinfo[mod_dir + 'Process'][-1]['modality'] = mod_dir
-                            #subinfo.check_file_in_scans(file.name, mod_dir + 'Process')
-                            #subinfo[mod_dir + 'Process'][-1].get_sidecar_files()
-                        # elif mod_dir + 'GlobalSidecars' in bids.BidsBrick.get_list_subclasses_names() and ext.lower() \
-                        #         in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
-                        #         in [eval(value + '.modality_field') for _, value in
-                        #             enumerate(bids.IeegGlobalSidecars.complementary_keylist)]:
-                        #     subinfo[mod_dir + 'GlobalSidecars'] = eval(mod_dir + 'GlobalSidecars(filename+ext)')
-                        #     subinfo[mod_dir + 'GlobalSidecars'][-1]['fileLoc'] = file.path
-                        #     subinfo[mod_dir + 'GlobalSidecars'][-1].get_attributes_from_filename()
-                        #     subinfo[mod_dir + 'GlobalSidecars'][-1].get_sidecar_files()
                     elif mod_dir and file.is_dir():
                         str2add = 'Process'
                         subinfo[mod_dir + str2add] = eval('bids.' + mod_dir + str2add + '()')
@@ -299,7 +276,7 @@ class DerivativesSetting(object):
                         # yield root
             return empty_dirs
         pip_directory = os.path.join(self.path, pip_name)
-        subdir = {sub: True for sub in os.listdir(pip_directory) if sub.startswith('sub-')}
+        subdir = {sub: True for sub in os.listdir(pip_directory) if sub.startswith('sub-') and os.path.isdir(os.path.join(pip_directory, sub))}
         all_files = []
         analyse_name = pip_name.split('-')[0].lower()
         default_files = [bids.DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename,
@@ -570,7 +547,7 @@ class PipelineSetting(dict):
             sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
             sub2remove = [sub for sub in subject_to_analyse['sub'] if sub not in sub_analysed]
             for subid in sub2remove:
-                subject_to_analyse['sub'].remove(subid)
+                subject_to_analyse.remove(subid)
                 self.log_error += 'The {} subject has finally not be analysed.\n'.format(subid)
             participants.update_after_analysis(sub_analysed, sub2remove)
             participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
@@ -1376,11 +1353,6 @@ class Input(ParametersSide):
                 idx = order[tag_val]
             if not not_inside:
                 input_att['Input_' + tag_val] = elt.get_input_values(subject_to_analyse, in_out, idx, order_tag[idx])
-                # if temp:
-                #     if temp != len(in_out[idx]):
-                #         raise ValueError('The elements in the list don"t have the same size')
-                # else:
-                #     temp = len(in_out[idx])
                 idx_in[idx] = elt['type']
         sub_to_delete = []
         for sub in in_out:
@@ -1480,7 +1452,6 @@ class InputArguments(Parameters):
                     val = subject_to_analyse['Input_'+tag][key]
                     if isinstance(val, list) and len(val) == 1:
                         path_key[key] = val[0]
-
                     # elif isinstance(val, str):
                     #     path_key[key] = val.lower()
             #que faire si plusieurs session sont selectionner ?
@@ -1799,7 +1770,7 @@ class Arguments(Parameters):
 class SubjectToAnalyse(Parameters):
     #required_keys = 'sub'
     keylist = ['ses', 'task', 'acq', 'proc', 'run', 'modality']
-    subdict = {}
+    # subdict = {}
 
     def __init__(self, sub_list, input_dict=None):
         if isinstance(sub_list, list):
@@ -1833,26 +1804,8 @@ class SubjectToAnalyse(Parameters):
             json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
             f.write(json_str)
 
-    #Write the value by subject
-    def update_sub_dict(self, sub_list, input_dict=None):
-        self.subdict = {sub:{} for sub in sub_list}
-        if input_dict is not None:
-            for key in input_dict:
-                for sub in self.subdict:
-                    self.curr_bids.is_subject_present(sub)
-                    self.subdict[sub][key] = {}
-                    modality = input_dict[key]['modality']
-                    keylist = [mod for mod in input_dict[key] if mod != 'modality']
-                    for mod in keylist:
-                        modelt_inbids = [elt[mod] for m in modality for elt in self.curr_bids.curr_subject['Subject'][m] if elt[mod]]
-                        modelt_inbids = list(set(modelt_inbids))
-                        modelt_inbids.sort()
-                        if input_dict[key][mod]:
-                            self.subdict[sub][key][mod] = [elt for elt in input_dict[key][mod] if elt in modelt_inbids]
-                        else:
-                            #ajouter la fonction check_input
-                            pass
-
+    def remove(self, subid):
+        self['sub'].remove(subid)
 
 def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
     warn_txt = ''
@@ -1954,31 +1907,6 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
 
     return warn_txt, err_txt
 
-# def check_dict_modalities(subdict, input_dict):
-#         is_equal = []
-#         for key in subdict:
-#             if key == 'modality':
-#                 continue
-#             elif key == 'mod':
-#                 if elt['modality'] in subject[key]:
-#                     is_equal.append(True)
-#                 else:
-#                     is_equal.append(False)
-#             elif elt[key] in subject[key]:
-#                 is_equal.append(True)
-#             else:
-#                 is_equal.append(False)
-#         if all(is_equal):
-#             key_attributes = [clef for clef in SubjectToAnalyse.keylist if not clef == 'modality']
-#             for key in key_attributes:
-#                 if key in elt and elt[key] and key not in temp_att:
-#                     temp_att[key] = [elt[key]]
-#                 elif key in elt and elt[key] and elt[key] not in temp_att[key]:
-#                     temp_att[key].append(elt[key])
-#             input_files.append(os.path.join(self.bids_directory, elt['fileLoc']))
-#             if mod == 'Meg' and os.path.isdir(input_files[-1]):
-#                 input_files[-1] = os.path.join(input_files[-1], 'c,rfDC')
-#     pass
 
 def main(argv):
     bidsdirectory = None

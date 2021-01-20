@@ -246,7 +246,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             self.private_key_path = os.path.join(self.init_path, 'config', 'PhrcPrivateKeyMarseille')
             #protocole name is the name appearing in the datset_description of your BIDS dataset
             protocole_name = 'phrc'
-            self.secret_key = protocole_name
+            #secret key is the word used for anonymisation
+            self.secret_key = ''
         self.moda_needed = [moda for moda in self.requirements['Requirements'].keys()
                             if moda not in ["Subject"]]
         # ========================================================================================================== #
