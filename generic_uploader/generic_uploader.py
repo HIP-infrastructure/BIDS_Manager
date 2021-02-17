@@ -238,16 +238,16 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             self.bids_dataset = None
             # =========== Elements to change to send your data in sFTP in another center ==========
             #host is the IP adress
-            self.host = 'cluster.thevirtualbrain.org'
+            self.host = 'gitlab-dynamap.timone.univ-amu.fr'
             #port is th sFTP port
             self.port = '22'
-            self.username = 'phrc'
+            self.username = 'opstimvag'
             #private_key_path is the file with the ssh key. It has to be saved in config folder
-            self.private_key_path = os.path.join(self.init_path, 'config', 'PhrcPrivateKeyMarseille')
+            self.private_key_path = os.path.join(self.init_path, 'config', 'priv_key_opstimvag')
             #protocole name is the name appearing in the datset_description of your BIDS dataset
-            protocole_name = 'phrc'
+            protocole_name = 'opstimvag'
             #secret key is the word used for anonymisation
-            self.secret_key = ''
+            self.secret_key = 'opstimvag'
         self.moda_needed = [moda for moda in self.requirements['Requirements'].keys()
                             if moda not in ["Subject"]]
         # ========================================================================================================== #
