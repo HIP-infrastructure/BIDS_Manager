@@ -1,0 +1,112 @@
+{
+ "Name": "graphcompare",
+ "Path": "D:/Software/graphcompare/graphcompare.exe",
+ "Parameters": {
+  "Mode": [
+   "automatic"
+  ],
+  "Callname": "graphcompare",
+  "Input": [
+   {
+    "tag": "interest_file",
+    "multiplesubject": false,
+    "modality": [
+     "Ieeg",
+     "Meg",
+     "Eeg"
+    ],
+    "type": "file",
+    "deriv-folder": [
+     ""
+    ],
+    "filetype": ".mat",
+    "optional": false
+   },
+   {
+    "tag": "background_file",
+    "multiplesubject": false,
+    "modality": [
+     "Ieeg",
+     "Meg",
+     "Eeg"
+    ],
+    "type": "file",
+    "deriv-folder": [
+     ""
+    ],
+    "filetype": ".mat",
+    "optional": true
+   },
+   {
+    "tag": "gardel_file",
+    "multiplesubject": false,
+    "modality": [
+     "Anat"
+    ],
+    "type": "file",
+    "deriv-folder": [
+     ""
+    ],
+    "filetype": "ElectrodesAllCoordinates.txt",
+    "optional": true
+   }
+  ],
+  "Output": {
+   "tag": "output_directory",
+   "multiplesubject": false,
+   "directory": true,
+   "type": "dir",
+   "extension": [
+    ".jpg",
+    ".mat"
+   ]
+  },
+  "thr_h2": {
+   "default": 0.02,
+   "unit": ""
+  },
+  "thr_lag": {
+   "default": 0,
+   "unit": ""
+  },
+  "stats_method": {
+   "possible_value": [
+    "Bonferroni",
+    "FDR",
+    "Permutation",
+    "Uncorrected"
+   ],
+   "multipleselection": false
+  },
+  "alpha": {
+   "default": 0.05,
+   "unit": ""
+  },
+  "dir_method": {
+   "possible_value": [
+    "Christian",
+    "Wendling"
+   ],
+   "multipleselection": false
+  },
+  "which_file": {
+   "possible_value": [
+    "Period of interest",
+    "Background",
+    "Both"
+   ],
+   "multipleselection": false
+  },
+  "byregions": {
+   "default": false,
+   "incommandline": true
+  },
+  "h2_regions": {
+   "possible_value": [
+    "Mean",
+    "Max"
+   ],
+   "multipleselection": false
+  }
+ }
+}

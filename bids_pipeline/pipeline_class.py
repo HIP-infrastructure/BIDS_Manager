@@ -429,6 +429,7 @@ class PipelineSetting(dict):
             return use_list
 
         def anywave_constraint(order, idx_in, in_out, mtg_type=None):
+            warning = ''
             in_idx = list(idx_in.keys())[0]
             order_key = list(order.keys())
             if '--output_file' in order or '--output_prefix' in order:
@@ -452,10 +453,12 @@ class PipelineSetting(dict):
                         listing = os.listdir(dirname)
                         file_mtg = [fi for fi in listing if mtg_type in fi and fi.endswith('_montage.mtg')]
                         if len(file_mtg) <1 or len(file_mtg) >1:
-                            raise EOFError('There is {0} montage file with the type {1}.'.format(len(file_mtg), mtg_type))
+                            #raise EOFError('There is {0} montage file with the type {1}.'.format(len(file_mtg), mtg_type))
+                            warning += 'There is no montage file for analysis {}, bipolar_ieeg will be used.\n'.format(filename)
+                            in_out[order['create_montage']].append('bipolar_ieeg')
                         else:
                             in_out[order['create_montage']].append(file_mtg[0])
-
+            return warning
 
 
         param_vars = {}
@@ -475,7 +478,7 @@ class PipelineSetting(dict):
                                                       results['input_param'],
                                                       self['Parameters']['Input'])
             if warn:
-                self.log_error += 'Warning: ' + warn
+                self.log_error += 'Warning {}:\n'.format(self['Name']) + warn
             if err:
                 raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
@@ -513,7 +516,9 @@ class PipelineSetting(dict):
             for sub in in_out:
                 ##To take into account the prefix and suffix in AnyWave
                 try:
-                    anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file)
+                    warn = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file)
+                    if warn:
+                        self.log_error += 'Warning {}:\n'.format(self['Name']) + warn
                 except Exception as er:
                     self.log_error += 'Error: ' + str(er)
                     self.write_log()
@@ -1472,7 +1477,7 @@ class InputArguments(Parameters):
                 in_out[sub][idx] = [check_dir_existence(self.bids_directory, chemin)]
         return input_att
 
-    def get_subject_files(self, subject, sub_id, deriv_reader=None):#, modality, subject_list, curr_bids):
+    def get_subject_files(self, subject, sub_id):#, modality, subject_list, curr_bids):
         input_files = []
         temp_att = {}
         if 'modality' not in subject.keys():
@@ -1502,11 +1507,11 @@ class InputArguments(Parameters):
                                         is_equal.append(True)
                                     else:
                                         is_equal.append(False)
-                                    # elif key == 'fileLoc':
-                                    #     if elt[key].endswith(self['filetype']):
-                                    #         is_equal.append(True)
-                                    #     else:
-                                    #         is_equal.append(False)
+                                # if not is_equal and self.deriv_input:
+                                #     if elt['fileLoc'].endswith(self['filetype']):
+                                #         is_equal.append(True)
+                                #     else:
+                                #         is_equal.append(False)
                                 if all(is_equal) and elt['fileLoc'].endswith(self['filetype']):
                                     key_attributes = [clef for clef in SubjectToAnalyse.keylist if not clef == 'modality']
                                     for key in key_attributes:

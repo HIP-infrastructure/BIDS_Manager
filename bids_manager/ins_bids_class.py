@@ -2424,26 +2424,38 @@ class DatasetDescPipeline(DatasetDescJSON):
     def update(self, subject2add, subject2remove=None, subanalysed=None):
         idx2remove = []
         for elt in subject2add:
-            if isinstance(subject2add[elt], list) and elt in self['SourceDataset'].keys():
-                self['SourceDataset'][elt].extend(subject2add[elt])
+            if 'SourceDataset' not in self.keys() or isinstance(self['SourceDataset'], str):
+                self['SourceDataset'] = {}
+            if 'PipelineDescription' not in self.keys():
+                self['PipelineDescription'] = {}
+            if isinstance(subject2add[elt], list):
+                if elt in self['SourceDataset'].keys():
+                    self['SourceDataset'][elt].extend(subject2add[elt])
+                else:
+                    self['SourceDataset'][elt] = subject2add[elt]
                 self['SourceDataset'][elt] = list(set(self['SourceDataset'][elt]))
                 self['SourceDataset'][elt].sort()
             elif isinstance(subject2add[elt], dict):
-                if elt in self['SourceDataset'].keys():
-                    for clef in subject2add[elt]:
-                        if clef in self['SourceDataset'][elt]:
-                            self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
-                        else:
-                            self['SourceDataset'][elt][clef] = subject2add[elt][clef]
-                        self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
-                        self['SourceDataset'][elt][clef].sort()
+                if elt not in self['SourceDataset'].keys():
+                    self['SourceDataset'][elt] = {}
+                for clef in subject2add[elt]:
+                    if clef in self['SourceDataset'][elt]:
+                        self['SourceDataset'][elt][clef].extend(subject2add[elt][clef])
+                    else:
+                        self['SourceDataset'][elt][clef] = subject2add[elt][clef]
+                    self['SourceDataset'][elt][clef] = list(set(self['SourceDataset'][elt][clef]))
+                    self['SourceDataset'][elt][clef].sort()
+
         #A tester
-            if elt == 'sub' and subject2remove is not None and subject2remove:
+            if elt == 'sub':
                 if subanalysed is not None:
                     addsub = [sub for sub in subanalysed if sub not in self['SourceDataset'][elt]]
-                if addsub:
-                    self['SourceDataset'][elt].extend(addsub)
-                idx2remove = [cnt for cnt, sub in enumerate(self['SourceDataset'][elt]) if sub in subject2remove]
+                    if addsub:
+                        self['SourceDataset'][elt].extend(addsub)
+                        self['SourceDataset'][elt] = list(set(self['SourceDataset'][elt]))
+                        self['SourceDataset'][elt].sort()
+                if subject2remove is not None and subject2remove:
+                    idx2remove = [cnt for cnt, sub in enumerate(self['SourceDataset'][elt]) if sub in subject2remove]
         for ids in idx2remove:
             self['SourceDataset']['sub'].pop(ids)
 

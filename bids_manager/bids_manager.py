@@ -47,7 +47,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.2.8'
+    version = '0.2.9'
     bids_startfile = os.path.join(os.getcwd(), 'Data')
     import_startfile = os.path.join(os.getcwd(), 'Data')
     folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
@@ -2755,6 +2755,7 @@ class BidsSelectDialog(TemplateDialog):
                 self.select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
             else:
                 self.select_sub = []
+        self.select_sub = list(set(self.select_sub))
 
     def get_results(self):
         self.results = {key: {'input_param': {}, 'analysis_param': {}, 'subject_selected': []} for key in
@@ -2833,14 +2834,15 @@ class BidsSelectDialog(TemplateDialog):
             messagebox.showinfo('Batch saved', 'Your batch has been saved in {}'.format(os.path.join(bp_dir, 'batch')))
             return
         else:
-            name = self.parameter_list[self.soft_name]['Software']
+            name = {key: self.parameter_list[key]['Software'] for key in self.parameter_list if self.soft_name in key}
+            keys = list(name.keys())
             if '/' in name:
-                name = name.replace('/', '-')
+                name = name[keys[0]].replace('/', '-')
             bp_an = os.path.join(bp_dir, 'analysis_done')
             os.makedirs(bp_an, exist_ok=True)
-            filename = name + '_' + author + '_' + date + '_saved.json'
+            filename = name[keys[0]] + '_' + author + '_' + date + '_saved.json'
             with open(os.path.join(bp_an, filename), 'w+') as f:
-                json_str = json.dumps(self.results[self.soft_name], indent=1, separators=(',', ': '), ensure_ascii=False,
+                json_str = json.dumps(self.results[keys[0]], indent=1, separators=(',', ': '), ensure_ascii=False,
                                       sort_keys=False)
                 f.write(json_str)
             messagebox.showinfo('Batch saved', 'Your batch has been saved in {}'.format(os.path.join(bp_an, filename)))

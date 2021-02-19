@@ -64,6 +64,33 @@ if 0:  # Used to compile, otherwise, it crashes
     pass
 
 
+#Put the fonction outside of the classes to call them in other scripts
+def valide_date(d):
+    try:
+        dd = datetime.datetime.strptime(d, '%d/%m/%Y')
+    except:
+        return False
+    else:
+        if (dd < datetime.datetime(year=1800, month=1, day=1)) or (dd > datetime.datetime.now()):
+            return False
+        else:
+            return dd.strftime('%d%m%Y')
+
+def valide_mot(mot):
+    nfkd_form = unicodedata.normalize('NFKD', mot)
+    only_ascii = nfkd_form.encode('ASCII', 'ignore')  # supprime les accents et les diacritiques
+    only_ascii_string = only_ascii.decode('ASCII').upper()  # reconvertit les bytes en string
+    only_az = re.sub('[^A-Z]', '', only_ascii_string)  # supprime tout ce qui n'est pas [A-Z]
+    return only_az
+
+
+def hash_object(obj):
+    clef256 = hashlib.sha256(obj.encode())
+    clef_digest = clef256.hexdigest()
+    clef = clef_digest[0:12]
+    return clef
+
+
 class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
     class ListMenuObject(QtWidgets.QMenu):
         def __init__(self, papa):
@@ -578,30 +605,6 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                     month = 12 - abs(today.month - born_datetime.month) - 1
                 generic_age = str(age) + "," + str(month)
                 return generic_age, birth_date
-
-        def valide_mot(mot):
-            nfkd_form = unicodedata.normalize('NFKD', mot)
-            only_ascii = nfkd_form.encode('ASCII', 'ignore')  # supprime les accents et les diacritiques
-            only_ascii_string = only_ascii.decode('ASCII').upper()  # reconvertit les bytes en string
-            only_az = re.sub('[^A-Z]', '', only_ascii_string)  # supprime tout ce qui n'est pas [A-Z]
-            return only_az
-
-        def hash_object(obj):
-            clef256 = hashlib.sha256(obj.encode())
-            clef_digest = clef256.hexdigest()
-            clef = clef_digest[0:12]
-            return clef
-
-        def valide_date(d):
-            try:
-                dd = datetime.datetime.strptime(d, '%d/%m/%Y')
-            except:
-                return False
-            else:
-                if (dd < datetime.datetime(year=1800, month=1, day=1)) or (dd > datetime.datetime.now()):
-                    return False
-                else:
-                    return dd.strftime('%d%m%Y')
 
         def creation_id(last_name, first_name, birth_date_str_dd_mm_yyyy):
             if last_name and first_name and birth_date:

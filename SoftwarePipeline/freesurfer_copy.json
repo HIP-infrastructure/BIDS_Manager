@@ -1,0 +1,43 @@
+{
+ "Name": "freesurfer",
+ "Path": "D:/Software/freesurfer_copy/freesurfer_copy.exe",
+ "Parameters": {
+  "Mode": [
+   "automatic"
+  ],
+  "Callname": "freesurfer_copy",
+  "Input": [
+   {
+    "tag": "--bidsdirectory",
+    "multiplesubject": true,
+    "modality": [
+     "Anat"
+	 ],
+    "type": "dir"
+   }
+  ],
+  "--mod": {
+   "readbids": true,
+   "type": "mod"
+  },
+  "--subjectlist": {
+   "readbids": true,
+   "type": "sub"
+  },
+  "--ses": {
+   "readbids": true,
+   "type": "ses"
+  },
+  "--acq": {
+   "readbids": true,
+   "type": "acq"
+  },
+  "Output": {
+   "tag": "--outputdirectory",
+   "multiplesubject": true,
+   "directory": true,
+   "type": "",
+   "extension": []
+  }
+ }
+}

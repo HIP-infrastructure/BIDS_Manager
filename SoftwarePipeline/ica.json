@@ -1,0 +1,69 @@
+{
+ "Name": "ICA",
+ "Path": "//dynaserv/Softwares/anywave/AnyWave.exe",
+ "Parameters": {
+  "Mode": [
+   "automatic"
+  ],
+  "Intermediate": "AnyWave",
+  "Callname": "ica",
+  "hp": {
+   "default": "0",
+   "unit": "Hz"
+  },
+  "lp": {
+   "default": "0",
+   "unit": "Hz"
+  },
+  "comp": {
+   "default": "",
+   "unit": "components"
+  },
+  "downsampling": {
+   "default": true,
+   "incommandline": true
+  },
+  "modality": {
+   "readbids": true,
+   "type": "modality"
+  },
+  "output_file": {
+	"readbids": true,
+	"type": "file"
+  },
+  "use_markers": {
+   "read": "*_events.tsv",
+   "elementstoread": "trial_type",
+   "multipleselection": true
+  },
+  "skip_markers": {
+    "possible_value": [
+	 "Artefact"
+	 ],
+	"multipleselection": false
+  },
+  "skip_bad": {
+   "default": true,
+   "incommandline": true
+  },
+  "Input": [
+   {
+    "tag": "--input_file",
+    "multiplesubject": false,
+    "modality": [
+     "Ieeg",
+     "Meg",
+     "Eeg"
+    ],
+    "type": "file"
+   }
+  ],
+  "Output": {
+   "tag": "--output_dir",
+   "multiplesubject": false,
+   "directory": true,
+   "type": "",
+   "extension": ".mat"
+  }
+ }
+}

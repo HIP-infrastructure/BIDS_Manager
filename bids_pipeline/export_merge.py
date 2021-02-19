@@ -25,10 +25,16 @@ import bids_manager.ins_bids_class as bids
 # from .pipeline_class import DatasetDescPipeline
 from .interface_class import Interface
 from generic_uploader import deltamed, micromed, anonymize_edf, anonymizeDicom
-from tkinter import messagebox
+from generic_uploader.generic_uploader import valide_mot, hash_object, valide_date
+from tkinter import messagebox, filedialog
+from tkinter import Tk, Variable, Listbox, Button, Frame, Label, GROOVE, messagebox, Entry
+from tkinter.ttk import Combobox
+from tkcalendar import Calendar, DateEntry
 import hashlib
 import os
 import shutil
+import random
+import platform
 
 __param__ = ['import_in_bids', 'output_directory', 'select_session', 'select_modality', 'anonymise', 'derivatives']
 
@@ -36,11 +42,14 @@ __param__ = ['import_in_bids', 'output_directory', 'select_session', 'select_mod
 def export_data(bids_data, output_select):
     log = ''
     anonymize = False
+    new_bids_attributes = None
+    deface = False
     #initiate the parameter value
     if isinstance(bids_data, str):
         bids_data = bids.BidsDataset(bids_data)
     #Get the value from user
     param = output_select['0_exp']['analysis_param']
+    #sub_selected = random.shuffle(output_select['0_exp']['subject_selected'])
     sub_selected = output_select['0_exp']['subject_selected']
     if 'output_directory' not in param:
         raise EOFError('The output directory is missing.')
@@ -53,14 +62,13 @@ def export_data(bids_data, output_select):
         param['sourcedata'] = None
     if 'derivatives' not in param:
         param['derivatives'] = 'None'
+    if param['defaceanat']:
+        deface=True
     #Errors if merge and the dataset selected is not Bids or if the session name are different
     if param['import_in_bids']:
         try:
             new_bids_data = bids.BidsDataset(param['output_directory'])
-            ses = [elt['ses'] for sub in new_bids_data['Subject'] for mod in
-                   bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() if mod for elt
-                   in sub[mod]]
-            ses = list(set(ses))
+            new_bids_attributes, ses = get_attributes_newbids(new_bids_data)
             if 'all' in param['select_session']:
                 ses_old = [elt['ses'] for sub in bids_data['Subject'] for mod in
                    bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() if mod for elt
@@ -76,39 +84,54 @@ def export_data(bids_data, output_select):
     if param['anonymise'] == 'pseudo-anonymisation' or param['anonymise'] == 'full-anonymisation':
         anonymize = True
         full = False
-        if not param['import_in_bids']:
-            secret_key = None
-            other_part = None
-        else:
-            dataset = bids.DatasetDescJSON()
-            dataset.read_file(os.path.join(param['output_directory'], dataset.filename))
-            secret_key = dataset['Name']
-            other_part = bids.ParticipantsTSV(header=['participant_id'], required_fields=['participant_id'])
-            other_part.read_file(os.path.join(param['output_directory'], other_part.filename))
         if param['anonymise'] == 'full-anonymisation':
             full = True
-        sub_anonymize, new_partTSV = anonymize_data(sub_selected, bids_data['ParticipantsTSV'], secret_key=secret_key, otherpart=other_part, full=full)
-        if not sub_anonymize and not new_partTSV:
-            return
-    else:
-        header = [elt for elt in bids_data['ParticipantsTSV'].header if not elt.endswith('_ready') and not elt.endswith('_integrity')]
+    if not param['import_in_bids']:
+        header = [elt for elt in bids_data['ParticipantsTSV'].header if
+                  not elt.endswith('_ready') and not elt.endswith('_integrity')]
         new_partTSV = bids.ParticipantsTSV(header=header, required_fields=['participant_id'])
+        random.shuffle(sub_selected)
+        sub_anonymize = {}
         for sub in sub_selected:
-            idx_part = [cnt for cnt, line in enumerate(bids_data['ParticipantsTSV']) if line[0].replace('sub-', '') == sub]
-            tmp_dict = {elt: bids_data['ParticipantsTSV'][idx_part[0]][bids_data['ParticipantsTSV'][0].index(elt)] for elt in bids_data['ParticipantsTSV'].header}
+            idx_part = [cnt for cnt, line in enumerate(bids_data['ParticipantsTSV']) if
+                        line[0].replace('sub-', '') == sub]
+            tmp_dict = {elt: bids_data['ParticipantsTSV'][idx_part[0]][bids_data['ParticipantsTSV'][0].index(elt)] for
+                        elt in bids_data['ParticipantsTSV'].header}
+            if anonymize:
+                sub_anonymize[sub] = hash_object(sub+'exportation')
+            else:
+                sub_anonymize[sub] = sub
+            tmp_dict['participant_id'] = 'sub-'+sub_anonymize[sub]
             new_partTSV.append(tmp_dict)
-    tmp_directory = os.path.join(bids_data.dirname, 'derivatives', 'bids_pipeline', 'tmp_directory')
-    os.makedirs(tmp_directory, exist_ok=True)
+
+    else:
+        dataset = bids.DatasetDescJSON()
+        dataset.read_file(os.path.join(param['output_directory'], dataset.filename))
+        secret_key = dataset['Name']
+        other_part = bids.ParticipantsTSV(header=['participant_id'], required_fields=['participant_id'])
+        other_part.read_file(os.path.join(param['output_directory'], other_part.filename))
+        #get the subject ID from the new
+        subinside = [sub['sub'] for sub in new_bids_data['Subject']]
+        root = Tk()
+        results = AssociateSubjects(root, sub_selected, subinside, secret_key, anonymize)
+        root.mainloop()
+        newsub_dict = results.new_id
+        random.shuffle(sub_selected)
+        try:
+            sub_anonymize, new_partTSV = create_subject_id(sub_selected, bids_data['ParticipantsTSV'], otherpart=other_part, full=full, sub_dict=newsub_dict)
+        except Exception as err:
+            messagebox.showerror('Subject selection', err)
+            return
+    #tmp_directory = os.path.join(bids_data.dirname, 'derivatives', 'bids_pipeline', 'tmp_directory')
+    #os.makedirs(tmp_directory, exist_ok=True)
 
     for sub in bids_data['Subject']:
         if sub['sub'] in sub_selected:
-            new_name = sub['sub']
-            if anonymize:
-                new_name = sub_anonymize[sub['sub']]
+            new_name = sub_anonymize[sub['sub']]
             for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
                 if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace('GlobalSidecars', '') in param['select_modality']) and sub[mod]:
-                    get_files(sub[mod], param['select_session'], param['output_directory'], sub['sub'], new_name, bids_data.dirname, sdcar=True)
-                elif mod == 'Scans' and mod:
+                    get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, new_bids_attributes=new_bids_attributes, deface=deface)
+                elif mod == 'Scans' and sub[mod] and not param['import_in_bids']:
                     for elt in sub[mod]:
                         new_scans = bids.Scans()
                         new_scans['sub'] = new_name
@@ -124,49 +147,54 @@ def export_data(bids_data, output_select):
                             new_scans['ScansTSV'].append(tmp_dict)
                         new_scans.write_file()
     if param['sourcedata']:
-        for sub in bids_data['SourceData'][0]['Subject']:
-            if sub['sub'] in sub_selected:
-                new_name = sub['sub']
-                if anonymize:
+        if full:
+            flag = messagebox.askyesno('ERROR: Full-Anonymisation',
+                                       'Sourcedata cannot be saved with full-anonymisation.'
+                                       'Do you want to continue without saving sourcedata?')
+            if not flag:
+                return
+        if not full:
+            tmp_directory = os.path.join(param['output_directory'], 'sourcedata')
+            os.makedirs(tmp_directory, exist_ok=True)
+            for sub in bids_data['SourceData'][0]['Subject']:
+                if sub['sub'] in sub_selected:
                     new_name = sub_anonymize[sub['sub']]
-                for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
-                    if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace(
-                            'GlobalSidecars', '') in param['select_modality']) and sub[mod]:
-                        get_files(sub[mod], param['select_session'], tmp_directory, sub['sub'], new_name, bids_data.dirname,
-                                  sdcar=True, anonymize=anonymize, in_src=True)
-        os.makedirs(os.path.join(param['output_directory'], 'sourcedata'), exist_ok=True)
-        for dir in os.listdir(os.path.join(tmp_directory, 'sourcedata')):
-            shutil.move(os.path.join(tmp_directory, 'sourcedata', dir), os.path.join(param['output_directory'], 'sourcedata'))
-        new_srctrck = bids.SrcDataTrack()
-        srctrack_file = os.path.join(param['output_directory'], 'sourcedata', bids.SrcDataTrack.filename)
-        if param['import_in_bids'] and os.path.exists(srctrack_file):
-            new_srctrck.read_file(tsv_full_filename=srctrack_file)
-        for line in bids_data['SourceData'][0]['SrcDataTrack'][1::]:
-            file_split = line[1].split('_')
-            sub = file_split[0].replace('sub-', '')
-            if sub in sub_selected:
-                tmp_dict = {}
-                tmp_dict['orig_filename'] = line[0]
-                if anonymize:
-                    tmp_dict['bids_filename'] = line[1].replace(sub, sub_anonymize[sub])
-                else:
-                    tmp_dict['bids_filename'] = line[1]
-                tmp_dict['upload_date'] = line[2]
-                new_srctrck.append(tmp_dict)
-        new_srctrck.write_file(tsv_full_filename=srctrack_file)
+                    for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
+                        if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace(
+                                'GlobalSidecars', '') in param['select_modality']) and sub[mod]:
+                            get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, sdcar=False, anonymize=anonymize, in_src=True)
+            #for dir in os.listdir(os.path.join(tmp_directory, 'sourcedata')):
+            #    shutil.move(os.path.join(tmp_directory, 'sourcedata', dir), os.path.join(param['output_directory'], 'sourcedata'))
+            new_srctrck = bids.SrcDataTrack()
+            srctrack_file = os.path.join(tmp_directory, bids.SrcDataTrack.filename)
+            if param['import_in_bids'] and os.path.exists(srctrack_file):
+                new_srctrck.read_file(tsv_full_filename=srctrack_file)
+            for line in bids_data['SourceData'][0]['SrcDataTrack'][1::]:
+                file_split = line[1].split('_')
+                sub = file_split[0].replace('sub-', '')
+                if sub in sub_selected:
+                    tmp_dict = {}
+                    tmp_dict['orig_filename'] = line[0]
+                    if anonymize:
+                        tmp_dict['bids_filename'] = line[1].replace(sub, sub_anonymize[sub])
+                    else:
+                        tmp_dict['bids_filename'] = line[1]
+                    tmp_dict['upload_date'] = line[2]
+                    new_srctrck.append(tmp_dict)
+            new_srctrck.write_file(tsv_full_filename=srctrack_file)
 
+    #To test for the run number because cannot cange from derivatives
     if param['derivatives'] != 'None':
         for dev in bids_data['Derivatives'][0]['Pipeline']:
-            if 'all' in param['derivatives'] or dev['name'] in param['derivatives'] and dev['name'] not in ['log', 'parsing', 'log_old', 'parsing_old']:
+            tmp_directory = os.path.join(param['output_directory'], 'derivatives', dev['name'])
+            os.makedirs(tmp_directory, exist_ok=True)
+            if ('all' in param['derivatives'] or dev['name'] in param['derivatives']) and dev['name'] not in ['log', 'parsing', 'log_old', 'parsing_old']:
                 for sub in dev['SubjectProcess']:
                     if sub['sub'] in sub_selected:
-                        new_name = sub['sub']
-                        if anonymize:
-                            new_name = sub_anonymize[sub['sub']]
+                        new_name = sub_anonymize[sub['sub']]
                         for mod in bids.ImagingProcess.get_list_subclasses_names() + bids.ElectrophyProcess.get_list_subclasses_names():
                             if ('all' in param['select_modality'] or mod.replace('Process', '') in param['select_modality']) and sub[mod]:
-                                get_files(sub[mod], param['select_session'], param['output_directory'], sub['sub'], new_name, bids_data.dirname,
-                                          sdcar=True)
+                                get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname)
                 new_datsetdesc = bids.DatasetDescPipeline()
                 for key in dev['DatasetDescJSON']:
                     if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
@@ -179,23 +207,43 @@ def export_data(bids_data, output_select):
                     else:
                         new_datsetdesc['SourceDataset'] = [elt for elt in
                                                            dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                new_datsetdesc.write_file(os.path.join(param['output_directory'], 'derivatives', dev['name'], new_datsetdesc.filename))
+                new_datsetdesc.write_file(os.path.join(tmp_directory, new_datsetdesc.filename))
 
     new_partTSV.write_file(tsv_full_filename=os.path.join(param['output_directory'], bids.ParticipantsTSV.filename))
     if param['import_in_bids']:
         new_bids_data._assign_bids_dir(new_bids_data.dirname)
         new_bids_data.parse_bids()
         bids_data._assign_bids_dir(bids_data.dirname)
+    return
 
 
-def get_files(mod_list, ses_list,  output_dir, sub_id, new_name, bidsdirname, sdcar=True, anonymize=False, in_src=False):
+def get_files(mod_list, mod_type, ses_list,  output_dir, new_name, bidsdirname, sdcar=True, anonymize=False, in_src=False, new_bids_attributes=None, deface=False):
     for elt in mod_list:
+        sub_id = elt['sub']
         if (elt['ses'] in ses_list or 'all' in ses_list) or (in_src and not elt['ses']):
             path = os.path.dirname(elt['fileLoc'])
             file = os.path.basename(elt['fileLoc'])
             filename, ext = os.path.splitext(file)
+            if mod_type in bids.GlobalSidecars.get_list_subclasses_names():
+                new_elt_attributes = eval('bids.' + mod_type + '(r"' + os.path.join(bidsdirname, elt['fileLoc']) + '")')
+            else:
+                new_elt_attributes = eval('bids.'+mod_type+'()')
+            dicttocopy = {key: val for key, val in elt.items() if key not in ['sub', 'fileLoc'] + bids.GlobalSidecars.get_list_subclasses_names()}
+            dicttocopy['sub'] = new_name
+            new_elt_attributes.update(dicttocopy)
+            if new_bids_attributes is not None:
+                if new_name in new_bids_attributes and mod_type in new_bids_attributes[new_name]:
+                    strrun = compare_attributes(elt, new_bids_attributes[new_name][mod_type])
+                    new_elt_attributes.update({'run':strrun})
+            if not in_src:
+                new_filename, otherdir, otherext = new_elt_attributes.create_filename_from_attributes()
+            else:
+                new_filename = filename
+                delimiter = os.path.sep
+                listpath = path.split(delimiter)
+                id = [st.replace('sub-', '') for st in listpath if st.startswith('sub-')]
+                sub_id = id[0]
             sub_dir = os.path.join(output_dir, path)
-            new_filename = filename.replace(sub_id, new_name)
             sub_dir = sub_dir.replace(sub_id, new_name)
             os.makedirs(sub_dir, exist_ok=True)
             if ext == '.vhdr':
@@ -206,6 +254,9 @@ def get_files(mod_list, ses_list,  output_dir, sub_id, new_name, bidsdirname, sd
                 out_file = os.path.join(sub_dir, new_filename + ex)
                 shutil.copy2(os.path.join(bidsdirname, path, filename + ex),
                              out_file)
+                if ex in ['.vhdr', '.vmrk', '.json'] and sub_id != new_name:
+                    rewrite_txt_infile(out_file, filename, new_filename)
+                    #change the name inteh file
             if sdcar:
                 sidecar = elt.get_modality_sidecars()
                 for sidecar_key in sidecar:
@@ -228,9 +279,14 @@ def get_files(mod_list, ses_list,  output_dir, sub_id, new_name, bidsdirname, sd
                     anonymize_edf.anonymize_edf(out_file)
                 elif ext == '' and elt.classname() in bids.Imaging.get_list_subclasses_names():
                     anonymizeDicom.anonymize(out_file, out_file, new_name, new_name, True, False)
+            if deface and mod_type in bids.Imaging.get_list_subclasses_names():
+                if ext == ".nii":
+                    keepgoing = deface_anatomical_data(out_file)
+                    if not keepgoing:
+                        raise Exception('Mango is not installed on your computer.\n')
 
 
-def anonymize_data(sub_selected, part_list, secret_key=None, otherpart=None, full=False):
+def create_subject_id(sub_selected, part_list, otherpart=None, full=False, sub_dict=None):
     anonym_dict = {}
     if not full:
         header = [elt for elt in part_list.header if not elt.endswith('_ready') and not elt.endswith('_integrity')]
@@ -244,23 +300,142 @@ def anonymize_data(sub_selected, part_list, secret_key=None, otherpart=None, ful
         header = ['participant_id']
     if otherpart is None:
         otherpart = bids.ParticipantsTSV(header=header)
-    if secret_key is None:
-        secret_key = 'exportation'
     for sub in sub_selected:
-        idx_part = [cnt for cnt, line in enumerate(part_list[1::]) if line[0].replace('sub-', '') == sub]
-        new_id = hash_object(sub+secret_key)
+        idx_part = [cnt+1 for cnt, line in enumerate(part_list[1::]) if line[0].replace('sub-', '') == sub]
+        new_id = ''
+        if sub_dict is not None and sub in sub_dict:
+            new_id = sub_dict[sub]
+        if not new_id:
+            new_id = sub
         anonym_dict[sub] = new_id
+        isin, subinfo, subidx = otherpart.is_subject_present(new_id)
         tmp_dict = {elt: part_list[idx_part[0]][part_list[0].index(elt)] for elt in header if elt in part_list[0]}
-        tmp_dict['participant_id'] = 'sub-' + new_id
-        otherpart.append(tmp_dict)
+        if not isin:
+            tmp_dict['participant_id'] = 'sub-' + new_id
+            otherpart.append(tmp_dict)
+        else:
+            if not all(subinfo[key] == tmp_dict[key] for key in subinfo if key in tmp_dict):
+                raise EOFError('The subject ID selected {} for the subject {} doesn"t have the same information.'.format(new_id, sub))
     return anonym_dict, otherpart
 
 
-def hash_object(obj):
-    clef256 = hashlib.sha256(obj.encode())
-    clef_digest = clef256.hexdigest()
-    clef = clef_digest[0:12]
-    return clef
+def deface_anatomical_data(data):
+    #data should be in temporary folder
+    keepgoing=True
+    outfilename=''
+    origdirname, origfilename = os.path.split(data)
+    origfile, ext = os.path.splitext(origfilename)
+    if platform.system() == 'Windows':
+        #use the mango script
+        #check if the folde exists
+        mango_dir = os.path.join(os.getcwd(), 'mango_extract', 'mango-script.bat')
+        if os.path.exists(mango_dir):
+            #check if mango is installed on the system
+            if not os.path.exists('C:\Program Files\Mango'):
+                filename = filedialog.askopenfilename(title='Please select Mango.exe',
+                                                  filetypes=[('files', '.exe')])
+                dirname = os.path.dirname(filename)
+                rewrite_txt_infile(os.path.join(mango_dir, 'mango-script.bat'), 'C:\Program Files\Mango', dirname)
+            #run the deface process
+            os.system('mango_extract\mango-script.bat -f mango_extract\mango_bet_winput.py ' + data)
+            #verifer comment où se trouve le fichier et son nouveau nom
+            files = os.listdir(origdirname)
+            for f in files:
+                if f.startswith(origfile):
+                    if f != origfilename:
+                        os.remove(data)
+                        os.rename(os.path.join(origdirname, f), data)
+
+        else:
+            flag = messagebox.askyesno('ERROR: Mango is not installed on your computer', 'Anatomical data cannot be defaced.'
+                                                                                         'Do you want to continue without defacing anatomical data?')
+            if not flag:
+                keepgoing=False
+    else:
+        #use pydeface for the other system
+        pass
+    return keepgoing
+
+
+def get_attributes_newbids(new_bids_data):
+    dict_attributes = {}
+    seslist = []
+    for sub in new_bids_data['Subject']:
+        dict_attributes[sub['sub']] = {}
+        for mod in sub:
+            if mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() and sub[mod]:
+                if mod not in dict_attributes[sub['sub']]:
+                    dict_attributes[sub['sub']][mod] = {}
+                for elt in sub[mod]:
+                    if elt['ses'] not in dict_attributes[sub['sub']][mod]:
+                        dict_attributes[sub['sub']][mod][elt['ses']] = {}
+                        seslist.append(elt['ses'])
+                    if mod in bids.Electrophy.get_list_subclasses_names():
+                        if 'task' in elt and elt['task']:
+                            if elt['task'] not in dict_attributes[sub['sub']][mod][elt['ses']]:
+                                dict_attributes[sub['sub']][mod][elt['ses']][elt['task']] = {}
+                            if 'acq' in elt and elt['acq']:
+                                if elt['acq'] not in dict_attributes[sub['sub']][mod][elt['ses']][elt['task']] :
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['task']][elt['acq']] = 1
+                                else:
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['task']][elt['acq']] += 1
+                            else:
+                                if 'nbr' not in dict_attributes[sub['sub']][mod][elt['ses']][elt['task']]:
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['task']]['nbr'] = 1
+                                else:
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['task']]['nbr'] += 1
+                    elif mod in bids.Imaging.get_list_subclasses_names():
+                        if 'modality' in elt and elt['modality']:
+                            if elt['modality'] not in dict_attributes[sub['sub']][mod][elt['ses']]:
+                                dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']] = {}
+                            if 'acq' in elt and elt['acq']:
+                                if elt['acq'] not in dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']] :
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']][elt['acq']] = 1
+                                else:
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']][elt['acq']] += 1
+                            else:
+                                if 'nbr' not in dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']]:
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']]['nbr'] = 1
+                                else:
+                                    dict_attributes[sub['sub']][mod][elt['ses']][elt['modality']]['nbr'] += 1
+    seslist = list(set(seslist))
+    return dict_attributes, seslist
+
+
+def compare_attributes(mod_elt, dict_attributes):
+    keys = [key for key in mod_elt if key != 'ses']
+    key='modality'
+    run=1
+    if 'task' in keys:
+        key='task'
+    if mod_elt[key] in dict_attributes:
+        if mod_elt['acq']:
+            if mod_elt['acq'] in dict_attributes[mod_elt[key]]:
+                run =  dict_attributes[mod_elt[key]][mod_elt['acq']]+1
+        elif 'nbr' in dict_attributes:
+            run = dict_attributes[mod_elt[key]]['nbr'] + 1
+    if run<10:
+        strrun = '0'+str(run)
+    else:
+        strrun=str(run)
+    return strrun
+
+
+def rewrite_txt_infile(filename, tochange, newstr):
+    f = open(filename, 'r')
+    contents = f.readlines()
+    f.close()
+    new_contents = []
+    for line in contents:
+        if tochange in line:
+            elt = line.replace(tochange, newstr)
+        else:
+            elt = line
+        new_contents.append(elt)
+    f = open(filename, 'w')
+    for nc in new_contents:
+        f.write(nc)
+    f.close()
 
 
 class ParametersInterface(Interface):
@@ -301,3 +476,132 @@ class ParametersInterface(Interface):
         self['sourcedata'] = {}
         self['sourcedata']['attribut'] = 'Bool'
         self['sourcedata']['value'] = False
+        self['defaceanat'] = {}
+        self['defaceanat']['attribut'] = 'Bool'
+        self['defaceanat']['value'] = False
+
+
+class AssociateSubjects(Frame):
+
+    def __init__(self, root, subject2import, subjectinside, protocolname, anonymise=False):
+        super().__init__()
+
+        self.root = root
+        self.root.geometry('500x500')
+        self.root.resizable(True, True)
+        nbr_sub = len(subject2import)
+
+        self.root.title('Choose the ID of your subject or give is Name to create the appropriate ID')
+        frame_subject2import = Frame(self.root, relief=GROOVE, borderwidth=2)
+        Label(frame_subject2import, text='Subjects ID to import').grid(row=0, column=0, columnspan=2)
+        Label(frame_subject2import, text='').grid(row=1, column=0)
+        frame_subject2import.grid(row=0, column=0, rowspan=nbr_sub+1)
+
+        frame_selectid = Frame(self.root, relief=GROOVE, borderwidth=2)
+        Label(frame_selectid, text='Subjects ID in the BIDS target').grid(row=0, column=0, columnspan=2)
+        Label(frame_selectid, text='').grid(row=1, column=0)
+        frame_selectid.grid(row=0, column=1, rowspan=nbr_sub+1)
+
+        frame_names = Frame(self.root, relief=GROOVE, borderwidth=2)
+        Label(frame_names, text='Indicate Name of your subject to create the proper ID').grid(row=0, column=0, columnspan=3)
+        Label(frame_names, text='Last Name').grid(row=1, column=0)
+        Label(frame_names, text='First Name').grid(row=1, column=1)
+        Label(frame_names, text='Date Of Birth').grid(row=1, column=2)
+        frame_names.grid(row=0, column=2, rowspan=nbr_sub+1, columnspan=3)
+
+        frame_id = Frame(self.root, relief=GROOVE, borderwidth=2)
+        Label(frame_id, text='Indicate the new ID if no anonymisation').grid(row=0, column=0, columnspan=2)
+        Label(frame_id, text='').grid(row=1, column=0)
+        frame_id.grid(row=0, column=5)
+
+        frame_button = Frame(self.root)
+        frame_button.grid(row=nbr_sub*2+2, column=1, columnspan=2)
+        #initiate variables
+        self.frame_name = ['frame_subject2import', 'frame_selectid', 'frame_names', 'frame_id']
+        self.frame_button = {key: {} for key in self.frame_name}
+        self.new_id = {sub: '' for sub in subject2import}
+        self.subjectinside = subjectinside
+        self.secret_key = protocolname
+
+        #listchoice = Variable(frame_selectid, self.subjectinside)
+        for cnt,sub in enumerate(subject2import):
+            if cnt == 0:
+                nbrow = 2
+            else:
+                nbrow = cnt*2 +2
+            self.frame_button[self.frame_name[0]][sub] = Label(frame_subject2import, text=sub)
+            self.frame_button[self.frame_name[0]][sub].grid(row=nbrow, column=0)
+            self.frame_button[self.frame_name[1]][sub] = Combobox(frame_selectid, values=self.subjectinside)
+            self.frame_button[self.frame_name[1]][sub].grid(row=nbrow, column=0)
+            self.frame_button[self.frame_name[2]][sub] = {}
+            self.frame_button[self.frame_name[2]][sub][0] = Entry(frame_names, exportselection=0)
+            self.frame_button[self.frame_name[2]][sub][0].grid(row=nbrow, column=0)
+            self.frame_button[self.frame_name[2]][sub][1] = Entry(frame_names, exportselection=0)
+            self.frame_button[self.frame_name[2]][sub][1].grid(row=nbrow, column=1)
+            self.frame_button[self.frame_name[2]][sub][2] = DateEntry(frame_names, year=1900, month=1, day=1, date_pattern='dd/mm/yyyy', foreground='white', background='darkblue')
+            self.frame_button[self.frame_name[2]][sub][2].grid(row=nbrow, column=2)
+            self.frame_button[self.frame_name[3]][sub] = Entry(frame_id, exportselection=0)
+            self.frame_button[self.frame_name[3]][sub].grid(row=nbrow, column=0)
+        Button(frame_button, text='OK', width=4, command=self.ok).grid(row=0, column=1)
+        Button(frame_button, text='Cancel',width=8, command=self.cancel).grid(row=0, column=2)
+
+        if not anonymise:
+            fr = frame_names
+        else:
+            fr = frame_id
+        for child in fr.winfo_children():
+            try:
+                child.configure(state='disabled')
+            except:
+                pass
+        self.root.update_idletasks()
+        self.center()
+
+    def ok(self):
+        for sub in self.new_id:
+            idx = self.frame_button[self.frame_name[1]][sub].get()
+            lastname = self.frame_button[self.frame_name[2]][sub][0].get()
+            firstname = self.frame_button[self.frame_name[2]][sub][1].get()
+            dob = self.frame_button[self.frame_name[2]][sub][2].get()
+            idnoan = self.frame_button[self.frame_name[3]][sub].get()
+            if idx:
+                self.new_id[sub] = idx
+            elif lastname or firstname or dob:
+                if not lastname:
+                    messagebox.showerror('Error', 'Last Name is required to create the ID of {}'.format(sub))
+                    return
+                if not firstname:
+                    messagebox.showerror('Error', 'First Name is required to create the ID of {}'.format(sub))
+                    return
+                if not dob:
+                    messagebox.showerror('Error', 'Date of Birth is required to create the ID of {}'.format(sub))
+                    return
+                lastname = valide_mot(lastname)
+                firstname = valide_mot(firstname)
+                # month, day, year = dob.split('/')
+                # DOB = '/'.join([day, month, year])
+                dob = valide_date(dob)
+                graine = lastname + firstname + dob + self.secret_key
+                self.new_id[sub] = hash_object(graine)
+            elif idnoan:
+                self.new_id[sub] = idnoan
+        self.root.destroy()
+
+    def cancel(self):
+        self.frame_button = {}
+        self.new_id = {}
+        self.subjectinside = []
+        self.secret_key = ''
+        self.root.destroy()
+
+    def center(self):
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        if width > 1800:
+            width = 1800
+        if width < 1000 and self.root.winfo_screenwidth()>1000:
+            width = 1000
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry('{}x{}+{}+{}'.format(width, height, x, y))

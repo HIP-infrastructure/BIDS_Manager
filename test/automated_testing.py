@@ -345,7 +345,6 @@ class TestImport(unittest.TestCase):
         data2impt.save_as_json(self.import_dir)
 
     def test_import_pat1(self):
-
         # recover the data2import as if it was send by someone
         data2impt = bids.Data2Import(self.import_dir)
         data2impt['UploadDate'] = ''

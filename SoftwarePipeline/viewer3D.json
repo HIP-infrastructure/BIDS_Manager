@@ -1,0 +1,47 @@
+{
+ "Name": "Viewer3D",
+ "Path": "D:/Software/Viewer_Standalone/Viewer3D_v1_03.exe",
+ "Parameters": {
+  "Mode": [
+   "manual"
+  ],
+  "Callname": "Viewer3D",
+  "Input": [
+   {
+    "tag": "mri",
+    "multiplesubject": false,
+    "modality": [
+     "Anat"
+    ],
+    "type": "file"
+   },
+   {
+    "tag": "mesh",
+    "multiplesubject": false,
+    "modality": [
+     "Anat"
+    ],
+    "type": "file",
+    "deriv-folder": "",
+    "filetype": "surf/*lh.pial",
+    "optional": false
+   }
+  ],
+  "electrodes": {
+   "fileLoc": "",
+   "extension": ".txt"
+  },
+  "locations": {
+   "fileLoc": "",
+   "extension": ".txt"
+  },
+  "values": {
+   "fileLoc": "",
+   "extension": ".xlsx"
+  },
+  "graph": {
+   "fileLoc": "",
+   "extension": ".txt"
+  }
+ }
+}

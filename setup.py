@@ -22,7 +22,8 @@ setup(
         'bids_validator',
         'scipy',
         'xlrd',
-        'nibabel'
+        'nibabel',
+        'tkcalendar'
     ],
     include_package_data=True,
     #voir à quoi correspond data_files

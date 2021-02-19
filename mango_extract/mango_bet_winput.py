@@ -13,7 +13,7 @@ m_VolMan_manager.saveAs(
 m_VolMan_manager.setMenuOption("Main Crosshairs",True)
 m_VolMan_manager.setMenuOption("Lower Crosshairs",True)
 
-#mango_extract\mango-script.bat -f mango_extract\mango_bet_winput.py D:\Data\deface_test\sub-0c7d4a85ab0a_ses-01_acq-preop_T1w.nii
+#mango_extract\mango-script.bat -f mango_extract\mango_bet_winput.py D:\Data\testing\test_deface\test_deface.nii
 ##Que faire
 ##Requis: Avoir Mango installé si pas dans Program files, doit changer le path dans mango-script.bat
 ##copier le fichier dans un dossier tmp avant de deface

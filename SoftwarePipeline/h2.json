@@ -1,0 +1,93 @@
+{
+ "Name": "H2",
+ "Path": "C:/anywave_february/AnyWave.exe",
+ "Parameters": {
+  "Mode": [
+   "automatic"
+  ],
+  "Intermediate": "AnyWave",
+  "Callname": "h2",
+  "algorithm": {
+   "possible_value": [
+    "r2",
+    "h2"
+   ],
+   "multipleselection": false
+  },
+  "time_window": {
+   "default": "4",
+   "unit": "sec"
+  },
+  "max_lag": {
+   "default": "0.1",
+   "unit": "sec"
+  },
+  "step": {
+   "default": "1",
+   "unit": "sec"
+  },
+  "hp": {
+   "default": "1",
+   "unit": "Hz"
+  },
+  "lp": {
+   "default": "45",
+   "unit": "Hz"
+  },
+  "downsampling_factor": {
+   "default": "2",
+   "unit": "factor"
+  },
+  "marker_file": {
+   "fileLoc": "",
+   "extension": ".mrk"
+  },
+  "use_markers": {
+   "read": "*events.tsv",
+   "elementstoread": "trial_type",
+   "multipleselection": true
+  },
+  "skip_markers": {
+   "read": "*events.tsv",
+   "elementstoread": "trial_type",
+   "multipleselection": true
+  },
+  "create_montage": {
+   "possible_value": [
+    "bipolar_ieeg",
+    "none"
+   ],
+   "multipleselection": false
+  },
+  "skip_bad_channels": {
+   "possible_value": [
+    "true",
+    "false",
+    "yes",
+    "no"
+   ],
+   "multipleselection": false
+  },
+  "output_file": {
+   "readbids": true,
+   "type": "file"
+  },
+  "Input": [
+   {
+    "tag": "--input_file",
+    "multiplesubject": false,
+    "modality": [
+     "Ieeg"
+    ],
+    "type": "file"
+   }
+  ],
+  "Output": {
+   "tag": "--output_dir",
+   "multiplesubject": false,
+   "directory": true,
+   "type": "",
+   "extension": ".mat"
+  }
+ }
+}

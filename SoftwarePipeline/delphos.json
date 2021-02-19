@@ -1,0 +1,109 @@
+{
+ "Name": "delphos",
+ "Path": "D:/Software/Delphos4BIDS1.5/Delphos4BIDS.exe",
+ "Parameters": {
+  "Mode": [
+   "automatic"
+  ],
+  "Callname": "Delphos4BIDS",
+  "Input": [
+   {
+    "tag": "",
+    "multiplesubject": true,
+    "modality": [
+     "Ieeg",
+     "Meg",
+     "Eeg"
+    ],
+    "type": "dir"
+   }
+  ],
+  "modality": {
+   "readbids": true,
+   "type": "modality"
+  },
+  "sub": {
+   "readbids": true,
+   "type": "sub"
+  },
+  "ses": {
+   "readbids": true,
+   "type": "ses"
+  },
+  "task": {
+   "readbids": true,
+   "type": "task"
+  },
+  "acq": {
+   "readbids": true,
+   "type": "acq"
+  },
+  "run": {
+   "readbids": true,
+   "type": "run"
+  },
+  "proc": {
+   "readbids": true,
+   "type": "proc"
+  },
+  "start": {
+   "default": 0,
+   "unit": "sec"
+  },
+  "duration": {
+   "default": -1,
+   "unit": "sec"
+  },
+  "detection_type": {
+   "possible_value": [
+    "Osc",
+    "Spk"
+   ],
+   "multipleselection": true
+  },
+  "freq_band_start": {
+   "default": 8,
+   "unit": "Hz"
+  },
+  "freq_band_end": {
+   "default": -1,
+   "unit": "Hz"
+  },
+  "artefact": {
+   "read": "*events.tsv",
+   "elementstoread": "trial_type",
+   "multipleselection": true
+  },
+  "use_markers": {
+   "read": "*events.tsv",
+   "elementstoread": "trial_type",
+   "multipleselection": true
+  },
+  "threshold": {
+   "default": "40",
+   "unit": ""
+  },
+  "freqbandfile": {
+   "fileLoc": "",
+   "extension": ".txt"
+  },
+  "montage_file": {
+   "possible_value": [
+    "greymatter"
+   ],
+   "multipleselection": false
+  },
+  "Output": {
+   "tag": "derivatives",
+   "multiplesubject": true,
+   "directory": true,
+   "type": "",
+   "extension": [
+    ".jpg",
+    ".mat",
+    ".tsv",
+    ".mrk"
+   ]
+  }
+ }
+}

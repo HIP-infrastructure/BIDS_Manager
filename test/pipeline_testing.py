@@ -204,7 +204,7 @@ class ParameterTest(unittest.TestCase):
         #assert intermediate instance
         analyse = pip.PipelineSetting(__bids_dataset__, 'h2')
         cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'C:/anywave_july/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
+        cmd_tmp = 'C:/anywave_february/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
         self.assertIsInstance(cmd_arg, pip.AnyWave)
         self.assertEqual(cmd_line, cmd_tmp)
 
