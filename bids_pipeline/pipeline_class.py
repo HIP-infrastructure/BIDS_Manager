@@ -443,9 +443,9 @@ class PipelineSetting(dict):
                         file_elt = filename.split('_')
                         new_file = '_'.join(file_elt[0:len(file_elt)-1])
                         in_out[order[pref_tag]].append(new_file)
-            if 'create_montage' in order:
-                if not in_out[order['create_montage']]:
-                    in_out[order['create_montage']] = []
+            if 'montage_file' in order:
+                if not in_out[order['montage_file']]:
+                    in_out[order['montage_file']] = []
                     for file in in_out[in_idx]:
                         if "c,rfDC" in file:
                             file = os.path.dirname(file)
@@ -455,9 +455,9 @@ class PipelineSetting(dict):
                         if len(file_mtg) <1 or len(file_mtg) >1:
                             #raise EOFError('There is {0} montage file with the type {1}.'.format(len(file_mtg), mtg_type))
                             warning += 'There is no montage file for analysis {}, bipolar_ieeg will be used.\n'.format(filename)
-                            in_out[order['create_montage']].append('bipolar_ieeg')
+                            in_out[order['montage_file']].append('bipolar_ieeg')
                         else:
-                            in_out[order['create_montage']].append(file_mtg[0])
+                            in_out[order['montage_file']].append(file_mtg[0])
             return warning
 
 
@@ -999,10 +999,10 @@ class AnyWave(Parameters):
         if 'output_suffix' in self.keys():
             suff_flag = True
             del self['output_suffix']
-        if 'create_montage' in self.keys() and self['create_montage'] not in ['bipolar_ieeg', 'None']:
+        if 'montage_file' in self.keys() and self['montage_file'] not in ['bipolar_ieeg', 'None']:
             mtg_flag = True
-            self.mtg_file = self['create_montage']
-            del self['create_montage']
+            self.mtg_file = self['montage_file']
+            del self['montage_file']
         with open(jsonfilename, 'w') as json_file:
             if 'modality' in self and isinstance(self['modality'], list):
                 self['modality'] = self['modality'][-1]
@@ -1057,8 +1057,8 @@ class AnyWave(Parameters):
             cmd_line += ' --output_suffix {' + str(cnt_tot) + '}'
             cnt_tot += 1
         if mtg_flag:
-            order['create_montage'] = cnt_tot
-            cmd_line += ' --create_montage {' + str(cnt_tot) + '}'
+            order['montage_file'] = cnt_tot
+            cmd_line += ' --montage_file {' + str(cnt_tot) + '}'
             cnt_tot +=1
         return cmd_line, order
 

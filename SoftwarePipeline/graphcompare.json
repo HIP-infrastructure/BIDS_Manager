@@ -62,7 +62,7 @@
    ]
   },
   "thr_h2": {
-   "default": 0.02,
+   "default": 0.2,
    "unit": ""
   },
   "thr_lag": {
@@ -91,9 +91,10 @@
   },
   "which_file": {
    "possible_value": [
-    "Period of interest",
+    "Period",
     "Background",
-    "Both"
+    "Both",
+    "None"
    ],
    "multipleselection": false
   },

@@ -1,9 +1,11 @@
 import unittest
 import os
 import shutil
+import json
 from bids_pipeline import pipeline_class as pip
 from bids_manager import ins_bids_class as bids
 from bids_pipeline import interface_class as itf
+from bids_pipeline import export_merge as exp
 
 __main_dir__ = r'D:\Data\testing'
 __bids_dir__ = r'D:\Data\testing\test_dataset'
@@ -423,6 +425,7 @@ class DerivativesTest(unittest.TestCase):
         datadesc = bids.DatasetDescPipeline(os.path.join(__bids_dir__, 'derivatives', output_name, 'dataset_description.json'))
         self.assertNotEqual(self.subject['Input_--input_file'], datadesc['SourceDataset']['Input_--input_file'])
         self.assertCountEqual(datadesc['SourceDataset']['Input_--input_file'], {'modality': ['Ieeg'], 'ses': ['01'], 'task': ['ccep'], 'run': ['01', '02', '03']})
+        shutil.rmtree(os.path.join(__bids_dir__, 'derivatives', output_name))
 
     def test_empty_dirs(self):
         outdev = os.path.join(__main_dir__, 'testempty', 'derivatives')
@@ -449,10 +452,27 @@ class RunSoftwareTest(unittest.TestCase):
         self.results['analysis_param'] = {'Mode': 'automatic', '--participants': True, '--criteriaparticipants': ['age','sex']}
         self.results['input_param'] = {'Input_': {}}
         self.results['subject_selected'] = ['01', '02', '03']
+        filename = os.path.join(__main_dir__, 'Test_BM_BP', 'all_data_orig', 'TestParsing', 'parsing_export_dataset.json')
+        with open(filename, 'r') as file:
+            self.correct_parsing = json.load(file)
 
     def test_run_analysis(self):
         log_analysis, output_name, file_to_write = self.soft.set_everything_for_analysis(self.results)
         self.assertIn(' has been analyzed with no error\n', log_analysis)
+        shutil.rmtree(os.path.join(__bids_dir__, 'derivatives', output_name))
+
+    def test_export_data(self):
+        outdev = os.path.join(__main_dir__, 'testexport')
+        os.makedirs(outdev, exist_ok=True)
+        if os.path.exists(outdev):
+            shutil.rmtree(outdev)
+        results = {'0_exp':{}}
+        results['0_exp']['analysis_param'] = {'output_directory': outdev, 'select_session': ['all'], 'select_modality': ['all'], 'anonymise': 'None', 'derivatives': ['Delphos', 'gardel'], 'defaceanat': ''}
+        results['0_exp']['subject_selected'] = ['01', '02']
+        exp.export_data(__bids_dataset__, results)
+        new_bids = bids.BidsDataset(outdev)
+        self.assertEqual(new_bids, self.correct_parsing, 'The parsing is different')
+        shutil.rmtree(outdev)
 
 
 def suite_init():
@@ -474,8 +494,9 @@ def suite_init():
     suite.addTest(DerivativesTest('test_create_output_directory'))
     suite.addTest(DerivativesTest('test_update_dataset_after_analysis_input_files'))
     suite.addTest(DerivativesTest('test_empty_dirs'))
-    #Test run analysis
+    # Test run analysis
     suite.addTest(RunSoftwareTest('test_run_analysis'))
+    suite.addTest(RunSoftwareTest('test_export_data'))
     return suite
 
 

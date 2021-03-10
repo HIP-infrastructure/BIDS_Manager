@@ -47,7 +47,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.2.9'
+    version = '0.3.0'
     bids_startfile = os.path.join(os.getcwd(), 'Data')
     import_startfile = os.path.join(os.getcwd(), 'Data')
     folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
@@ -2305,6 +2305,11 @@ class BidsBrickDialog(FormDialog):
             if '-' in new_variant:
                 new_variant = new_variant.replace('-', '')
             new_pip_name = pip_name + '-' + new_variant
+            #check if the new name already exists
+            namelist = [elt['name'] for elt in self.main_brick['Derivatives'][0]['Pipeline']]
+            if new_pip_name in namelist:
+                messagebox.showerror('Error', 'The name choose {} already exist'.format(new_pip_name))
+                return
             #rename in parsing and change the folder name and dataset_desc
             if os.path.exists(os.path.join(self.main_brick.dirname, 'derivatives', dev_name)):
                 os.rename(os.path.join(self.main_brick.dirname, 'derivatives', dev_name), os.path.join(self.main_brick.dirname, 'derivatives', new_pip_name))
@@ -2836,8 +2841,8 @@ class BidsSelectDialog(TemplateDialog):
         else:
             name = {key: self.parameter_list[key]['Software'] for key in self.parameter_list if self.soft_name in key}
             keys = list(name.keys())
-            if '/' in name:
-                name = name[keys[0]].replace('/', '-')
+            if '/' in name[keys[0]]:
+                name[keys[0]] = name[keys[0]].replace('/', '-')
             bp_an = os.path.join(bp_dir, 'analysis_done')
             os.makedirs(bp_an, exist_ok=True)
             filename = name[keys[0]] + '_' + author + '_' + date + '_saved.json'

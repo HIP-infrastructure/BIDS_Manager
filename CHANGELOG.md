@@ -2,13 +2,17 @@
 All notable changes to BIDS Manager-Pipeline will be documented in this file.
 
 ## [Unreleased]
-- Still testing the Export/Merge option
+- Export option is working, need to test more the merge option
 - Adapt BIDS Manager to the behaviour of the new AnyWave (reading the anywave files inside derivtatives/anywave/username)
 - Give multiple access to one BIDS dataset
 - Make the interface dynamic
 - Possibility to run analysis on multiple combination of inputs
 - Possibility to choose a local output in BP
 - Possibility to import derivatives folder in BIDS dataset
+
+## [v0.3.0] - 2021-03-10
+### Added
+- Deface with SPM
 
 ## [v0.2.9] - 2021-02-19
 ### Added

@@ -76,6 +76,7 @@ def valide_date(d):
         else:
             return dd.strftime('%d%m%Y')
 
+
 def valide_mot(mot):
     nfkd_form = unicodedata.normalize('NFKD', mot)
     only_ascii = nfkd_form.encode('ASCII', 'ignore')  # supprime les accents et les diacritiques

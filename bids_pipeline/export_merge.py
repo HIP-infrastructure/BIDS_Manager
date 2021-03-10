@@ -22,15 +22,14 @@
 #     Authors: Aude Jegou, 2019-2021
 
 import bids_manager.ins_bids_class as bids
-# from .pipeline_class import DatasetDescPipeline
 from .interface_class import Interface
 from generic_uploader import deltamed, micromed, anonymize_edf, anonymizeDicom
 from generic_uploader.generic_uploader import valide_mot, hash_object, valide_date
-from tkinter import messagebox, filedialog
-from tkinter import Tk, Variable, Listbox, Button, Frame, Label, GROOVE, messagebox, Entry
+from tkinter import filedialog
+from tkinter import Tk,  Button, Frame, Label, GROOVE, messagebox, Entry
 from tkinter.ttk import Combobox
-from tkcalendar import Calendar, DateEntry
-import hashlib
+from tkcalendar import DateEntry
+import re
 import os
 import shutil
 import random
@@ -43,7 +42,7 @@ def export_data(bids_data, output_select):
     log = ''
     anonymize = False
     new_bids_attributes = None
-    deface = False
+    deface = None
     #initiate the parameter value
     if isinstance(bids_data, str):
         bids_data = bids.BidsDataset(bids_data)
@@ -62,8 +61,10 @@ def export_data(bids_data, output_select):
         param['sourcedata'] = None
     if 'derivatives' not in param:
         param['derivatives'] = 'None'
-    if param['defaceanat']:
-        deface=True
+    if 'defaceanat' in param:
+        deface=param['defaceanat']
+        if deface == '':
+            deface=None
     #Errors if merge and the dataset selected is not Bids or if the session name are different
     if param['import_in_bids']:
         try:
@@ -103,7 +104,8 @@ def export_data(bids_data, output_select):
                 sub_anonymize[sub] = sub
             tmp_dict['participant_id'] = 'sub-'+sub_anonymize[sub]
             new_partTSV.append(tmp_dict)
-
+        dataset = bids.DatasetDescJSON()
+        dataset['Name'] = 'export'
     else:
         dataset = bids.DatasetDescJSON()
         dataset.read_file(os.path.join(param['output_directory'], dataset.filename))
@@ -124,92 +126,108 @@ def export_data(bids_data, output_select):
             return
     #tmp_directory = os.path.join(bids_data.dirname, 'derivatives', 'bids_pipeline', 'tmp_directory')
     #os.makedirs(tmp_directory, exist_ok=True)
-
-    for sub in bids_data['Subject']:
-        if sub['sub'] in sub_selected:
-            new_name = sub_anonymize[sub['sub']]
-            for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
-                if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace('GlobalSidecars', '') in param['select_modality']) and sub[mod]:
-                    get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, new_bids_attributes=new_bids_attributes, deface=deface)
-                elif mod == 'Scans' and sub[mod] and not param['import_in_bids']:
-                    for elt in sub[mod]:
-                        new_scans = bids.Scans()
-                        new_scans['sub'] = new_name
-                        new_scans['ses'] = elt['ses']
-                        path, filename, ext = elt['fileLoc']
-                        path = path.replace(sub['sub'], new_name)
-                        filename = filename.replace(sub['sub'], new_name)
-                        new_scans['fileLoc'] = os.path.join(param['output_directory'], path, filename+ext)
-                        for line in elt['ScansTSV'][1:]:
-                            tmp_dict = {}
-                            tmp_dict['filename'] = line[0].replace(sub['sub'], new_name)
-                            tmp_dict['acq_time'] = line[1]
-                            new_scans['ScansTSV'].append(tmp_dict)
-                        new_scans.write_file()
-    if param['sourcedata']:
-        if full:
-            flag = messagebox.askyesno('ERROR: Full-Anonymisation',
-                                       'Sourcedata cannot be saved with full-anonymisation.'
-                                       'Do you want to continue without saving sourcedata?')
-            if not flag:
-                return
-        if not full:
-            tmp_directory = os.path.join(param['output_directory'], 'sourcedata')
-            os.makedirs(tmp_directory, exist_ok=True)
-            for sub in bids_data['SourceData'][0]['Subject']:
-                if sub['sub'] in sub_selected:
-                    new_name = sub_anonymize[sub['sub']]
-                    for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
-                        if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace(
-                                'GlobalSidecars', '') in param['select_modality']) and sub[mod]:
-                            get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, sdcar=False, anonymize=anonymize, in_src=True)
-            #for dir in os.listdir(os.path.join(tmp_directory, 'sourcedata')):
-            #    shutil.move(os.path.join(tmp_directory, 'sourcedata', dir), os.path.join(param['output_directory'], 'sourcedata'))
-            new_srctrck = bids.SrcDataTrack()
-            srctrack_file = os.path.join(tmp_directory, bids.SrcDataTrack.filename)
-            if param['import_in_bids'] and os.path.exists(srctrack_file):
-                new_srctrck.read_file(tsv_full_filename=srctrack_file)
-            for line in bids_data['SourceData'][0]['SrcDataTrack'][1::]:
-                file_split = line[1].split('_')
-                sub = file_split[0].replace('sub-', '')
-                if sub in sub_selected:
-                    tmp_dict = {}
-                    tmp_dict['orig_filename'] = line[0]
-                    if anonymize:
-                        tmp_dict['bids_filename'] = line[1].replace(sub, sub_anonymize[sub])
-                    else:
-                        tmp_dict['bids_filename'] = line[1]
-                    tmp_dict['upload_date'] = line[2]
-                    new_srctrck.append(tmp_dict)
-            new_srctrck.write_file(tsv_full_filename=srctrack_file)
-
-    #To test for the run number because cannot cange from derivatives
-    if param['derivatives'] != 'None':
-        for dev in bids_data['Derivatives'][0]['Pipeline']:
-            tmp_directory = os.path.join(param['output_directory'], 'derivatives', dev['name'])
-            os.makedirs(tmp_directory, exist_ok=True)
-            if ('all' in param['derivatives'] or dev['name'] in param['derivatives']) and dev['name'] not in ['log', 'parsing', 'log_old', 'parsing_old']:
-                for sub in dev['SubjectProcess']:
+    try:
+        for sub in bids_data['Subject']:
+            if sub['sub'] in sub_selected:
+                new_name = sub_anonymize[sub['sub']]
+                for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
+                    if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace('GlobalSidecars', '') in param['select_modality']) and sub[mod]:
+                        get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, new_bids_attributes=new_bids_attributes, deface=deface)
+                    elif mod == 'Scans' and sub[mod] and not param['import_in_bids']:
+                        for elt in sub[mod]:
+                            new_scans = bids.Scans()
+                            new_scans['sub'] = new_name
+                            new_scans['ses'] = elt['ses']
+                            path, filename, ext = elt['fileLoc']
+                            path = path.replace(sub['sub'], new_name)
+                            filename = filename.replace(sub['sub'], new_name)
+                            new_scans['fileLoc'] = os.path.join(param['output_directory'], path, filename+ext)
+                            for line in elt['ScansTSV'][1:]:
+                                tmp_dict = {}
+                                tmp_dict['filename'] = line[0].replace(sub['sub'], new_name)
+                                tmp_dict['acq_time'] = line[1]
+                                new_scans['ScansTSV'].append(tmp_dict)
+                            new_scans.write_file()
+        if param['sourcedata']:
+            if full:
+                flag = messagebox.askyesno('ERROR: Full-Anonymisation',
+                                           'Sourcedata cannot be saved with full-anonymisation.'
+                                           'Do you want to continue without saving sourcedata?')
+                if not flag:
+                    return
+            if not full:
+                tmp_directory = os.path.join(param['output_directory'], 'sourcedata')
+                os.makedirs(tmp_directory, exist_ok=True)
+                for sub in bids_data['SourceData'][0]['Subject']:
                     if sub['sub'] in sub_selected:
                         new_name = sub_anonymize[sub['sub']]
-                        for mod in bids.ImagingProcess.get_list_subclasses_names() + bids.ElectrophyProcess.get_list_subclasses_names():
-                            if ('all' in param['select_modality'] or mod.replace('Process', '') in param['select_modality']) and sub[mod]:
-                                get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname)
-                new_datsetdesc = bids.DatasetDescPipeline()
-                for key in dev['DatasetDescJSON']:
-                    if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
-                        new_datsetdesc[key].copy_values(dev['DatasetDescJSON'][key])
-                    else:
-                        new_datsetdesc[key] = dev['DatasetDescJSON'][key]
-                if 'SourceDataset' in dev['DatasetDescJSON']:
-                    if anonymize:
-                        new_datsetdesc['SourceDataset'] = [sub_anonymize[elt] for elt in dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                    else:
-                        new_datsetdesc['SourceDataset'] = [elt for elt in
-                                                           dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
-                new_datsetdesc.write_file(os.path.join(tmp_directory, new_datsetdesc.filename))
+                        for mod in bids.Imaging.get_list_subclasses_names() + bids.Electrophy.get_list_subclasses_names() + bids.GlobalSidecars.get_list_subclasses_names():
+                            if ('all' in param['select_modality'] or mod in param['select_modality'] or mod.replace(
+                                    'GlobalSidecars', '') in param['select_modality']) and sub[mod]:
+                                get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, sdcar=False, anonymize=anonymize, in_src=True, deface=deface)
+                #for dir in os.listdir(os.path.join(tmp_directory, 'sourcedata')):
+                #    shutil.move(os.path.join(tmp_directory, 'sourcedata', dir), os.path.join(param['output_directory'], 'sourcedata'))
+                new_srctrck = bids.SrcDataTrack()
+                srctrack_file = os.path.join(tmp_directory, bids.SrcDataTrack.filename)
+                if param['import_in_bids'] and os.path.exists(srctrack_file):
+                    new_srctrck.read_file(tsv_full_filename=srctrack_file)
+                for line in bids_data['SourceData'][0]['SrcDataTrack'][1::]:
+                    file_split = line[1].split('_')
+                    sub = file_split[0].replace('sub-', '')
+                    if sub in sub_selected:
+                        tmp_dict = {}
+                        tmp_dict['orig_filename'] = line[0]
+                        if anonymize:
+                            tmp_dict['bids_filename'] = line[1].replace(sub, sub_anonymize[sub])
+                        else:
+                            tmp_dict['bids_filename'] = line[1]
+                        tmp_dict['upload_date'] = line[2]
+                        new_srctrck.append(tmp_dict)
+                new_srctrck.write_file(tsv_full_filename=srctrack_file)
 
+        #To test for the run number because cannot cange from derivatives
+        if param['derivatives'] != 'None':
+            for dev in bids_data['Derivatives'][0]['Pipeline']:
+                tmp_directory = os.path.join(param['output_directory'], 'derivatives', dev['name'])
+                if ('all' in param['derivatives'] or dev['name'] in param['derivatives']) and dev['name'] not in ['log', 'parsing', 'log_old', 'parsing_old']:
+                    os.makedirs(tmp_directory, exist_ok=True)
+                    for sub in dev['SubjectProcess']:
+                        if sub['sub'] in sub_selected:
+                            new_name = sub_anonymize[sub['sub']]
+                            anymod = []
+                            for mod in bids.ImagingProcess.get_list_subclasses_names() + bids.ElectrophyProcess.get_list_subclasses_names():
+                                if ('all' in param['select_modality'] or mod.replace('Process', '') in param['select_modality']):
+                                    if sub[mod]:
+                                        anymod.append(True)
+                                        get_files(sub[mod], mod, param['select_session'], param['output_directory'], new_name, bids_data.dirname, in_dev=True, deface=deface)
+                                    else:
+                                        anymod.append(False)
+                            if not any(anymod):
+                                devorigpath = os.path.join(bids_data.dirname, 'derivatives', dev['name'])
+                                origpath = os.path.join(devorigpath, 'sub-' + sub['sub'])
+                                if os.path.exists(origpath):
+                                    newpath = os.path.join(tmp_directory, 'sub-' + new_name)
+                                    recursive_copy(origpath, newpath)
+                    new_datsetdesc = bids.DatasetDescPipeline()
+                    for key in dev['DatasetDescJSON']:
+                        if isinstance(dev['DatasetDescJSON'][key], bids.BidsBrick):
+                            new_datsetdesc[key].copy_values(dev['DatasetDescJSON'][key])
+                        else:
+                            new_datsetdesc[key] = dev['DatasetDescJSON'][key]
+                    if 'SourceDataset' in dev['DatasetDescJSON']:
+                        if anonymize:
+                            new_datsetdesc['SourceDataset'] = [sub_anonymize[elt] for elt in dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
+                        else:
+                            new_datsetdesc['SourceDataset'] = [elt for elt in
+                                                               dev['DatasetDescJSON']['SourceDataset'] if elt in sub_selected]
+                    new_datsetdesc.write_file(os.path.join(tmp_directory, new_datsetdesc.filename))
+    except Exception as err:
+        new_partTSV.write_file(tsv_full_filename=os.path.join(param['output_directory'], bids.ParticipantsTSV.filename))
+        dataset.write_file(jsonfilename=os.path.join(param['output_directory'], bids.DatasetDescJSON.filename))
+        messagebox.showerror('ERROR', err)
+        return
     new_partTSV.write_file(tsv_full_filename=os.path.join(param['output_directory'], bids.ParticipantsTSV.filename))
+    dataset.write_file(jsonfilename=os.path.join(param['output_directory'], bids.DatasetDescJSON.filename))
     if param['import_in_bids']:
         new_bids_data._assign_bids_dir(new_bids_data.dirname)
         new_bids_data.parse_bids()
@@ -217,9 +235,16 @@ def export_data(bids_data, output_select):
     return
 
 
-def get_files(mod_list, mod_type, ses_list,  output_dir, new_name, bidsdirname, sdcar=True, anonymize=False, in_src=False, new_bids_attributes=None, deface=False):
+def get_files(mod_list, mod_type, ses_list,  output_dir, new_name, bidsdirname, sdcar=True, anonymize=False, in_src=False, new_bids_attributes=None, deface=None, in_dev=False):
     for elt in mod_list:
         sub_id = elt['sub']
+        if sub_id == '':
+            val = re.split(r'[\\, /]+', elt['fileLoc'])
+            sib = [v.replace('sub-', '') for v in val if v.startswith('sub-')]
+            if sib:
+                sub_id = sib[0]
+            else:
+                raise EOFError(elt['fileLoc'] + ' is not in BIDS format')
         if (elt['ses'] in ses_list or 'all' in ses_list) or (in_src and not elt['ses']):
             path = os.path.dirname(elt['fileLoc'])
             file = os.path.basename(elt['fileLoc'])
@@ -251,12 +276,23 @@ def get_files(mod_list, mod_type, ses_list,  output_dir, new_name, bidsdirname, 
             else:
                 extension = [ext]
             for ex in extension:
-                out_file = os.path.join(sub_dir, new_filename + ex)
-                shutil.copy2(os.path.join(bidsdirname, path, filename + ex),
-                             out_file)
-                if ex in ['.vhdr', '.vmrk', '.json'] and sub_id != new_name:
-                    rewrite_txt_infile(out_file, filename, new_filename)
-                    #change the name inteh file
+                origfile = os.path.join(bidsdirname, path, filename + ex)
+                if ex != '' and os.path.exists(origfile):
+                    out_file = os.path.join(sub_dir, new_filename + ex)
+                    shutil.copy2(origfile,
+                                 out_file)
+                    if ex in ['.vhdr', '.vmrk', '.json'] and sub_id != new_name:
+                        rewrite_txt_infile(out_file, filename, new_filename)
+                elif (in_dev or in_src) and ext == '':
+                    new_filename = filename.replace('sub-'+sub_id, 'sub-'+new_name)
+                    out_file = os.path.join(sub_dir, new_filename)
+                    if mod_type in bids.Imaging.get_list_subclasses_names() + bids.ImagingProcess.get_list_subclasses_names() and deface is not None:
+                        messagebox.showinfo('WARNING', 'As you selected deface mode, the folder {} cannot be copied.'.format(origfile))
+                        pass
+                    else:
+                        recursive_copy(origfile, out_file, sub_id, new_name)
+
+
             if sdcar:
                 sidecar = elt.get_modality_sidecars()
                 for sidecar_key in sidecar:
@@ -277,13 +313,31 @@ def get_files(mod_list, mod_type, ses_list,  output_dir, new_name, bidsdirname, 
                     deltamed.anonymize_deltamed(out_file)
                 elif ext == ".edf":
                     anonymize_edf.anonymize_edf(out_file)
-                elif ext == '' and elt.classname() in bids.Imaging.get_list_subclasses_names():
+                elif ext == '' and elt.classname() in bids.Imaging.get_list_subclasses_names() and in_src:
                     anonymizeDicom.anonymize(out_file, out_file, new_name, new_name, True, False)
-            if deface and mod_type in bids.Imaging.get_list_subclasses_names():
+            if deface is not None and mod_type in bids.Imaging.get_list_subclasses_names():
                 if ext == ".nii":
-                    keepgoing = deface_anatomical_data(out_file)
+                    keepgoing = deface_anatomical_data(out_file, deface)
                     if not keepgoing:
                         raise Exception('Mango is not installed on your computer.\n')
+
+
+def recursive_copy(path, dest, subid, newid):
+    os.makedirs(dest, exist_ok=True)
+    with os.scandir(path) as it:
+        for entry in it:
+            name = entry.name
+            file, ext = os.path.splitext(name)
+            if 'sub-'+subid in name:
+                name = entry.name.replace('sub-'+subid, 'sub-'+newid)
+            newdest = os.path.join(dest, name)
+            if entry.is_dir():
+                os.makedirs(os.path.join(dest, name), exist_ok=True)
+                recursive_copy(entry.path, newdest)
+            elif entry.is_file():
+                shutil.copy2(entry.path, newdest)
+                if ext in ['.json', '.txt', '.vhdr', '.vmrk']:
+                    rewrite_txt_infile(newdest, 'sub-'+subid, 'sub-'+newid)
 
 
 def create_subject_id(sub_selected, part_list, otherpart=None, full=False, sub_dict=None):
@@ -319,7 +373,7 @@ def create_subject_id(sub_selected, part_list, otherpart=None, full=False, sub_d
     return anonym_dict, otherpart
 
 
-def deface_anatomical_data(data):
+def deface_anatomical_data(data, mode):
     #data should be in temporary folder
     keepgoing=True
     outfilename=''
@@ -328,29 +382,38 @@ def deface_anatomical_data(data):
     if platform.system() == 'Windows':
         #use the mango script
         #check if the folde exists
-        mango_dir = os.path.join(os.getcwd(), 'mango_extract', 'mango-script.bat')
-        if os.path.exists(mango_dir):
-            #check if mango is installed on the system
-            if not os.path.exists('C:\Program Files\Mango'):
-                filename = filedialog.askopenfilename(title='Please select Mango.exe',
-                                                  filetypes=[('files', '.exe')])
-                dirname = os.path.dirname(filename)
-                rewrite_txt_infile(os.path.join(mango_dir, 'mango-script.bat'), 'C:\Program Files\Mango', dirname)
-            #run the deface process
-            os.system('mango_extract\mango-script.bat -f mango_extract\mango_bet_winput.py ' + data)
-            #verifer comment où se trouve le fichier et son nouveau nom
+        if mode == 'Mango':
+            mango_dir = os.path.join(os.getcwd(), 'deface_needs', 'mango-script.bat')
+            if os.path.exists(mango_dir):
+                #check if mango is installed on the system
+                if not os.path.exists('C:\Program Files\Mango'):
+                    filename = filedialog.askopenfilename(title='Please select Mango.exe',
+                                                      filetypes=[('files', '.exe')])
+                    dirname = os.path.dirname(filename)
+                    rewrite_txt_infile(os.path.join(mango_dir, 'mango-script.bat'), 'C:\Program Files\Mango', dirname)
+                #run the deface process
+                os.system('deface_needs\mango-script.bat -f deface_needs\mango_bet_winput.py ' + data)
+                #verifer comment où se trouve le fichier et son nouveau nom
+                files = os.listdir(origdirname)
+                for f in files:
+                    if f.startswith(origfile):
+                        if f != origfilename:
+                            os.remove(data)
+                            os.rename(os.path.join(origdirname, f), data)
+
+            else:
+                flag = messagebox.askyesno('ERROR: Mango is not installed on your computer', 'Anatomical data cannot be defaced.'
+                                                                                             'Do you want to continue without defacing anatomical data?')
+                if not flag:
+                    keepgoing=False
+        elif mode == 'SPM':
+            tmpdir = os.path.join(os.getcwd(), 'deface_needs')
+            os.system(os.path.join(tmpdir, 'deface_with_spm.exe') + ' dirname {} inputfile {}'.format(tmpdir, data))
             files = os.listdir(origdirname)
             for f in files:
-                if f.startswith(origfile):
-                    if f != origfilename:
-                        os.remove(data)
-                        os.rename(os.path.join(origdirname, f), data)
-
-        else:
-            flag = messagebox.askyesno('ERROR: Mango is not installed on your computer', 'Anatomical data cannot be defaced.'
-                                                                                         'Do you want to continue without defacing anatomical data?')
-            if not flag:
-                keepgoing=False
+                if f.startswith('anon_') and f.endswith(origfilename):
+                    os.remove(data)
+                    os.rename(os.path.join(origdirname, f), data)
     else:
         #use pydeface for the other system
         pass
@@ -477,8 +540,8 @@ class ParametersInterface(Interface):
         self['sourcedata']['attribut'] = 'Bool'
         self['sourcedata']['value'] = False
         self['defaceanat'] = {}
-        self['defaceanat']['attribut'] = 'Bool'
-        self['defaceanat']['value'] = False
+        self['defaceanat']['attribut'] = 'Listbox'
+        self['defaceanat']['value'] = ['Mango', 'SPM', 'None']
 
 
 class AssociateSubjects(Frame):

@@ -161,6 +161,7 @@ class BidsBrick(dict):
                 self.write_log(str_issue)
                 raise TypeError(str_issue)
         else:
+            #Improve this error, put the names of the folder/pipeline
             str_issue = '/!\ Not recognized key: ' + str(key) + ', check ' + self.classname() +\
                         ' class keylist /!\ '
             self.write_log(str_issue)

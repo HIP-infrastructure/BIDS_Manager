@@ -52,7 +52,7 @@
    "elementstoread": "trial_type",
    "multipleselection": true
   },
-  "create_montage": {
+  "montage_file": {
    "possible_value": [
     "bipolar_ieeg",
     "none"
