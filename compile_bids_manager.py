@@ -6,7 +6,7 @@ audeserv = r'\\dynaserv\home\jegou\Softwares\Bids_pipeline'
 # rhu_tools_dir = r'\\megserv\Apps\RHU_tools\Bids_Manager'
 #dynamap_serv = r'\\139.124.150.47\dynamap\users\Jegou\Bids_pipeline_exe'
 
-cmd_line = 'pyinstaller --onefile --icon=bids_manager\\bids_manager.ico --hidden-import PyQt5.sip bids_manager\\bids_manager.py'
+cmd_line = 'pyinstaller --onefile --icon=bids_manager\\bids_manager.ico bids_manager\\bids_manager.py'
 #cmd_line = 'pyinstaller --onefile --icon=bids_manager.ico --hidden-import PyQt5.sip bids_manager\\bids_manager.py'
 os.system(cmd_line)
 print('conversion is done')

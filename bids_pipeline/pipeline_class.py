@@ -30,6 +30,7 @@ import getopt
 import sys
 import subprocess
 import shutil
+import itertools
 from tkinter import messagebox, filedialog
 from bids_pipeline.convert_process_file import go_throught_dir_to_convert
 from sys import exc_info
@@ -1314,32 +1315,57 @@ class Input(ParametersSide):
             return False
 
     def get_input_values(self, subject_to_analyse, order):
-        def compare_length_multi_input(in_out, idx_in):
+        def compare_and_reorder(in_out, idx_in):
             err = ''
-            nbr_in = None
-            for i in range(0, len(idx_in)-1):
-                if len(in_out[i]) != len(in_out[i+1]):
-                    err += 'ERROR: The elements in the list don"t have the same size.\n'
-            if not err:
-                nbr_in = len(in_out[0])
-            return err, nbr_in
+            the_len = len(in_out[0])
+            key2order = [0]
+            key2combine = [0]
+            for cnt, l in enumerate(in_out):
+                if cnt > 0 and isinstance(l, list):
+                    if len(l) == the_len and not idx_in[cnt]['combinationmode']:
+                        key2order.append(cnt)
+                    elif idx_in[cnt]['combinationmode']:
+                        key2combine.append(cnt)
+                    else:
+                        err += 'ERROR: The elements in the list don"t have the same size.\n'
+                        return
+            reorder_inputs(in_out, idx_in, key2order=key2order)
+            if len(key2combine) > 1:
+                B = [in_out[idx] for idx in key2combine]
+                combinaison = [i for i in itertools.product(*B)]
+                for cnt, idx in enumerate(key2combine):
+                    in_out[idx] = [cb[cnt] for cb in combinaison]
+            return err
 
-        def reorder_inputs(in_out, idx_in):
-            if all(idx_in[elt]=='file' for elt in idx_in):
-                idx_list = list(idx_in.keys())
-                tmp_dict = {idx: {} for idx in idx_list[1:]}
-                for cnt, file in enumerate(in_out[idx_list[0]]):
-                    file_split = file.split('_')
-                    val_ind = {elt: val for elt in SubjectToAnalyse.keylist for val in file_split if val.startswith(elt+'-')}
-                    for id in idx_list[1:]:
-                        val_diff = [val_ind[key] for key in val_ind if not all(val_ind[key] in subfile for subfile in in_out[id])]
-                        if val_diff:
-                            new_file = [flist for flist in in_out[id] if all(val in flist for val in val_diff)]
-                            if new_file and len(new_file) ==1:
-                                tmp_dict[id][cnt] = new_file[0]
-                for id in tmp_dict:
-                    for ct in tmp_dict[id]:
-                        in_out[id][ct] = tmp_dict[id][ct]
+        # def compare_length_multi_input(in_out, idx_in):
+        #     err = ''
+        #     nbr_in = None
+        #     for i in range(0, len(idx_in)-1):
+        #         if len(in_out[i]) != len(in_out[i+1]):
+        #             err += 'ERROR: The elements in the list don"t have the same size.\n'
+        #     if not err:
+        #         nbr_in = len(in_out[0])
+        #     return err, nbr_in
+
+        def reorder_inputs(in_out, idx_in, key2order=None):
+            if key2order is None:
+                key2order = list(idx_in.keys())
+            if len(key2order) > 1:
+                if all(idx_in[elt]['type']=='file' for elt in idx_in if elt in key2order):
+                    idx_list = list(idx_in.keys())
+                    tmp_dict = {idx: {} for idx in idx_list[1:]}
+                    for cnt, file in enumerate(in_out[idx_list[0]]):
+                        file_split = file.split('_')
+                        val_ind = {elt: val for elt in SubjectToAnalyse.keylist for val in file_split if val.startswith(elt+'-')}
+                        for id in idx_list[1:]:
+                            val_diff = [val_ind[key] for key in val_ind if not all(val_ind[key] in subfile for subfile in in_out[id])]
+                            if val_diff:
+                                new_file = [flist for flist in in_out[id] if all(val in flist for val in val_diff)]
+                                if new_file and len(new_file) ==1:
+                                    tmp_dict[id][cnt] = new_file[0]
+                    for id in tmp_dict:
+                        for ct in tmp_dict[id]:
+                            in_out[id][ct] = tmp_dict[id][ct]
 
         in_out = {clef: ['']*len(order) for clef in subject_to_analyse['sub']}
         temp = {clef: 0 for clef in subject_to_analyse['sub']}
@@ -1358,22 +1384,20 @@ class Input(ParametersSide):
                 idx = order[tag_val]
             if not not_inside:
                 input_att['Input_' + tag_val] = elt.get_input_values(subject_to_analyse, in_out, idx, order_tag[idx])
-                idx_in[idx] = elt['type']
+                idx_in[idx] = {'type': elt['type'], 'combinationmode': elt['combinationmode']}
         sub_to_delete = []
         for sub in in_out:
             if len(idx_in) > 1:
-                error, nbr_in = compare_length_multi_input(in_out[sub], idx_in)
+                # error, nbr_in = compare_length_multi_input(in_out[sub], idx_in)
+                error = compare_and_reorder(in_out[sub], idx_in)
                 if error:
                     sub_to_delete.append(sub)
                     error_in += error
-                    error_in += 'The subject {} won"t be analysed because there is not the same length of inputs.\n'.format(sub)
-                else:
-                    reorder_inputs(in_out[sub], idx_in)
-            else:
-                nbr_in = len(in_out[sub][idx])
-            temp[sub] = nbr_in
+                    error_in += 'The subject {} won"t be analysed because it doesn"t match the inputs specificity.\n'.format(sub)
+            temp[sub] = len(in_out[sub][idx])
         for sub in sub_to_delete:
             del in_out[sub]
+            del temp[sub]
         for inp in input_att:
             for sub in input_att[inp]:
                 if sub not in sub_to_delete:
@@ -1389,14 +1413,14 @@ class Input(ParametersSide):
 
 class InputArguments(Parameters):
     keylist = ['tag', 'multiplesubject', 'modality', 'type']
-    keylist_deriv = keylist + ['deriv-folder', 'filetype', 'optional']
+    #keylist_deriv = keylist + ['deriv-folder', 'filetype', 'optional']
     path_key = ['sub', 'ses', 'modality']
     multiplesubject = False
     deriv_input = False
 
     def copy_values(self, input_dict): #, flag_process=False):
         keys = list(input_dict.keys())
-        if not keys == self.keylist and not keys == self.keylist_deriv: #and not flag_process:
+        if not all(k in keys for k in self.keylist): #and not flag_process:
             raise KeyError('Your json is not conform.\n')
         else:
             for key in input_dict:
@@ -1416,6 +1440,8 @@ class InputArguments(Parameters):
                     self.deriv_input = True
                 else:
                     self[key] = input_dict[key]
+            if 'combinationmode' not in keys:
+                self['combinationmode'] = False
         if self['multiplesubject'] and self['type'] == 'file':
             raise ValueError('Your json is not conform.\n It is not possible to have files as input and process multiple subject.\n')
 
@@ -1426,13 +1452,17 @@ class InputArguments(Parameters):
         #self['value_selected'] = input_dict
 
     def get_input_values(self, subject_to_analyse, in_out, idx, tag):#sub, input_param=None):
-        def check_dir_existence(bids_directory, chemin):
+        def check_dir_existence(bids_directory, chemin, filetype=None):
             chemin_final = os.path.join(self.bids_directory, '\\'.join(chemin))
             if os.path.exists(chemin_final):
                 return chemin_final
             else:
-                del chemin[-1]
-                return check_dir_existence(bids_directory, chemin)
+                idx2remove = len(chemin)-1
+                if filetype is not None:
+                    if chemin[idx2remove] == filetype:
+                        idx2remove = idx2remove - 1
+                del chemin[idx2remove]
+                return check_dir_existence(bids_directory, chemin, filetype=filetype)
 
         input_att = {sub: {} for sub in subject_to_analyse['sub']}
         if self.deriv_input: #'deriv-folder' in self.keys():
@@ -1463,9 +1493,10 @@ class InputArguments(Parameters):
             for sub in subject_to_analyse['sub']:
                 path_key['sub'] = sub
                 chemin = []
+                filetype = None
                 if self.deriv_input:
                     chemin.append('derivatives\\' + self['deriv-folder'][0])
-                    path_key['modality'] = path_key['modality'] + 'Process'
+                    #path_key['modality'] = path_key['modality'] + 'Process'
                 for key, val in path_key.items():
                     if val and key != 'modality':
                         chemin.append(key+'-'+val)
@@ -1473,8 +1504,11 @@ class InputArguments(Parameters):
                         chemin.append(val.lower())
                     # elif not val:
                     #     break
+                if self.deriv_input and ('filetype' in self and self['filetype']):
+                    filetype = self['filetype']
+                    chemin.append(filetype)
                 #check the existence of the directory
-                in_out[sub][idx] = [check_dir_existence(self.bids_directory, chemin)]
+                in_out[sub][idx] = [check_dir_existence(self.bids_directory, chemin, filetype=filetype)]
         return input_att
 
     def get_subject_files(self, subject, sub_id):#, modality, subject_list, curr_bids):
@@ -1494,6 +1528,7 @@ class InputArguments(Parameters):
                             mod = mod + 'Process'
                         if sub[mod]:
                             for elt in sub[mod]:
+                                attrdict = elt.get_attributes(['modality', 'fileLoc'])
                                 is_equal = [True]
                                 for key in subject:
                                     if key == 'modality' or key == 'deriv-folder':
@@ -1512,7 +1547,7 @@ class InputArguments(Parameters):
                                 #         is_equal.append(True)
                                 #     else:
                                 #         is_equal.append(False)
-                                if all(is_equal) and elt['fileLoc'].endswith(self['filetype']):
+                                if (all(is_equal) and elt['fileLoc'].endswith(self['filetype'])) or (all(attrdict[k] == '' for k in attrdict) and elt['fileLoc'].endswith(self['filetype'])):
                                     key_attributes = [clef for clef in SubjectToAnalyse.keylist if not clef == 'modality']
                                     for key in key_attributes:
                                         if key in elt and elt[key] and key not in temp_att:

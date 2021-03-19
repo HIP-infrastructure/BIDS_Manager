@@ -25,6 +25,17 @@
     "type": "file"
    },
    {
+    "tag": "usecoregfileinsteadpostimp",
+    "multiplesubject": false,
+    "modality": [
+     "Anat"
+    ],
+    "type": "dir",
+    "deriv-folder": "",
+    "filetype": "IntermediateFiles",
+    "optional": true
+   },
+   {
     "tag": "electrodes",
     "multiplesubject": false,
     "modality": [

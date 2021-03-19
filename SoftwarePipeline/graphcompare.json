@@ -48,6 +48,7 @@
      ""
     ],
     "filetype": "ElectrodesAllCoordinates.txt",
+    "combinationmode": true,
     "optional": true
    }
   ],

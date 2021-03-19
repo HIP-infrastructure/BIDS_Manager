@@ -2404,19 +2404,20 @@ class DatasetDescPipeline(DatasetDescJSON):
                 input_key = [key for key in subject_to_analyse if key != 'sub']
                 same_input = {key: True for key in input_key}
                 for inp in input_key:
-                    if 'deriv-folder' in subject_to_analyse[inp]:
-                        if not all(mod in self['SourceDataset'][inp]['deriv-folder'] for mod in
-                                   subject_to_analyse[inp]['deriv-folder']):
-                            return False, False
-                    if 'modality' in subject_to_analyse[inp] and 'modality' in self['SourceDataset'][inp] and not all(mod in self['SourceDataset'][inp]['modality'] for mod in subject_to_analyse[inp]['modality']):
-                        same_input[inp] = False
-                    elif 'ses' in subject_to_analyse[inp] and 'ses' in self['SourceDataset'][inp] and not all(ses in self['SourceDataset'][inp]['ses'] for ses in subject_to_analyse[inp]['ses']):
-                        same_input[inp] = False
-                    else:
-                        keylist = [key for key in subject_to_analyse[inp] if key not in ['modality', 'ses']]
-                        for key in keylist:
-                            if not all(elt in self['SourceDataset'][inp][key] for elt in subject_to_analyse[inp][key]):
-                                same_input[inp] = False
+                    if inp in self['SourceDataset']:
+                        if 'deriv-folder' in subject_to_analyse[inp]:
+                            if not all(mod in self['SourceDataset'][inp]['deriv-folder'] for mod in
+                                       subject_to_analyse[inp]['deriv-folder']):
+                                return False, False
+                        if 'modality' in subject_to_analyse[inp] and 'modality' in self['SourceDataset'][inp] and not all(mod in self['SourceDataset'][inp]['modality'] for mod in subject_to_analyse[inp]['modality']):
+                            same_input[inp] = False
+                        elif 'ses' in subject_to_analyse[inp] and 'ses' in self['SourceDataset'][inp] and not all(ses in self['SourceDataset'][inp]['ses'] for ses in subject_to_analyse[inp]['ses']):
+                            same_input[inp] = False
+                        else:
+                            keylist = [key for key in subject_to_analyse[inp] if key not in ['modality', 'ses']]
+                            for key in keylist:
+                                if not all(elt in self['SourceDataset'][inp][key] for elt in subject_to_analyse[inp][key]):
+                                    same_input[inp] = False
                 if all(same_input[inp] for inp in input_key):
                     subject_inside = True
         # Voir pour proposer à l'utilisateur de rajouter que les sujets qui ne sont pas anlyser ou si créer un nouveau dossier
