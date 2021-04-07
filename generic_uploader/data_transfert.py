@@ -129,6 +129,7 @@ def data_transfert_sftp(host, port, username, private_key_path, password, forlde
                 message = stderr.readlines()
                 shutil.rmtree(forlder2send)
         # =========================================================================
+        e = ''
     except Exception as e:
         print(e)
         try:

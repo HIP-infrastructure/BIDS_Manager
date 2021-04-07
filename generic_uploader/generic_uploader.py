@@ -282,8 +282,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.progressBar.setVisible(False)
         self.progressBar.setValue(0)
-        self.generic_uploader_version = str(1.1)
-        self.setWindowTitle("BIDSUploader v" + self.generic_uploader_version)
+        self.generic_uploader_version = str(1.0)
+        self.setWindowTitle("BIDSUploader_" + protocole_name + "_v" + self.generic_uploader_version)
         self.MenuList = self.ListMenuObject(self)
         self.listWidget.clear()
         self.current_working_path = self.init_path
@@ -1275,9 +1275,12 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         data_to_import.save_as_json()
         # AJOUTER ICI LE TRANSFERT PAR SFTP
         if not self.bids_manager_mode:
-            data_transfert_sftp(self.host, self.port, self.username, self.private_key_path, '',
+            e = data_transfert_sftp(self.host, self.port, self.username, self.private_key_path, '',
                             temp_patient_path, 'uploader_folder')
         # ====================================================
+        if e:
+            QtWidgets.QMessageBox.critical(self, "error", str(e))
+            return 0
         # rajouter ici la RAZ GUI
         self.progressBar.setValue(0)
         self.progressBar.setVisible(False)
