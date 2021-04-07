@@ -1040,7 +1040,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 continue'''
             if line["Modality"] == "" and "ID" in line:
                 cur_state = validation_information(self.Subject, line, action)
-            elif line["Modality"] == "IeegGlobalSidecars":
+            elif line["Modality"] == "IeegGlobalSidecars" or line["Modality"] == "EegGlobalSidecars":
                 cur_state = validation_implantation(self.Subject, line, action)
             elif line["Modality"] not in ins_bids_class.GlobalSidecars.get_list_subclasses_names():
                 tmp_modality = getattr(ins_bids_class, line["Modality"])()
