@@ -639,6 +639,26 @@ class BidsBrick(dict):
             self.write_log(str_iss)
             return False
 
+        def get_group_from_elecname(tsv):
+            if not isinstance(tsv, (ChannelsTSV, ElecTSV)):
+                str_issue = 'Input is not of class ChannelsTSV or ElecTSV'
+                BidsDataset.write_log(str_issue)
+                raise TypeError(str_issue)
+
+            if 'group' in tsv.header:
+                idx_elec_name = tsv.header.index('group')
+                groupnm = [line[idx_elec_name] for line in tsv[1:]]
+            else:
+                groupnm = []
+                idx_elec_name = tsv.header.index('name')
+                for line in tsv[1:]:
+                    str_group = [c for c in line[idx_elec_name] if not c.isdigit()]
+                    if str_group:
+                        groupnm.append(''.join(str_group))
+                    else:  # case where the electrode name is a number (EGI)
+                        groupnm.append(line[idx_elec_name])
+            return groupnm
+
         if isinstance(self, BidsDataset) and self.requirements and self.requirements['Requirements']:
             self.write_log(10 * '=' + '\nCheck requirements\n' + 10 * '=')
             key_words = self.requirements.keywords
@@ -685,7 +705,8 @@ class BidsBrick(dict):
                         parttsv_idx = present_sub_list.index(sub)
                         self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = str(True)
                         curr_sub_mod = self['Subject'][sub_index][bidsintegrity_key[0]]
-                        ref_elec = []
+                        #ref_elec = []
+                        ref_elec = {}
                         sdcr_list = self['Subject'][sub_index][bidsintegrity_key[0] + 'GlobalSidecars']
 
                         if not sdcr_list or not [brick[elec_class_name] for brick in sdcr_list if
@@ -697,59 +718,119 @@ class BidsBrick(dict):
                                 str(False)
                             continue
 
-                        elect_tsv = [brick[elec_class_name] for brick in sdcr_list if brick['modality'] == 'electrodes']
-                        elecname = []
-                        # several electrodes.tsv can be found (e.g. for several space)
-                        for tsv in elect_tsv:
-                            if not ref_elec:
-                                if 'group' in tsv.header:
-                                    idx_elec_name = tsv.header.index('group')
-                                    elecname = [line[idx_elec_name] for line in tsv[1:]]
+                        # test a new way to check the integrity to take into account multiple session
+                        for brick in sdcr_list:
+                            if brick['modality'] == 'electrodes':
+                                if brick['ses'] not in ref_elec:
+                                    ref_elec[brick['ses']] = []
+                                    groupname = get_group_from_elecname(brick[elec_class_name])
+                                    [ref_elec[brick['ses']].append(name) for name in groupname if name not in ref_elec[brick['ses']]]
+                                    ref_elec[brick['ses']].sort()
                                 else:
-                                    idx_elec_name = tsv.header.index('name')
-                                    for line in tsv[1:]:
-                                        str_group = [c for c in line[idx_elec_name] if not c.isdigit()]
-                                        elecname.append(''.join(str_group))
-                                [ref_elec.append(name) for name in elecname if name not in ref_elec]
-                            else:
-                                curr_elec = []
-                                [curr_elec.append(line[idx_elec_name]) for line in tsv[1:]
-                                 if line[idx_elec_name] not in curr_elec]
-                                if not curr_elec.sort() == ref_elec.sort():
-                                    ref_elec = []
+                                    curr_elec = []
+                                    groupname = get_group_from_elecname(brick[elec_class_name])
+                                    [curr_elec.append(name) for name in groupname if name not in curr_elec]
+                                    curr_elec.sort()
+                                    if not curr_elec == ref_elec[brick['ses']]:
+                                        ref_elec[brick['ses']] = []
 
-                        if not ref_elec:
-                            str_issue = 'Subject ' + sub + ' has inconsistent electrodes.tsv files ' +\
-                                        bidsintegrity_key[0] + '.'
-                            self.write_log(str_issue)
-                            self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = \
-                                str(False)
-                            continue
-
-                        for mod in curr_sub_mod:
-                            curr_elec = []
-                            curr_type = []
-                            """ list all the channels of the modality type end check whether their are in the reference 
-                            list of electrodes"""
-                            idx_chan_name = mod[channel_class_name].header.index('group')
-                            idx_chan_type = mod[channel_class_name].header.index('type')
-                            [(curr_elec.append(line[idx_chan_name]), curr_type.append(line[idx_chan_type]))
-                             for line in mod[channel_class_name][1:] if line[idx_chan_name] not in curr_elec and
-                             not line[idx_chan_name] == BidsSidecar.bids_default_unknown and
-                             line[idx_chan_type] in mod.mod_channel_type] #Si trop de value dans mod.channel_type pb
-                            miss_matching_elec = [{'name': name, 'type': curr_type[cnt]}
-                                                  for cnt, name in enumerate(curr_elec) if name not in ref_elec]
-                            if miss_matching_elec:
-                                str_issue = 'File ' + os.path.basename(mod['fileLoc']) + \
-                                            ' has inconsistent electrode name(s) ' + str(miss_matching_elec) + '.'
+                        ses_list = []
+                        [ses_list.append(mod['ses']) for mod in curr_sub_mod if mod['ses'] not in ses_list]
+                        for ses in ses_list:
+                            if ses not in ref_elec or not ref_elec[ses]:
+                                str_issue = 'Subject ' + sub + ' has inconsistent electrodes.tsv files ' + \
+                                            bidsintegrity_key[0] + ' for the session ' + ses + '.'
                                 self.write_log(str_issue)
-                                # filepath = mod.create_filename_from_attributes()
+                                self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = \
+                                    str(False)
+                                continue
+                            else:
+                                curr_sub_ses_mod = [mod for mod in curr_sub_mod if mod['ses'] == ses]
+                                for mod in curr_sub_ses_mod:
+                                    curr_elec = []
+                                    curr_type = []
+                                    """ list all the channels of the modality type end check whether their are in the reference 
+                                    list of electrodes"""
+                                    elecname = get_group_from_elecname(mod[channel_class_name])
+                                    idx_chan_type = mod[channel_class_name].header.index('type')
+                                    elec_type = [line[idx_chan_type] for line in mod[channel_class_name][1:]]
+                                    for nme, typ in zip(elecname, elec_type):
+                                        if nme not in curr_elec and not nme == BidsSidecar.bids_default_unknown and \
+                                                typ in mod.mod_channel_type:
+                                            curr_elec.append(nme)
+                                            curr_type.append(typ)
 
-                                self.issues.add_issue('ElectrodeIssue', sub=sub,
-                                                      fileLoc=mod['fileLoc'],
-                                                      RefElectrodes=ref_elec, MismatchedElectrodes=miss_matching_elec,
-                                                      mod=bidsintegrity_key[0])
-                                self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = str(False)
+                                    miss_matching_elec = [{'name': name, 'type': curr_type[cnt]}
+                                                          for cnt, name in enumerate(curr_elec) if name not in ref_elec[ses]]
+                                    if miss_matching_elec:
+                                        str_issue = 'File ' + os.path.basename(mod['fileLoc']) + \
+                                                    ' has inconsistent electrode name(s) ' + str(
+                                            miss_matching_elec) + '.'
+                                        self.write_log(str_issue)
+                                        # filepath = mod.create_filename_from_attributes()
+
+                                        self.issues.add_issue('ElectrodeIssue', sub=sub,
+                                                              fileLoc=mod['fileLoc'],
+                                                              RefElectrodes=ref_elec[ses],
+                                                              MismatchedElectrodes=miss_matching_elec,
+                                                              mod=bidsintegrity_key[0])
+                                        self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = str(False)
+                        ## previous method
+                        # elect_tsv = [brick[elec_class_name] for brick in sdcr_list if brick['modality'] == 'electrodes']
+                        #
+                        # # several electrodes.tsv can be found (e.g. for several space)
+                        # for tsv in elect_tsv:  # how are different implantation handled? 2 SEEG or classical and hd-EEG
+                        #     if not ref_elec:
+                        #         groupname = get_group_from_elecname(tsv)
+                        #         [ref_elec.append(name) for name in groupname if name not in ref_elec]
+                        #         ref_elec.sort()
+                        #     else:  #!!!!!!!!!! here there is something wrong when group does not exist.
+                        #         curr_elec = []
+                        #         groupname = get_group_from_elecname(tsv)
+                        #         [curr_elec.append(name) for name in groupname if name not in curr_elec]
+                        #         curr_elec.sort()
+                        #         if not curr_elec == ref_elec:
+                        #             ref_elec = []
+                        #     # if ref_elec is empty at the end of the loop it means there are inconsistencies between
+                        #     # at least two electrodes.tsv files
+                        #     if not ref_elec:
+                        #         break
+                        #
+                        # if not ref_elec:
+                        #     str_issue = 'Subject ' + sub + ' has inconsistent electrodes.tsv files ' +\
+                        #                 bidsintegrity_key[0] + '.'
+                        #     self.write_log(str_issue)
+                        #     self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = \
+                        #         str(False)
+                        #     continue
+
+                        # for mod in curr_sub_mod:
+                        #     curr_elec = []
+                        #     curr_type = []
+                        #     """ list all the channels of the modality type end check whether their are in the reference
+                        #     list of electrodes"""
+                        #     elecname = get_group_from_elecname(mod[channel_class_name])
+                        #     idx_chan_type = mod[channel_class_name].header.index('type')
+                        #     elec_type = [line[idx_chan_type] for line in mod[channel_class_name][1:]]
+                        #     for nme, typ in zip(elecname, elec_type):
+                        #         if nme not in curr_elec and not nme == BidsSidecar.bids_default_unknown and\
+                        #                 typ in mod.mod_channel_type:
+                        #             curr_elec.append(nme)
+                        #             curr_type.append(typ)
+                        #
+                        #     miss_matching_elec = [{'name': name, 'type': curr_type[cnt]}
+                        #                           for cnt, name in enumerate(curr_elec) if name not in ref_elec]
+                        #     if miss_matching_elec:
+                        #         str_issue = 'File ' + os.path.basename(mod['fileLoc']) + \
+                        #                     ' has inconsistent electrode name(s) ' + str(miss_matching_elec) + '.'
+                        #         self.write_log(str_issue)
+                        #         # filepath = mod.create_filename_from_attributes()
+                        #
+                        #         self.issues.add_issue('ElectrodeIssue', sub=sub,
+                        #                               fileLoc=mod['fileLoc'],
+                        #                               RefElectrodes=ref_elec, MismatchedElectrodes=miss_matching_elec,
+                        #                               mod=bidsintegrity_key[0])
+                        #         self['ParticipantsTSV'][1 + parttsv_idx][bidsintegrity_key[1]] = str(False)
 
             self.issues.check_with_latest_issue()
             self.issues.save_as_json()
@@ -1295,7 +1376,7 @@ class ElectrophyProcess(Process):
 
 
 class ElectrophyProcessJSON(ProcessJSON):
-    keylist = ['Description', 'IntendedFor', 'Sources', 'Author', 'LabelDescription']
+    keylist = ['Description', 'IntendedFor', 'Sources', 'Authors', 'LabelDescription']
     required_keys = ['Description', 'IntendedFor']
     detrending_keys = ['Detrending']
     filter_keys = ['FilterType', 'HighCutoff', 'LowCutoff', 'HighCutoffDefinition', 'LowCutoffDefinition',
@@ -1390,7 +1471,9 @@ class BidsTSV(BidsSidecar, list):
         if os.path.splitext(tsvfilename)[1] == '.tsv':
             with open(tsvfilename, 'w') as file:
                 for _, line in enumerate(self):
-                    file.write('\t'.join(line) + '\n')
+                    str_line = '\t'.join(line) + '\n'  # convert manually \\ path to / because it will be written as \ !!! TO BE CHECKED !!!
+                    str_line = str_line.replace('\\', '/')
+                    file.write(str_line)
             if platform.system() == 'Linux':
                 chmod_recursive(tsvfilename, 0o777)
         else:
@@ -1461,6 +1544,11 @@ class ChannelsTSV(BidsTSV):
     required_fields = ['name', 'type', 'units', 'sampling_frequency', 'low_cutoff', 'high_cutoff', 'notch', 'reference']
     modality_field = 'channels'
 
+
+class ElecTSV(BidsTSV):
+    required_fields = ['name', 'x', 'y', 'z']
+    header = required_fields + ['type', 'material', 'impedance']
+    modality_field = 'electrodes'
 
 class GlobalSidecars(BidsBrick):
     keylist = BidsBrick.keylist + ['ses', 'space', 'modality', 'fileLoc']
@@ -1644,7 +1732,7 @@ class IeegEventsTSV(EventsTSV):
     pass
 
 
-class IeegElecTSV(BidsTSV):
+class IeegElecTSV(ElecTSV):
     required_fields = ['name', 'x', 'y', 'z', 'size']
     header = required_fields + ['material', 'manufacturer', 'group', 'hemisphere'] + ['type', 'impedance', 'dimension']
     modality_field = 'electrodes'
@@ -1715,10 +1803,8 @@ class EegEventsTSV(EventsTSV):
     pass
 
 
-class EegElecTSV(BidsTSV):
-    required_fields = ['name', 'x', 'y', 'z']
-    header = required_fields + ['type', 'material', 'impedance']
-    modality_field = 'electrodes'
+class EegElecTSV(ElecTSV):
+    pass
 
 
 class EegCoordSysJSON(BidsJSON):
@@ -2138,6 +2224,10 @@ class ScansTSV(BidsTSV):
     required_fields = ['filename']
     modality_field = 'scans.tsv'
 
+    def read_file(self, filename):
+        BidsTSV.read_file(self, filename)
+        for line in self[1::]:
+            line[0] = os.path.normpath(line[0])
 
 ''' Higher level bricks '''
 
@@ -2179,7 +2269,7 @@ class Subject(BidsBrick):
 
     def check_file_in_scans(self, filename, mod_dir):
         def scan_in_file(scan_tsv, filescan):
-            line = [scan[0] for scan in scan_tsv[1:]]
+            line = [os.path.normpath(scan[0]) for scan in scan_tsv[1:]]
             if filescan not in line:
                 scan_tsv.append({'filename': filescan, 'acq_time': '1900-01-01T00:00:00'})
 
@@ -2349,7 +2439,7 @@ class DatasetDescPipeline(DatasetDescJSON):
             self.read_file(filename)
         else:
             self['PipelineDescription'] = {}
-            self['Author'] = getpass.getuser()
+            self['Authors'] = getpass.getuser()
             self['Date'] = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             if param_vars and subject_list:
                 for key in param_vars:
@@ -3766,7 +3856,7 @@ class BidsDataset(MetaBrick):
         # a bit bulky rewrite to make it nice
         if element2remove is self and not isinstance(element2remove, Pipeline):
             shutil.rmtree(self.dirname)
-            print('The whole Bids dataset ' + self['DatasetDescJSON']['Name'] + ' has been removed')
+            print('The whole BIDS dataset ' + self['DatasetDescJSON']['Name'] + ' has been removed')
             BidsDataset.clear_log()
             self.issues.clear()
             self.clear()

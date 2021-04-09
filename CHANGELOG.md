@@ -10,6 +10,12 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 - Possibility to choose a local output in BP
 - Possibility to import derivatives folder in BIDS dataset
 
+## [v0.3.0] - 2021-04-30
+### Added
+- Possibility to apply the change of the name or type of the electrode on multiple files
+### Fixed
+- Taking into account multiple session to check the integrity of electrode names
+
 ## [v0.3.0] - 2021-03-10
 ### Added
 - Deface with SPM

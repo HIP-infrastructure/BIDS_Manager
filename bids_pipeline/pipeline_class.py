@@ -615,7 +615,7 @@ class PipelineSetting(dict):
             jsonf['Description'] = 'Results of ' + self['Name'] + ' analysis.'
             jsonf['RawSources'] = input_file
             jsonf['Parameters'] = analyse
-            jsonf['Author'] = getpass.getuser()
+            jsonf['Authors'] = getpass.getuser()
             jsonf['Date'] = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             jsonf.write_file(output_json)
 
@@ -688,10 +688,14 @@ class PipelineSetting(dict):
                           'JsonName']}
         # Voir comment gérer Software version
         file_to_write['JsonName'] = self.jsonfilename
-        author = dataset_desc['Author']
+        author = dataset_desc['Authors']
         name = dataset_desc['Name'].split('-')[0]
         file_to_write['Software'] = name
         if author is None or author == '':
+            author = getpass.getuser()
+        elif isinstance(author, list):
+            author = '-'.join(author)
+        if author == 'n/a':
             author = getpass.getuser()
         date = dataset_desc['Date']
         if date is None or date == '':

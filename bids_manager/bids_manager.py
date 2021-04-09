@@ -554,8 +554,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
 
-    def select_correct_name(self, list_idx, info):
-
+    def select_correct_name(self, list_idx, line_map): #info
+        info = line_map[list_idx]
         idx = info['index']
         mismtch_elec = info['Element']
         curr_dict = self.curr_bids.issues['ElectrodeIssue'][idx]
@@ -564,8 +564,20 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             make_cmd4elecnamechg(results, curr_dict, mismtch_elec)
             info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
+            flag = messagebox.askyesno('Apply change to other issues', 'Do you want to rename electrode {} in {} on the other files?'.format(mismtch_elec, results))
+            if flag:
+                filename = os.path.basename(curr_dict['fileLoc'])
+                names = filename.split('_')
+                common_name = '_'.join(names[0:3])
+                common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) if iss['MismatchedElectrodes'] == curr_dict['MismatchedElectrodes'] and common_name in iss['fileLoc'] and not iss['fileLoc'] == curr_dict['fileLoc']]
+                for iss in common_issues:
+                    make_cmd4elecnamechg(results, iss[0], mismtch_elec)
+                    info = line_map[iss[1]]
+                    info['IsAction'] = True
+                    self.update_issue_list(iss[0], iss[1], info)
 
-    def change_elec_type(self, list_idx, info):
+    def change_elec_type(self, list_idx, line_map):
+        info = line_map[list_idx]
         idx = info['index']
         mismtch_elec = info['Element']
 
@@ -588,6 +600,28 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             make_cmd4electypechg(output_dict, input_dict, curr_dict, mismtch_elec)
             info['IsAction'] = True
             self.update_issue_list(curr_dict, list_idx, info)
+            flag = messagebox.askyesno('Apply change to other issues', 'Do you want to change the type {} in {} on the other files with the electrode mismatch {}?'.format(input_dict, output_dict, mismtch_elec))
+            if flag:
+                filename = os.path.basename(curr_dict['fileLoc'])
+                names = filename.split('_')
+                common_name = '_'.join(names[0:3])
+                common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) if
+                                 iss['MismatchedElectrodes'] == curr_dict['MismatchedElectrodes'] and common_name in
+                                 iss['fileLoc'] and not iss['fileLoc'] == curr_dict['fileLoc']]
+                for iss in common_issues:
+                    str_info = 'Change electrode type of ' + mismtch_elec + ' from ' + input_dict['type'] + ' to ' + \
+                               output_dict['type'] + ' in the electrode file related to ' + \
+                               os.path.basename(iss[0]['fileLoc']) + '.\n'
+                    # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
+                    # to fancy, used for others
+                    # command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
+                    command = 'type="' + output_dict['type'] + '"'
+                    iss[0].add_action(str_info, command, elec_name=mismtch_elec)
+                    make_cmd4electypechg(output_dict, input_dict, iss[0], mismtch_elec)
+                    info = line_map[iss[1]]
+                    info['IsAction'] = True
+                    self.update_issue_list(iss[0], iss[1], info)
+                pass
 
     def get_entry(self, issue_key, list_idx, info):
         idx = info['index']
@@ -662,9 +696,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 pop_menu.add_command(label='Open file',
                                      command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))
                 pop_menu.add_command(label='Change electrode name',
-                                     command=lambda: self.select_correct_name(curr_idx, line_map[curr_idx]))
+                                     command=lambda: self.select_correct_name(curr_idx, line_map))
                 pop_menu.add_command(label='Change electrode type',
-                                     command=lambda: self.change_elec_type(curr_idx, line_map[curr_idx]))
+                                     command=lambda: self.change_elec_type(curr_idx, line_map))
             elif iss_key == 'ValidatorIssue':
                 pop_menu.add_command(label='Open file',
                                      command=lambda: self.open_file(issue_key, curr_idx, line_map[curr_idx]))

@@ -19,6 +19,7 @@ setup(
     install_requires=[
         'PyQt5',
         'pydicom',
+        'paramiko',
         'bids_validator',
         'scipy',
         'xlrd',
