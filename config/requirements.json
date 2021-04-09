@@ -1,0 +1,110 @@
+{
+	"Requirements": {
+		"Subject": {
+			"keys": {
+				"eCRF": "",
+				"gender":[
+					"M",
+					"F",
+					"U"
+				], 
+				"age_at_SEEG": "",
+				"hand": [
+					"A",
+					"L",
+					"R"
+				],
+				"age_at_surgery": "",
+				"epilepsy_type": "",
+				"age_at_epilepsy_onset": "",
+				"epilepsy_duration": "",
+				"seizure_frequency": [
+					"bi-weekly",
+					"daily",
+					"monthly",
+					"weekly"
+				],
+				"anatomical_lesion": "",
+				"VNS": [
+					"No",
+					"Yes"
+				],
+				"histopathology": "",
+				"Side_laterality": [
+					"L",
+					"R",
+					"R&L",
+					"R<L",
+					"R>L"
+				]
+			},
+			"required_keys": [
+				"eCRF"
+			],
+			"Eeg": [
+				{
+					"amount": 1,
+					"type": {
+						"ses": "VNStesting",
+						"task": "parameters_testing",
+						"run": "_",
+						"modality": "eeg"
+					}
+				}
+			]
+		},
+		"Anat": {
+			"keys": {
+				"ses": [
+					"postop",
+					"preimp"
+				],
+				"acq": [
+					"",
+					"3T",
+					"7T"
+				]
+			}
+		},
+		"Eeg": {
+			"keys": {
+				"ses": [
+					"VNStesting",
+					""
+				],
+				"task": [
+					"parameters_testing",
+					"rest"
+				]
+			}
+		},
+		"EegGlobalSidecars": {
+			"keys": {
+				"ses": [
+					"VNStesting",
+					""
+				],
+				"acq": [
+					"drawing",
+					"picture"
+				]
+			}
+		}
+	},
+	"Converters": {
+		"Imaging": {
+			"path": "//dynaserv/Softwares/dicm2nii.exe",
+			"ext": [
+				".nii"
+			]
+		},
+		"Electrophy": {
+			"path": "//dynaserv/Softwares/anywave/AnyWave.exe",
+			"ext": [
+				".vhdr",
+				".vmrk",
+				".eeg"
+			]
+		}
+	}
+}
