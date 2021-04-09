@@ -1,0 +1,266 @@
+{
+ "Requirements": {
+  "Subject": {
+   "keys": {
+    "nickname": "",
+    "meg_code": "",
+    "age_at_SEEG": "",
+    "hand": [
+     "A",
+     "L",
+     "R"
+    ],
+    "age_at_MEG": "",
+    "age_at_surgery": "",
+    "gender": [
+     "F",
+     "M",
+     "N"
+    ],
+    "epilepsy_type": "",
+    "age_at_epilepsy_onset": "",
+    "epilepsy_duration": "",
+    "seizure_frequency": [
+     "bi-weekly",
+     "daily",
+     "monthly",
+     "weekly"
+    ],
+    "anatomical_lesion": "",
+    "engel_score": [
+     "I",
+     "IA",
+     "IB",
+     "IC",
+     "ID",
+     "II",
+     "IIA",
+     "IIB",
+     "IIC",
+     "IID",
+     "III",
+     "IIIA",
+     "IIIB",
+     "IV",
+     "IVA",
+     "IVB",
+     "IVC"
+    ],
+    "SR": [
+     "No",
+     "Yes"
+    ],
+    "SR_type": "",
+    "TC": [
+     "No",
+     "Yes"
+    ],
+    "VNS": [
+     "No",
+     "Yes"
+    ],
+    "DBS": [
+     "No",
+     "Yes"
+    ],
+    "DBS_target": "",
+    "GK": [
+     "No",
+     "Yes"
+    ],
+    "GK_target": "",
+    "histopathology": "",
+    "Side_laterality": [
+     "L",
+     "R",
+     "R&L",
+     "R<L",
+     "R>L"
+    ]
+   },
+   "required_keys": [
+    "age_at_SEEG",
+    "gender"
+   ],
+   "Anat": [
+    {
+     "amount": 1,
+     "type": {
+      "ses": "preimp",
+      "run": "_",
+      "modality": "T1w"
+     }
+    },
+    {
+     "amount": 1,
+     "type": [
+      {
+       "ses": "postimp",
+       "run": "_",
+       "modality": "T1w"
+      },
+      {
+       "ses": "postimp",
+       "run": "_",
+       "modality": "CT"
+      }
+     ]
+    }
+   ],
+   "Ieeg": [
+    {
+     "amount": 1,
+     "type": {
+      "ses": "postimp",
+      "task": "rest",
+      "run": "_",
+      "modality": "ieeg"
+     }
+    },
+    {
+     "amount": 1,
+     "type": {
+      "ses": "postimp",
+      "task": "seizure",
+      "acq": "_",
+      "run": "_",
+      "modality": "ieeg"
+     }
+    }
+   ],
+   "IeegGlobalSidecars": [
+    {
+     "amount": 1,
+     "type": {
+      "ses": "postimp",
+      "space": "_",
+      "modality": "electrodes"
+     }
+    },
+    {
+     "amount": 1,
+     "type": {
+      "ses": "postimp",
+      "space": "_",
+      "modality": "coordsystem"
+     }
+    },
+    {
+     "amount": 1,
+     "type": {
+      "ses": "postimp",
+      "acq": "_",
+      "modality": "photo"
+     }
+    }
+   ]
+  },
+  "Anat": {
+   "keys": {
+    "ses": [
+     "postimp",
+     "postop",
+     "preimp"
+    ],
+    "acq": [
+     "",
+     "3T",
+     "7T"
+    ]
+   }
+  },
+  "Ieeg": {
+   "keys": {
+    "ses": [
+     "postimp"
+    ],
+    "task": [
+     "postTC",
+     "preTC",
+     "rest",
+     "seizure",
+     "sleep"
+    ],
+    "acq": [
+     "",
+     "stim",
+     "type1",
+     "type2",
+     "type3",
+     "type4"
+    ]
+   }
+  },
+  "Meg": {
+   "keys": {
+    "ses": [
+     "postop",
+     "preimp",
+     "simultaneous"
+    ],
+    "task": [
+     "cognitive",
+     "rest",
+     "seizure",
+     "sleep"
+    ]
+   }
+  },
+  "Eeg": {
+   "keys": {
+    "ses": [
+     "preimp",
+     "simultaneous"
+    ],
+    "task": [
+     "cognitive",
+     "rest",
+     "seizure",
+     "sleep"
+    ]
+   }
+  },
+  "IeegGlobalSidecars": {
+   "keys": {
+    "ses": [
+     "postimp"
+    ],
+    "space": [
+     "MNI",
+     "other"
+    ],
+    "acq": [
+     "drawing",
+     "drawing2",
+     "picture1",
+     "picture2"
+    ]
+   }
+  },
+  "Dwi": {
+   "keys": {
+    "ses": [
+     "postimp",
+     "postop",
+     "preimp"
+    ]
+   }
+  }
+ },
+ "Converters": {
+  "Imaging": {
+   "path": "//dynaserv/Softwares/dicm2nii.exe",
+   "ext": [
+    ".nii"
+   ]
+  },
+  "Electrophy": {
+   "path": "//dynaserv/Softwares/anywave/AnyWave.exe",
+   "ext": [
+    ".vhdr",
+    ".vmrk",
+    ".eeg"
+   ]
+  }
+ }
+}
