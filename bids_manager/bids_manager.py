@@ -47,10 +47,11 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.3.0'
+    version = '0.3.1'
     bids_startfile = os.path.join(os.getcwd(), 'Data')
     import_startfile = os.path.join(os.getcwd(), 'Data')
     folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
+    anywave_reverse = False
 
     def __init__(self, root, monitor_width, monitor_height):
         super().__init__()
@@ -97,6 +98,10 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_menu.add_command(label='Explore Bids dataset', state=DISABLED)
         bids_menu.add_command(label='Determine subject by criteria subject', command=lambda: self.subject_selection(), state=DISABLED)
         bids_menu.add_command(label='Modify requirements file', command=self.modify_requirements_file, state=DISABLED)
+        menu_anywave = Menu(bids_menu, tearoff=0)
+        menu_anywave.add_command(label='Copy AnyWave files from your username folder', command=lambda nm=bids.BidsBrick.curr_user: self.handle_anywave_files(nm), state=DISABLED)
+        menu_anywave.add_command(label='Copy AnyWave files from common folder', command=lambda nm='common': self.handle_anywave_files(nm), state=DISABLED)
+        bids_menu.add_cascade(label="Use AnyWave version lower than March 2021", underline=0, menu=menu_anywave, state=DISABLED)
         # fill up the upload/import menu
         uploader_menu.add_command(label='Import data with BIDS Uploader', command=self.ask4uploader_import, state=DISABLED)
         uploader_menu.add_command(label='Set Upload directory', command=self.ask4upload_dir, state=DISABLED)
@@ -361,14 +366,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
             return error_str
 
-
-        def check_access():
-            if os.path.isfile(self.curr_bids.access.filename):
-                acss = bids.Access()
-                acss.read_file(self.curr_bids.access.filename)
-            else:
-                acss = False
-                self.curr_bids.access.write_file()
+        def check_access(user):
+            self.curr_bids.access.write_file()
+            acss = [us for us in self.curr_bids.access if not us == user]
+            # if os.path.isfile(self.curr_bids.access.filename):
+            #     acss = bids.Access()
+            #     acss.read_file(self.curr_bids.access.filename)
+            # else:
+            #     acss = False
+            #     self.curr_bids.access.write_file()
             return acss
 
         bids_dir = filedialog.askdirectory(title='Please select a BIDS dataset directory',
@@ -382,7 +388,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.curr_data2import = None
         self.update_text('')
         if self.curr_bids:
-            self.curr_bids.access.delete_file()
+            self.curr_bids.access.delete_file(bids.BidsBrick.curr_user)
             self.curr_bids = None
         if isnew_dir:
             # if new bids directory than create dataset_desc.json and but the requirements in code
@@ -409,14 +415,14 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                     self.change_menu_state(self.issue_menu, state=DISABLED)
                     self.make_available()
                     return
-                access = check_access()
+                access = check_access(bids.BidsBrick.curr_user)
                 if access:
-                    messagebox.showerror('Error', access.display())
-                    self.banner_label._default = 'Please set/create a Bids directory'
-                    self.curr_bids = None
-                    self.change_menu_state(self.uploader_menu, state=DISABLED)
-                    self.change_menu_state(self.issue_menu, state=DISABLED)
-                    self.make_available()
+                    messagebox.showwarning('WARNING', access.display())
+                    # self.banner_label._default = 'Please set/create a Bids directory'
+                    # self.curr_bids = None
+                    # self.change_menu_state(self.uploader_menu, state=DISABLED)
+                    # self.change_menu_state(self.issue_menu, state=DISABLED)
+                    # self.make_available()
                     return
 
             else:
@@ -861,6 +867,11 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
 
     def import_data(self):
         self.pack_element(self.main_frame['text'])
+        perm, users, log_info = self.curr_bids.access.use_token_import(self.curr_bids.curr_user)
+        if not perm:
+            messagebox.showerror('Import data not possible', log_info)
+            self.update_text(log_info)
+            return
         self.make_idle('Importing data from ' + self.curr_data2import.dirname)
         try:
             if self.curr_data2import:
@@ -869,6 +880,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             else:
                 self.update_text('No upload directory is set.')
         except Exception as err:
+            self.curr_bids.access.free_token('import_data', self.curr_bids.curr_user)
             self.update_text(self.curr_bids.curr_log + str(err))
         if not os.path.exists(self.curr_data2import.dirname):
             self.curr_data2import = None
@@ -886,11 +898,20 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 self.change_menu_state(self.uploader_menu, start_idx=3, state=DISABLED)
             else:
                 self.update_text('Verify your upload directory {}.'.format(self.curr_data2import.dirname), delete_flag=False)
+        self.curr_bids.access.free_token('import_data', self.curr_bids.curr_user)
+        self.make_available()
+
+    def handle_anywave_files(self, folder):
+        self.make_idle('Copying AnyWave files in process')
+        bids.handle_anywave_files(folder, reverse=True)
+        self.anywave_reverse = True
         self.make_available()
 
     def close_window(self):
         if self.curr_bids:
-            self.curr_bids.access.delete_file()
+            if self.anywave_reverse:
+                bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+            self.curr_bids.access.delete_file(bids.BidsBrick.curr_user)
             # if not os.path.isfile(os.path.join(self.curr_bids.dirname, self.curr_bids.log_path,
             #                                    'bids_' + self.curr_bids.access["access_time"] + '.log')):
             #     self.curr_bids.write_log(self.curr_bids.curr_log)
@@ -1056,6 +1077,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS, batch_file=batch_file)
             if output_dict.log_error:
                 self.update_text(output_dict.log_error)
+                self.curr_bids.access.use_token('analyse_data', bids.BidsBrick.curr_user)
                 self.make_available()
                 return
             #save batch and possibility to upload it in the GUI
@@ -1068,6 +1090,13 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             for ind, key in enumerate(output_dict.results):
                 tmp = key.split('_')
                 soft_name = '_'.join(tmp[1::])
+                perm, users, log_info = self.curr_bids.access.use_token_analyse(bids.BidsBrick.curr_user, soft_name)
+                if not perm:
+                    messagebox.showinfo('Batch analysed is stopped', log_info + '\n Batch stopped before to analyse {}.'.format(soft_name))
+                    self.curr_bids.access.free_token('analyse_data', bids.BidsBrick.curr_user)
+                    pip.save_batch(self.curr_bids.dirname, batch_file)
+                    self.make_available()
+                    return
                 soft_analyse = pip.PipelineSetting(self.curr_bids, soft_name)
                 for clef in output_dict.results[key]['input_param']:
                     if 'deriv-folder' in output_dict.results[key]['input_param'][clef] and 'Previous analysis results' in output_dict.results[key]['input_param'][clef]['deriv-folder'][0]:
@@ -1078,6 +1107,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                             messagebox.showerror('Selection error', 'There is no analysis before {}.\n'.format(key))
                             output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS)
                             # remettre le batch
+                            self.curr_bids.access.free_token('analyse_data', bids.BidsBrick.curr_user)
                             self.make_available()
                             return
                 log_analysis, output_name, batch_file_soft = soft_analyse.set_everything_for_analysis(output_dict.results[key])
@@ -1086,6 +1116,12 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 batch_file[key] = batch_file_soft
             pip.save_batch(self.curr_bids.dirname, batch_file)
         else:
+            perm, users, log_info = self.curr_bids.access.use_token_analyse(bids.BidsBrick.curr_user, nameS)
+            if not perm:
+                messagebox.showwarning('WARNING', log_info)
+                self.curr_bids.access.free_token('analyse_data', bids.BidsBrick.curr_user)
+                self.make_available()
+                return
             try:
                 soft_analyse = pip.PipelineSetting(self.curr_bids, nameS)
             except (EOFError, KeyError) as err:
@@ -1107,6 +1143,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             log_analysis, output_name, batch_file_soft = soft_analyse.set_everything_for_analysis(output_dict.results[clef]) #['analysis_param'], output_dict.results['subject_selected'], output_dict.reults['input_param']
             #self.update_text(log_analysis)
             self.curr_bids.write_log(log_analysis)
+        self.curr_bids.access.free_token('analyse_data', bids.BidsBrick.curr_user)
         self.make_available()
 
     def select_batch_file(self):

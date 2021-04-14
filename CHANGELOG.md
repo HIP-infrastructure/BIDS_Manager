@@ -10,11 +10,17 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 - Possibility to choose a local output in BP
 - Possibility to import derivatives folder in BIDS dataset
 
-## [v0.3.0] - 2021-04-30
+## [v0.3.1] - 2021-04-30
 ### Added
 - Possibility to apply the change of the name or type of the electrode on multiple files
+- Extension '.mtg' and '.mrk' to be parsed in derivatives and called as input in BP
+- Management of multiple connections to the database
+
 ### Fixed
 - Taking into account multiple session to check the integrity of electrode names
+
+### Changed
+- during parsing, anywave files are saved in a derivatives folder anywave/username
 
 ## [v0.3.0] - 2021-03-10
 ### Added

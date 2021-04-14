@@ -973,6 +973,18 @@ class AnyWave(Parameters):
         home = os.path.expanduser('~')
         self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
         os.makedirs(self.anywave_directory, exist_ok=True)
+        # Get anywave version to know if the anywave files should be in raw or not
+        cmd = '""' + self.curr_path + ' --version"'
+        try:
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    universal_newlines=True)
+            error_proc = proc.communicate()
+            version = error_proc[1]
+            error = error_proc[0]
+            if version < 210301 or error == -1:
+                bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+        except OSError:
+            bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
 
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         self['plugin'] = self.callname

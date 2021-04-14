@@ -277,24 +277,29 @@ class ParameterInterface(Interface):
             return is_same
 
         reading_file = self.parameters[key]['read'].strip('*')
+        [filetype, ext] = reading_file.split('.')
+        if '.'+ext in bids.BidsDataset.anywave_ext:
+            dir2read = bids.BidsDataset.anywave_folder_user
+        else:
+            dir2read = self.bids_data.cwdir
         elements = self.parameters[key]['elementstoread']
         mark_to_remove = ['?', '***', '*']
         param = []
         is_same = True
-        for subject in os.listdir(self.bids_data.cwdir):
-            if subject.endswith(reading_file) and os.path.isfile(os.path.join(self.bids_data.cwdir, subject)):
-                file_param = read_file(os.path.join(self.bids_data.cwdir, subject), elements)
+        for subject in os.listdir(dir2read):
+            if subject.endswith(reading_file) and os.path.isfile(os.path.join(dir2read, subject)):
+                file_param = read_file(os.path.join(dir2read, subject), elements)
                 if not param:
                     param = [elt for elt in file_param]
                 else:
                     is_same = compare_listes(param, file_param)
                 break
-            elif subject.startswith('sub') and os.path.isdir(os.path.join(self.bids_data.cwdir, subject)):
-                for session in os.listdir(os.path.join(self.bids_data.cwdir, subject)):
-                    if os.path.isdir(os.path.join(self.bids_data.cwdir, subject, session)):
-                        for mod in os.listdir(os.path.join(self.bids_data.cwdir, subject, session)):
-                            if os.path.isdir(os.path.join(self.bids_data.cwdir, subject, session, mod)):
-                                with os.scandir(os.path.join(self.bids_data.cwdir, subject, session, mod)) as it:
+            elif subject.startswith('sub') and os.path.isdir(os.path.join(dir2read, subject)):
+                for session in os.listdir(os.path.join(dir2read, subject)):
+                    if os.path.isdir(os.path.join(dir2read, subject, session)):
+                        for mod in os.listdir(os.path.join(dir2read, subject, session)):
+                            if os.path.isdir(os.path.join(dir2read, subject, session, mod)):
+                                with os.scandir(os.path.join(dir2read, subject, session, mod)) as it:
                                     for entry in it:
                                         if entry.name.endswith(reading_file):
                                             file_param = read_file(entry.path, elements)
@@ -303,9 +308,9 @@ class ParameterInterface(Interface):
                                             else:
                                                 is_same = compare_listes(param, file_param)
                             elif os.path.isfile(
-                                    os.path.join(self.bids_data.cwdir, subject, session, mod)) and mod.endswith(
+                                    os.path.join(dir2read, subject, session, mod)) and mod.endswith(
                                     reading_file):
-                                file_param = read_file(os.path.join(self.bids_data.cwdir, subject, session, mod),
+                                file_param = read_file(os.path.join(dir2read, subject, session, mod),
                                                        elements)
                                 if not param:
                                     param = [elt for elt in file_param]
