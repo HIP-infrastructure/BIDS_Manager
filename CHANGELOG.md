@@ -3,10 +3,7 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 
 ## [Unreleased]
 - Export option is working, need to test more the merge option
-- Adapt BIDS Manager to the behaviour of the new AnyWave (reading the anywave files inside derivtatives/anywave/username)
-- Give multiple access to one BIDS dataset
 - Make the interface dynamic
-- Possibility to run analysis on multiple combination of inputs
 - Possibility to choose a local output in BP
 - Possibility to import derivatives folder in BIDS dataset
 
@@ -14,13 +11,15 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 ### Added
 - Possibility to apply the change of the name or type of the electrode on multiple files
 - Extension '.mtg' and '.mrk' to be parsed in derivatives and called as input in BP
-- Management of multiple connections to the database
+- Management of multiple access to the database
+- Write the command line used for the process in derivatives/bids_pipeline/command_line
 
 ### Fixed
 - Taking into account multiple session to check the integrity of electrode names
 
 ### Changed
-- during parsing, anywave files are saved in a derivatives folder anywave/username
+- During parsing, anywave files are saved in a derivatives folder anywave/username
+- Possibility to run analysis on multiple combination of inputs
 
 ## [v0.3.0] - 2021-03-10
 ### Added

@@ -98,6 +98,7 @@ class DerivativesSetting(object):
                     variant_list.append(pip)
                     it_exist=True
             return it_exist, variant_list
+
         directory_name = None
         is_empty, pip_list = self.is_empty()
         mode = (param_var['Mode'] == 'manual')
@@ -323,11 +324,21 @@ class DerivativesSetting(object):
                                         pip['ParticipantsProcessTSV'].write_file(os.path.join(pip_directory, bids.ParticipantsTSV.filename))
             return False, log
 
+    def possible_output_for_analysis(self, analysis_name):
+        pip_folder = {}
+        for pip in self.pipelines:
+            if pip['name'].startswith(analysis_name.lower()):
+                pip_folder[pip['name']] = {}
+                pip_folder[pip['name']]['subject'] = pip['DatsetDescJSON']['SourceDataset']['sub']
+                pip_folder[pip['name']]['parameters'] = pip['DatsetDescJSON']['PipelineDescription']
+        return pip_folder
+
 
 class PipelineSetting(dict):
     keylist = ['Name', 'Path', 'Parameters']
     soft_path = os.path.join(os.getcwd(), 'SoftwarePipeline')
     log_error = ''
+    cmd_line_log = []
     curr_dev = None
     curr_bids = None
     curr_path = None
@@ -363,7 +374,9 @@ class PipelineSetting(dict):
         if self.curr_path is not self['Path']:
             self['Path'] = self.curr_path
             self.write_file(os.path.join(self.soft_path, soft_name + '.json'))
-        os.makedirs(os.path.join(self.cwdir, 'derivatives', 'bids_pipeline'), exist_ok=True)
+        self.curr_dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
+        self.curr_dev.bp_folder = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline')
+        os.makedirs(self.curr_dev.bp_folder , exist_ok=True)
 
     def __setitem__(self, key, value):
         if key in self.keylist:
@@ -461,7 +474,6 @@ class PipelineSetting(dict):
                             in_out[order['montage_file']].append(file_mtg[0])
             return warning
 
-
         param_vars = {}
         for key in results['analysis_param']:
             if key[0].isdigit() and key[1] == '_':
@@ -483,8 +495,7 @@ class PipelineSetting(dict):
             if err:
                 raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
-            dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
-            output_directory, output_name, dataset_desc = dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
+            output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
             participants = bids.ParticipantsProcessTSV()
 
             # Check if the subjects have all the required values
@@ -530,6 +541,7 @@ class PipelineSetting(dict):
                 while idx < taille[sub]:
                     use_list = list_for_str_format(in_out[sub], idx)
                     cmd = cmd_line.format(*use_list)
+                    self.cmd_line_log.append(cmd)
                     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             universal_newlines=True)
                     error_proc = proc.communicate()
@@ -547,7 +559,7 @@ class PipelineSetting(dict):
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             self.write_log()
             return self.log_error, output_name, {}
-        empty_dir, log_empty = dev.empty_dirs(output_name, rmemptysub=True)
+        empty_dir, log_empty = self.curr_dev.empty_dirs(output_name, rmemptysub=True)
         if not empty_dir:
             #remove the empty directory
             sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
@@ -563,7 +575,7 @@ class PipelineSetting(dict):
                 go_throught_dir_to_convert(output_directory)
             except:
                 pass
-            dev.parse_pipeline(output_directory, output_name)
+            self.curr_dev.parse_pipeline(output_directory, output_name)
             self.curr_bids.save_as_json()
             temp = self.write_analysis_done_log(dataset_desc, filename=os.path.join(output_directory, Parameters.filename))
         else:
@@ -571,6 +583,7 @@ class PipelineSetting(dict):
             shutil.rmtree(output_directory)
 
         self.write_log()
+        self.write_command_line_log()
         file_to_write = self.write_analysis_done_log(dataset_desc)
         return self.log_error, output_name, file_to_write
 
@@ -675,12 +688,20 @@ class PipelineSetting(dict):
             f.write(json_str)
 
     def write_log(self):
-        log_dir = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline', 'log')
+        log_dir = os.path.join(self.curr_dev.bp_folder, 'log')
         os.makedirs(log_dir, exist_ok=True)
         time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         log_filename = 'bids-pipeline_' + time_format + '.log'
         with open(os.path.join(log_dir, log_filename), 'w+') as file:
             file.write(self.log_error + '\n')
+
+    def write_command_line_log(self):
+        log_dir = os.path.join(self.curr_dev.bp_folder, 'command_line')
+        os.makedirs(log_dir, exist_ok=True)
+        time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        log_filename = self['Name'] + '_' + time_format + '.log'
+        with open(os.path.join(log_dir, log_filename), 'w+') as file:
+            file.write('\n'.join(self.cmd_line_log) + '\n')
 
     def write_analysis_done_log(self, dataset_desc, filename=None):
         file_to_write = {key: '' for key in
@@ -702,7 +723,7 @@ class PipelineSetting(dict):
             date = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         date.replace(' ', 'T')
         if not filename:
-            analysis_dir = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline', 'analysis_done')
+            analysis_dir = os.path.join(self.curr_dev.bp_folder, 'analysis_done')
             os.makedirs(analysis_dir, exist_ok=True)
             filename = name +'_' + author + '_' + date + '.json'
             filename = os.path.join(analysis_dir, filename)
@@ -1344,7 +1365,7 @@ class Input(ParametersSide):
                         key2combine.append(cnt)
                     else:
                         err += 'ERROR: The elements in the list don"t have the same size.\n'
-                        return
+                        return err
             reorder_inputs(in_out, idx_in, key2order=key2order)
             if len(key2combine) > 1:
                 B = [in_out[idx] for idx in key2combine]

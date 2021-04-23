@@ -99,8 +99,8 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         bids_menu.add_command(label='Determine subject by criteria subject', command=lambda: self.subject_selection(), state=DISABLED)
         bids_menu.add_command(label='Modify requirements file', command=self.modify_requirements_file, state=DISABLED)
         menu_anywave = Menu(bids_menu, tearoff=0)
-        menu_anywave.add_command(label='Copy AnyWave files from your username folder', command=lambda nm=bids.BidsBrick.curr_user: self.handle_anywave_files(nm), state=DISABLED)
-        menu_anywave.add_command(label='Copy AnyWave files from common folder', command=lambda nm='common': self.handle_anywave_files(nm), state=DISABLED)
+        menu_anywave.add_command(label='Copy AnyWave files from your username folder', command=lambda nm=bids.BidsBrick.curr_user: self.handle_anywave_files(nm))
+        menu_anywave.add_command(label='Copy AnyWave files from common folder', command=lambda nm='common': self.handle_anywave_files(nm))
         bids_menu.add_cascade(label="Use AnyWave version lower than March 2021", underline=0, menu=menu_anywave, state=DISABLED)
         # fill up the upload/import menu
         uploader_menu.add_command(label='Import data with BIDS Uploader', command=self.ask4uploader_import, state=DISABLED)
@@ -575,12 +575,18 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 filename = os.path.basename(curr_dict['fileLoc'])
                 names = filename.split('_')
                 common_name = '_'.join(names[0:3])
-                common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) if iss['MismatchedElectrodes'] == curr_dict['MismatchedElectrodes'] and common_name in iss['fileLoc'] and not iss['fileLoc'] == curr_dict['fileLoc']]
+                # common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) if iss['MismatchedElectrodes'] == curr_dict['MismatchedElectrodes'] and common_name in iss['fileLoc'] and not iss['fileLoc'] == curr_dict['fileLoc']]
+                common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) for elt
+                                 in iss['MismatchedElectrodes'] if
+                                 mismtch_elec == elt['name'] and common_name in
+                                 iss['fileLoc'] and not iss['fileLoc'] == curr_dict['fileLoc']]
                 for iss in common_issues:
                     make_cmd4elecnamechg(results, iss[0], mismtch_elec)
-                    info = line_map[iss[1]]
+                    list_idx_other = [cnt for cnt, elt in enumerate(line_map) if
+                                      elt['index'] == iss[1] and elt['Element'] == mismtch_elec]
+                    info = line_map[list_idx_other[0]]
                     info['IsAction'] = True
-                    self.update_issue_list(iss[0], iss[1], info)
+                    self.update_issue_list(iss[0], list_idx_other[0], info)
 
     def change_elec_type(self, list_idx, line_map):
         info = line_map[list_idx]
@@ -611,8 +617,9 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 filename = os.path.basename(curr_dict['fileLoc'])
                 names = filename.split('_')
                 common_name = '_'.join(names[0:3])
-                common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) if
-                                 iss['MismatchedElectrodes'] == curr_dict['MismatchedElectrodes'] and common_name in
+                common_issues = [(iss, cnt) for cnt, iss in enumerate(self.curr_bids.issues['ElectrodeIssue']) for elt in iss['MismatchedElectrodes'] if
+                                 mismtch_elec == elt['name'] and common_name in
+                                 #iss['MismatchedElectrodes'] == curr_dict['MismatchedElectrodes'] and common_name in
                                  iss['fileLoc'] and not iss['fileLoc'] == curr_dict['fileLoc']]
                 for iss in common_issues:
                     str_info = 'Change electrode type of ' + mismtch_elec + ' from ' + input_dict['type'] + ' to ' + \
@@ -621,13 +628,14 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                     # self.pack_element(self.main_frame['text'], side=LEFT, remove_previous=False)
                     # to fancy, used for others
                     # command = ', '.join([str(k + '="' + output_dict[k] + '"') for k in output_dict])
+                    list_idx_other = [cnt for cnt, elt in enumerate(line_map) if elt['index'] == iss[1] and elt['Element'] == mismtch_elec]
                     command = 'type="' + output_dict['type'] + '"'
                     iss[0].add_action(str_info, command, elec_name=mismtch_elec)
                     make_cmd4electypechg(output_dict, input_dict, iss[0], mismtch_elec)
-                    info = line_map[iss[1]]
+                    info = line_map[list_idx_other[0]]
                     info['IsAction'] = True
-                    self.update_issue_list(iss[0], iss[1], info)
-                pass
+                    self.update_issue_list(iss[0], list_idx_other[0], info)
+
 
     def get_entry(self, issue_key, list_idx, info):
         idx = info['index']
@@ -911,10 +919,16 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         if self.curr_bids:
             if self.anywave_reverse:
                 bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+            #do a parsing before to close
+            flag = messagebox.askyesno('Info', 'Do you want to Refresh your dataset before to close?')
+            if flag:
+                self.make_idle('Parsing in process! Can take few minutes')
+                self.curr_bids.parse_bids()
             self.curr_bids.access.delete_file(bids.BidsBrick.curr_user)
             # if not os.path.isfile(os.path.join(self.curr_bids.dirname, self.curr_bids.log_path,
             #                                    'bids_' + self.curr_bids.access["access_time"] + '.log')):
             #     self.curr_bids.write_log(self.curr_bids.curr_log)
+            self.make_available()
             self.curr_bids.write_log('BIDS Manager was closed')
             self.curr_bids.save_as_json()
         self.quit()

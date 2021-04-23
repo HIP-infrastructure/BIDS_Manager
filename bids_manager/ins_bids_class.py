@@ -922,7 +922,7 @@ class BidsBrick(dict):
                 bids_format = ' --bids_format vhdr'
 
             ## Voir pour recuperer les markers nomenclature et mettre en input de la ligne de commande
-            if BidsDataset.nomenclatures['Nomenclatures'] and self.classname() in BidsDataset.nomenclatures['Nomenclatures']:
+            if 'Nomenclatures' in BidsDataset.nomenclatures and BidsDataset.nomenclatures['Nomenclatures'] and self.classname() in BidsDataset.nomenclatures['Nomenclatures']:
                 mod = self.classname()
                 task = attr_dict['task']
                 try:
@@ -1139,7 +1139,7 @@ class BidsSidecar(object):
                                     key not in self.keylist:
                                 self[key] = read_json[key]
                 else:
-                    raise TypeError('File is not ".json".')
+                    raise TypeError('File {} is not ".json".'.format(filename))
             elif isinstance(self, BidsTSV):
                 if os.path.splitext(filename)[1] == '.tsv':
                     with open(os.path.join(filename), 'r') as file:
@@ -1157,7 +1157,7 @@ class BidsSidecar(object):
                         for line in file:
                             self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
                 else:
-                    raise TypeError('File is not ".tsv".')
+                    raise TypeError('File {} is not ".tsv".'.format(filename))
             elif isinstance(self, BidsFreeFile):
                 self.clear()
                 try:
@@ -1169,7 +1169,7 @@ class BidsSidecar(object):
                         for line in file:
                             self.append(line)
             else:
-                raise TypeError('Not readable class input ' + self.classname() + '.')
+                raise TypeError('File ' + filename +': Not readable class input ' + self.classname() + '.')
 
     def simplify_sidecar(self, required_only=True):
         """remove fields that have 'n/a' and are not required or if required_only=True keep only required fields."""
@@ -2474,7 +2474,7 @@ class DatasetDescJSON(BidsJSON):
                                 key not in self.keylist:
                             self[key] = read_json[key]
             else:
-                raise TypeError('File is not ".json".')
+                raise TypeError('File {} is not ".json".'.format(jsonfilename))
 
     def copy_values(self, sidecar_elmt, simplify_flag=False):
         super().copy_values(sidecar_elmt, simplify_flag=simplify_flag)
@@ -2496,8 +2496,8 @@ class DatasetDescJSON(BidsJSON):
 
 class DatasetDescPipeline(DatasetDescJSON):
     keylist = ['Name', 'BIDSVersion', 'PipelineDescription', 'SourceDataset', 'Authors', 'Date']
-    filename = 'dataset_description.json'
-    bids_version = '1.4.0'
+    # filename = 'dataset_description.json'
+    # bids_version = '1.4.1'
 
     def __init__(self, filename=None, param_vars=None, subject_list=None):
         super().__init__()
@@ -2518,7 +2518,7 @@ class DatasetDescPipeline(DatasetDescJSON):
     def read_file(self, jsonfilename):
         if os.path.splitext(jsonfilename)[1] == '.json':
             if not os.path.exists(jsonfilename):
-                print('datasetdescription.json does not exists.')
+                print('datasetdescription.json in {} does not exists.'.format(os.path.dirname(jsonfilename)))
                 return
             with open(jsonfilename, 'r') as file:
                 read_json = json.load(file)
@@ -2528,7 +2528,7 @@ class DatasetDescPipeline(DatasetDescJSON):
                     elif (key in self.keylist and self[key] == 'n/a') or key not in self.keylist:
                         self[key] = read_json[key]
         else:
-            raise TypeError('File is not ".json".')
+            raise TypeError('File {} is not ".json".'.format(jsonfilename))
 
     def compare_parameters(self, param_vars, subject_to_analyse):
         keylist = [key for key in param_vars if not key == 'Callname']
@@ -2686,7 +2686,7 @@ class ParticipantsTSV(BidsTSV):
                 for line in file:
                     self.append({tsv_header[cnt]: val for cnt, val in enumerate(line.strip().split("\t"))})
         else:
-            raise TypeError('File is not ".tsv".')
+            raise TypeError('File {} is not ".tsv".'.format(tsv_full_filename))
         self.update_ids()
 
     def is_subject_present(self, sub_id):
@@ -3147,6 +3147,7 @@ class BidsDataset(MetaBrick):
                         except:
                             continue
                     elif mod_dir and file.is_file():
+                        is_moved = False
                         if flag_process and not mod_dir.endswith('Process'):
                             mod_dir = mod_dir + 'Process'
                         filename, ext = os.path.splitext(file)
@@ -3178,6 +3179,7 @@ class BidsDataset(MetaBrick):
                                 os.makedirs(sub_anywave_folder_common, exist_ok=True)
                                 shutil.copy2(file.path, os.path.join(sub_anywave_folder_common, file.name))
                             shutil.move(file.path, os.path.join(sub_anywave_folder, file.name))
+                            is_moved = True
                             # need to find corresponding json file and import it in modality json class
                         elif mod_dir + 'GlobalSidecars' in BidsBrick.get_list_subclasses_names() and ext.lower() \
                                 in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
@@ -3193,7 +3195,8 @@ class BidsDataset(MetaBrick):
                         #     subinfo[mod_dir][-1].get_attributes_from_filename()
                         #     subinfo[mod_dir][-1].get_sidecar_files()
                         try:
-                            is_bids.append(validator(file.path, subinfo.cwdir))
+                            if not is_moved:
+                                is_bids.append(validator(file.path, subinfo.cwdir))
                         except:
                             continue
                     elif mod_dir and file.is_dir():
@@ -3258,10 +3261,10 @@ class BidsDataset(MetaBrick):
                                 tsv_full_filename=os.path.join(entry.path, ParticipantsTSV.filename))
                         parse_bids_dir(bids_brick['Pipeline'][-1], entry.path, is_bids, flag_process=True)
 
-        all_users = [us for us in self.access if self.access[us]['import_data'] or self.access[us]['analyse_data']]
-        if all_users:
-            self.write_log(' BidsDataset {} cannot be parsed/refresh because users {} are importing or analysing data.'.format(self.dirname, ', '.join(all_users)))
-            return
+        # all_users = [us for us in self.access if self.access[us]['import_data'] or self.access[us]['analyse_data']]
+        # if all_users:
+        #     self.write_log(' BidsDataset {} cannot be parsed/refresh because users {} are importing or analysing data.'.format(self.dirname, ', '.join(all_users)))
+        #     return
         BidsBrick.access_time = datetime.now()
         self.clear()  # clear the bids variable before parsing to avoid rewrite the same things
         self.__class__.clear_log()
@@ -3621,7 +3624,11 @@ class BidsDataset(MetaBrick):
                     for sc in bids_dict['Subject'][bids_dict.curr_subject['index']]['Scans']:
                         sc.write_file()
 
-
+        # Check teh access to see if this user can import
+        perm, users, log_info = self.access.use_token_import(self.curr_user)
+        if not perm:
+            self.write_log(log_info)
+            return
         # if True:
         self.__class__.clear_log()
         self.write_log(10*'=' + '\nImport of ' + data2import.dirname + '\n' + 10*'=')
@@ -4689,7 +4696,7 @@ class Access(BidsJSON):
                     # get the permission type
                     if access in permission_dict:
                         access_type.append(permission_dict[access])
-            if 'full' or 'modify' in access_type:
+            if 'full' in access_type or 'modify' in access_type:
                 userdict['permission'] = 'full'
             elif 'read_only' in access_type:
                 userdict['permission'] = 'read'
@@ -4699,6 +4706,7 @@ class Access(BidsJSON):
             userdict['permission'] = BidsJSON.bids_default_unknown
 
     def use_token_import(self, user):
+        self.compare_access()
         perm = False
         is_used_by = [us for us in self if self[us]['import_data'] and not us == user]
         info = ''
@@ -4714,6 +4722,7 @@ class Access(BidsJSON):
         return perm, is_used_by, info
 
     def use_token_analyse(self, user, soft=None):
+        self.compare_access()
         perm = False
         if soft is not None:
             is_used_by = [us for us in self if self[us]['analyse_data'] and not us == user and self[us]['pipeline'] == soft]
@@ -4736,6 +4745,17 @@ class Access(BidsJSON):
         self[user]['pipeline'] = ''
         self.write_file()
 
+    def compare_access(self):
+        of = Access(BidsBrick.curr_user)
+        for us in of:
+            if us not in self:
+                self[us] = of[us]
+            elif not us == BidsBrick.curr_user:
+                for key in self.keylist_dict:
+                    if self[us][key] != of[us][key]:
+                        # A vérifier car pas sure
+                        # lire l'acces s'il est apres datetime.strptime(of[us][key], "%Y-%m-%dT%H:%M:%S")
+                        self[us][key] = of[us][key]
 
 ''' Additional class to handle issues and relative actions '''
 
@@ -5343,19 +5363,19 @@ def chmod_recursive(this_path, mode, debug=False):
 
 def handle_anywave_files(foldername, reverse=False):
 
-    def parse_sub_dir(dirname, dirname_dest=None, reverse=False):
+    def parse_sub_dir(dirname, original_dirname=None, dirname_dest=None, reverse=False):
         with os.scandir(dirname) as it:
             for entry in it:
                 [filename, ext] = os.path.splitext(entry.name)
                 if entry.name.startswith('ses-') and entry.is_dir():
-                    parse_sub_dir(entry.path, dirname_dest=dirname_dest)
-                elif entry.name in ModalityType.get_list_subclasses_names() and entry.is_dir():
-                    parse_sub_dir(entry.path, dirname_dest=dirname_dest)
+                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse)
+                elif entry.name.capitalize() in ModalityType.get_list_subclasses_names() and entry.is_dir():
+                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse)
                 elif entry.is_file() and ext.lower() in BidsDataset.anywave_ext and not entry.name.endswith('_montage.mtg'):
                     if dirname_dest is None:
                         dirname_dest = BidsDataset.dirname
                     sub_dirname = os.path.dirname(entry.path)
-                    sub_dirname = sub_dirname.replace(dirname + '\\', '')
+                    sub_dirname = sub_dirname.replace(original_dirname + '\\', '')
                     dirname_dest_sub = os.path.normpath(os.path.join(dirname_dest, sub_dirname))
                     if reverse:
                         shutil.copy2(entry.path, os.path.join(dirname_dest_sub, entry.name))
@@ -5368,12 +5388,12 @@ def handle_anywave_files(foldername, reverse=False):
         with os.scandir(anywave_folder) as it:
             for entry in it:
                 if entry.name.startswith('sub-') and entry.name in sublist:
-                    parse_sub_dir(entry.path, reverse=True)
+                    parse_sub_dir(entry.path, original_dirname=anywave_folder, reverse=True)
     else:
         with os.scandir(BidsDataset.dirname) as it:
             for entry in it:
                 if entry.name.startswith('sub-') and entry.is_dir():
-                    parse_sub_dir(entry.path, dirname_dest=anywave_folder)
+                    parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder)
 
 
 if __name__ == '__main__':

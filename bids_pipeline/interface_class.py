@@ -280,6 +280,10 @@ class ParameterInterface(Interface):
         [filetype, ext] = reading_file.split('.')
         if '.'+ext in bids.BidsDataset.anywave_ext:
             dir2read = bids.BidsDataset.anywave_folder_user
+            if not os.path.exists(dir2read):
+                dir2read = bids.BidsDataset.anywave_folder_common
+            if not os.path.exists(dir2read):
+                dir2read = self.bids_data.cwdir
         else:
             dir2read = self.bids_data.cwdir
         elements = self.parameters[key]['elementstoread']
