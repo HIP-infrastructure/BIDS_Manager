@@ -43,21 +43,25 @@
    "extension": ".mrk"
   },
   "use_markers": {
-   "read": "*events.tsv",
-   "elementstoread": "trial_type",
+   "read": "*.mrk",
+   "elementstoread": "0",
    "multipleselection": true
   },
   "skip_markers": {
-   "read": "*events.tsv",
-   "elementstoread": "trial_type",
+   "read": "*.mrk",
+   "elementstoread": "0",
    "multipleselection": true
   },
-  "montage_file": {
+  "create_montage": {
    "possible_value": [
     "bipolar_ieeg",
     "none"
    ],
    "multipleselection": false
+  },
+  "montage_file": {
+   "default": "",
+   "unit": ""
   },
   "skip_bad_channels": {
    "possible_value": [

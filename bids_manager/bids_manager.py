@@ -275,6 +275,12 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.pack_element(self.main_frame['text'])
 
     def refresh(self):
+        permission = self.curr_bids.access[bids.BidsBrick.curr_user]['permission']
+        if permission == 'read':
+            str2write = '/!\\ WARNING /!\\ User {} don"t have the permission to write in BIDS dataset {} so he cannot refresh the dataset.\n'.format(bids.BidsBrick.curr_user, self.curr_bids.dirname)
+            self.update_text(str2write)
+            self.make_available()
+            return
         self.pack_element(self.main_frame['text'])
         self.make_idle('Parsing BIDS directory.')
         self.curr_bids._assign_bids_dir(self.curr_bids.dirname)
@@ -367,8 +373,12 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             return error_str
 
         def check_access(user):
-            self.curr_bids.access.write_file()
-            acss = [us for us in self.curr_bids.access if not us == user]
+            try:
+                self.curr_bids.access.write_file()
+            except:
+                self.update_text("You don't have the permissions to write in the BIDS dataset {} and its derivatives.\n".format(self.curr_bids.cwdir))
+            acss = self.curr_bids.access
+            # acss = [us for us in self.curr_bids.access if not us == user]
             # if os.path.isfile(self.curr_bids.access.filename):
             #     acss = bids.Access()
             #     acss.read_file(self.curr_bids.access.filename)
@@ -417,13 +427,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                     return
                 access = check_access(bids.BidsBrick.curr_user)
                 if access:
-                    messagebox.showwarning('WARNING', access.display())
+                    wn = access.display()
+                    if wn:
+                        messagebox.showwarning('WARNING', wn)
                     # self.banner_label._default = 'Please set/create a Bids directory'
                     # self.curr_bids = None
                     # self.change_menu_state(self.uploader_menu, state=DISABLED)
                     # self.change_menu_state(self.issue_menu, state=DISABLED)
                     # self.make_available()
-                    return
+                    # return
 
             else:
                 self.change_menu_state(self.uploader_menu, state=DISABLED)

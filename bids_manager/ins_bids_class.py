@@ -450,6 +450,7 @@ class BidsBrick(dict):
 
     def save_as_json(self, savedir, file_start=None, write_date=True, compress=True):
         # \t*\[\n\t*(?P<name>[^\[])*?\n\t*\]
+        can_write = True
         if os.path.isdir(savedir):
             if not file_start:
                 file_start = ''
@@ -468,21 +469,27 @@ class BidsBrick(dict):
             json_filename = file_start + type(self).__name__.lower() + date_string + '.json'
 
             output_fname = os.path.join(savedir, json_filename)
-            with open(output_fname, 'w') as f:
-                # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
-                json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
-                # r"(?P<open_table>\[\n\t{1,}\[)(?P<content>.*?)(?P<close_table>\]\n\t{1,}\])"
-                # This solution is way too slow. need to reimplemente a json writer...
-                # if isinstance(self, BidsDataset):
-                #     #  make the table more readible (otherwise each elmt is isolated on a line...)
-                #     exp = r'\s*(?P<name>\[\n\s*[^\[\{\]]*?\n\s*\])'
-                #     matched_exp = re.findall(exp, json_str)
-                #     for elmt in matched_exp:
-                #         json_str = json_str.replace(elmt, elmt.replace('\n', ''))
-                f.write(json_str)
+            try:
+                with open(output_fname, 'w') as f:
+                    # json.dump(self, f, indent=1, separators=(',', ': '), ensure_ascii=False)
+                    json_str = json.dumps(self, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
+                    # r"(?P<open_table>\[\n\t{1,}\[)(?P<content>.*?)(?P<close_table>\]\n\t{1,}\])"
+                    # This solution is way too slow. need to reimplemente a json writer...
+                    # if isinstance(self, BidsDataset):
+                    #     #  make the table more readible (otherwise each elmt is isolated on a line...)
+                    #     exp = r'\s*(?P<name>\[\n\s*[^\[\{\]]*?\n\s*\])'
+                    #     matched_exp = re.findall(exp, json_str)
+                    #     for elmt in matched_exp:
+                    #         json_str = json_str.replace(elmt, elmt.replace('\n', ''))
+
+                    f.write(json_str)
+            except:
+                str_issue = 'You don"t have permission to write the file {}.\n'.format(output_fname)
+                self.write_log(str_issue)
+                can_write = False
             if platform.system() == 'Linux':
                 chmod_recursive(output_fname, 0o777)
-            if compress:
+            if compress and can_write:
                 with open(output_fname, 'rb') as f_in, \
                         gzip.open(output_fname + '.gz', 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
@@ -1095,10 +1102,13 @@ class BidsBrick(dict):
                 "%Y-%m-%dT%H:%M:%S") + '\n' + 10*'=' + '\n' + str2write
         else:
             cmd = 'a'
-        with open(os.path.join(log_path, log_filename), cmd) as file:
-            file.write(str2write + '\n')
-            BidsDataset.curr_log += str2write + '\n'
-            Data2Import.curr_log += str2write + '\n'
+        try:
+            with open(os.path.join(log_path, log_filename), cmd) as file:
+                file.write(str2write + '\n')
+                BidsDataset.curr_log += str2write + '\n'
+                Data2Import.curr_log += str2write + '\n'
+        except:
+            pass
         if platform.system() == 'Linux':
             chmod_recursive(os.path.join(log_path, log_filename), 0o777)
         print(str2write)
@@ -2533,6 +2543,7 @@ class DatasetDescPipeline(DatasetDescJSON):
     def compare_parameters(self, param_vars, subject_to_analyse):
         keylist = [key for key in param_vars if not key == 'Callname']
         is_same_param = []
+        is_same_input = True
         if isinstance(self['PipelineDescription'], str):
             is_same_param = False
             no_subject = False
@@ -2553,7 +2564,8 @@ class DatasetDescPipeline(DatasetDescJSON):
         subject_inside = False
         if isinstance(self['SourceDataset'], str):
             # cannot compare
-            return is_same_param, True
+            is_same_input = False
+            return is_same_param, True, is_same_input
         else:
             if any(sub in self['SourceDataset']['sub'] for sub in subject_to_analyse['sub']):
                 # compare the type of input
@@ -2564,7 +2576,7 @@ class DatasetDescPipeline(DatasetDescJSON):
                         if 'deriv-folder' in subject_to_analyse[inp]:
                             if not all(mod in self['SourceDataset'][inp]['deriv-folder'] for mod in
                                        subject_to_analyse[inp]['deriv-folder']):
-                                return False, False
+                                return same_param, subject_inside, False
                         if 'modality' in subject_to_analyse[inp] and 'modality' in self['SourceDataset'][inp] and not all(mod in self['SourceDataset'][inp]['modality'] for mod in subject_to_analyse[inp]['modality']):
                             same_input[inp] = False
                         elif 'ses' in subject_to_analyse[inp] and 'ses' in self['SourceDataset'][inp] and not all(ses in self['SourceDataset'][inp]['ses'] for ses in subject_to_analyse[inp]['ses']):
@@ -2574,12 +2586,17 @@ class DatasetDescPipeline(DatasetDescJSON):
                             for key in keylist:
                                 if not all(elt in self['SourceDataset'][inp][key] for elt in subject_to_analyse[inp][key]):
                                     same_input[inp] = False
+                    else:
+                        if 'deriv-folder' in subject_to_analyse[inp] and subject_to_analyse[inp]['deriv-folder'] and not subject_to_analyse[inp]['deriv-folder'] == ['']:
+                            is_same_input = False
+                        elif 'deriv-folder' not in subject_to_analyse[inp]:
+                            is_same_input = False
                 if all(same_input[inp] for inp in input_key):
                     subject_inside = True
         # Voir pour proposer à l'utilisateur de rajouter que les sujets qui ne sont pas anlyser ou si créer un nouveau dossier
-        return is_same_param, subject_inside
+        return is_same_param, subject_inside, is_same_input
 
-    def update(self, subject2add, subject2remove=None, subanalysed=None):
+    def update(self, subject2add, subject2remove=None, subanalysed=None, order_keys=None):
         idx2remove = []
         for elt in subject2add:
             if 'SourceDataset' not in self.keys() or isinstance(self['SourceDataset'], str):
@@ -2616,6 +2633,12 @@ class DatasetDescPipeline(DatasetDescJSON):
                     idx2remove = [cnt for cnt, sub in enumerate(self['SourceDataset'][elt]) if sub in subject2remove]
         for ids in idx2remove:
             self['SourceDataset']['sub'].pop(ids)
+        if order_keys is not None:
+            if not any(key in order_keys for key in self['SourceDataset']):
+                order_keys = ['Input_'+key for key in order_keys]
+            inp2remove = [key for key in self['SourceDataset'] if key != 'sub' and key not in order_keys]
+            for key in inp2remove:
+                del self['SourceDataset'][key]
 
 ''' TSV bricks '''
 
@@ -3075,11 +3098,20 @@ class BidsDataset(MetaBrick):
 
     def check_latest_parsing_file(self):
         def read_file(filename):
-            with gzip.open(filename, 'rb') as f_in, open(filename.replace('.gz', ''), 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
-            with open(filename.replace('.gz', ''), 'r') as file:
-                rd_json = json.load(file)
-            os.remove(filename.replace('.gz', ''))
+            try:
+                with gzip.open(filename, 'rb') as f_in, open(filename.replace('.gz', ''), 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+                with open(filename.replace('.gz', ''), 'r') as file:
+                    rd_json = json.load(file)
+                os.remove(filename.replace('.gz', ''))
+            except:
+                file = os.path.basename(filename)
+                outfile = os.path.join(os.getcwd(), file.replace('.gz', ''))
+                with gzip.open(filename, 'rb') as f_in, open(outfile, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+                with open(outfile, 'r') as file:
+                    rd_json = json.load(file)
+                os.remove(outfile)
             return rd_json
 
         if os.path.exists(os.path.join(self.dirname, BidsDataset.parsing_path)):
@@ -4659,15 +4691,17 @@ class Access(BidsJSON):
             super().__init__(keylist=[user])
             self[user] = self.keylist_dict
             self[user]['access_time'] = BidsBrick.access_time.strftime("%Y-%m-%dT%H:%M:%S")
-        for key in self:
-            self.determine_permissions(BidsDataset.dirname, self[key])
+        self.determine_permissions(BidsDataset.dirname, self[user])
 
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
 
     def display(self):
         user = [us for us in self if not us == BidsBrick.curr_user]
-        return 'This Bids dataset (' + BidsDataset.dirname + ') is also in use by ' + ', '.join(user) + '.'#' since ' + self['access_time'] + '.'
+        if user:
+            return 'This Bids dataset (' + BidsDataset.dirname + ') is also in use by ' + ', '.join(user) + '.'#' since ' + self['access_time'] + '.'
+        else:
+            return ''
 
     def read_file(self, filename=None):
         super().read_file(self.filename)

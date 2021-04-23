@@ -374,6 +374,30 @@ class TestImport(unittest.TestCase):
         for line in self.correct_parsing['SourceData'][0]['SrcDataTrack'][1:]:
             line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
 
+    def test_import_invisible_subject(self):
+        new_bids = bids.BidsDataset(self.bids_dir)
+        new_bids.requirements['Converters']['Electrophy']['path'] = r'D:\Software\false_anywave\AnyWave.exe'
+        # create data2import
+        shutil.copy(os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'pat1', 'seizure_1.eeg'), self.import_dir)
+        data2impt = bids.Data2Import(self.import_dir)
+        if data2impt['Subject']:
+            data2impt['Subject'] = []
+            data2impt['Derivatives'] = []
+        # create invisible subject
+        sub02 = bids.Subject()
+        sub02.update({'sub': '02', 'eCRF': 'MAR0090', 'sex': 'M', 'dateOfBirth': '01/01/01'})
+        seiz1 = bids.Ieeg()
+        seiz1.update({'sub': '02', 'ses': '01', 'task': 'seizure', 'run': '01', 'fileLoc': 'seizure_1.eeg'})
+        sub02['Ieeg'].append(seiz1)
+        data2impt['Subject'].append(sub02)
+        data2impt['UploadDate'] = ''
+        #try to import
+        new_bids.make_upload_issues(data2impt, force_verif=True)
+        new_bids.import_data(data2impt)
+        #check sub02 is not present
+        sub_list = [sub['sub'] for sub in new_bids['Subject']]
+        self.assertNotIn('02', sub_list, 'Invisible subject is still here !')
+
 
 class TestIssueImport(unittest.TestCase):
     """This test aims at checking the implemented security during import. Here we won't test the remove method which
@@ -854,6 +878,7 @@ def suite_init():
     # import related  tests
     suite.addTest(TestImport('test_writing_data2import'))
     suite.addTest(TestImport('test_import_pat1'))
+    suite.addTest(TestImport('test_import_invisible_subject'))
     # Import issue tests
     suite.addTest(TestIssueImport('wrong_protocol'))
     suite.addTest(TestIssueImport('wrong_patient_charac'))

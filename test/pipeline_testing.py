@@ -90,7 +90,8 @@ class PipelineTest(unittest.TestCase):
             elif cnt == 5:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'Variable'
-                param_tmp[elt]['value'] = ['Begin', 'Post', 'Pre', 'Stim']
+                # param_tmp[elt]['value'] = ['Begin', 'Post', 'Pre', 'Stim']
+                param_tmp[elt]['value'] = ['Begin', 'Pre', 'S 2', 'S 25', 'S 28', 'S 3', 'S 5', 'Spike', 'Stim', 'Stimulation']
             elif cnt == 6:
                 param_tmp[elt] = dict()
                 param_tmp[elt]['attribut'] = 'Variable'
@@ -261,7 +262,7 @@ class ParameterTest(unittest.TestCase):
         self.assertIsNotNone(order)
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
-        self.assertIn('The subject 01 won"t be analysed because there is not the same length of inputs.', error_in)
+        self.assertIn('ERROR: The elements in the list don"t have the same size.\nThe subject 01 won"t be analysed because it doesn"t match the inputs specificity.\n', error_in)
         in_out_res = {'02': [['D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_ieeg.vhdr', 'D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_ieeg.vhdr'],
                             ['D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_delphos.mat', 'D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_delphos.mat'],
                             [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg'], ['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg']]],
@@ -286,7 +287,7 @@ class ParameterTest(unittest.TestCase):
         self.assertIsNotNone(order)
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
-        self.assertIn('The subject 01 won"t be analysed because there is not the same length of inputs.', error_in)
+        self.assertIn('ERROR: The elements in the list don"t have the same size.\nThe subject 01 won"t be analysed because it doesn"t match the inputs specificity.\n', error_in)
         in_out_res = {'02': [
             ['D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_ieeg.vhdr',
              'D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_ieeg.vhdr'],
@@ -416,7 +417,7 @@ class DerivativesTest(unittest.TestCase):
     def test_update_dataset_after_analysis_input_files(self):
         analyse = pip.PipelineSetting(__bids_dataset__, 'ica')
         self.results = {}
-        self.results['subject_selected'] = ['01']
+        self.results['subject_selected'] = ['02']
         self.results['analysis_param'] = {'Mode': 'automatic', 'hp': '1', 'lp': '70', 'comp': '20'}
         self.results['input_param'] = {'Input_--input_file': {'modality': ['Ieeg'], 'ses': ['01']}}
         self.subject = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
@@ -443,6 +444,7 @@ class DerivativesTest(unittest.TestCase):
         self.assertFalse(isempty)
         self.assertEqual(lognot, '')
         shutil.rmtree(outdev)
+        __bids_dataset__.parse_bids()
 
 
 class RunSoftwareTest(unittest.TestCase):
@@ -478,7 +480,7 @@ class RunSoftwareTest(unittest.TestCase):
 def suite_init():
     suite = unittest.TestSuite()
     #Test the def to create the gui to select the parameters
-    suite.addTest(PipelineTest('test_init'))
+    # suite.addTest(PipelineTest('test_init'))
     suite.addTest(PipelineTest('test_read_json'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected
@@ -496,7 +498,7 @@ def suite_init():
     suite.addTest(DerivativesTest('test_empty_dirs'))
     # Test run analysis
     suite.addTest(RunSoftwareTest('test_run_analysis'))
-    suite.addTest(RunSoftwareTest('test_export_data'))
+    # suite.addTest(RunSoftwareTest('test_export_data'))
     return suite
 
 

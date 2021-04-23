@@ -110,8 +110,8 @@ class DerivativesSetting(object):
                     if not os.path.exists(dataset_file):
                         dataset_file = None
                     desc_data = bids.DatasetDescPipeline(filename=dataset_file)
-                    same_param, sub_inside = desc_data.compare_parameters(param_var, subject_to_analyse)
-                    if (same_param and not sub_inside) or mode:
+                    same_param, sub_inside, same_input = desc_data.compare_parameters(param_var, subject_to_analyse)
+                    if (same_param and same_input and not sub_inside) or (same_input and mode):
                         directory_name = elt
                         if not mode:
                             #desc_data['SourceDataset']['sub'].append(subject_list['sub'])
@@ -520,6 +520,7 @@ class PipelineSetting(dict):
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
             self.write_json_associated(order, output_directory, cmd_arg)
+            order_keys=None
         elif order:
             taille, idx_in, in_out, err_input = input_dict.get_input_values(subject_to_analyse, order)
             self.log_error += err_input
@@ -555,6 +556,7 @@ class PipelineSetting(dict):
                     idx = idx + 1
                 # if len(log_error) != taille[sub]:
                 #     participants.append({'participant_id': sub})
+                order_keys = [key for key in order]
         else:
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             self.write_log()
@@ -569,7 +571,7 @@ class PipelineSetting(dict):
                 self.log_error += 'The {} subject has finally not be analysed.\n'.format(subid)
             participants.update_after_analysis(sub_analysed, sub2remove)
             participants.write_file(tsv_full_filename=os.path.join(output_directory, bids.ParticipantsTSV.filename))
-            dataset_desc.update(subject_to_analyse, sub2remove, sub_analysed)
+            dataset_desc.update(subject_to_analyse, sub2remove, sub_analysed, order_keys=order_keys)
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, bids.DatasetDescPipeline.filename))
             try:
                 go_throught_dir_to_convert(output_directory)
@@ -662,7 +664,10 @@ class PipelineSetting(dict):
                         is_json = True
                 if not is_json and potential_file:
                     filename, ext = os.path.splitext(potential_file[-1])
-                    output_file = potential_file[-1].replace(ext, bids.BidsJSON.extension)
+                    if ext:
+                        output_file = potential_file[-1].replace(ext, bids.BidsJSON.extension)
+                    else:
+                        output_file = 'analysis_information.json'
                     output_json = os.path.join(output_fin, output_file)
                     create_json(input_file, output_json, analyse)
             else:

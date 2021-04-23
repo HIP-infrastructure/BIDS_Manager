@@ -24,7 +24,8 @@ setup(
         'scipy',
         'xlrd',
         'nibabel',
-        'tkcalendar'
+        'tkcalendar',
+        'pywin32'
     ],
     include_package_data=True,
     #voir à quoi correspond data_files
