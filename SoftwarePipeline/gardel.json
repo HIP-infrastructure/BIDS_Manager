@@ -1,11 +1,12 @@
 {
  "Name": "gardel",
- "Path": "D:/Software/GARDELStandalone_v2/GARDELv2.exe",
+ "Path": "D:/SAMUEL/dev/GARDEL/GARDEL_Gitlab/code/GARDEL.m",
  "Parameters": {
   "Mode": [
    "automatic",
    "manual"
   ],
+  "Intermediate": "Matlab",
   "Callname": "GARDEL",
   "Input": [
    {
@@ -14,7 +15,8 @@
     "modality": [
      "Anat"
     ],
-    "type": "file"
+    "type": "file",
+    "combinationmode": false
    },
    {
     "tag": "preimp",
@@ -22,7 +24,8 @@
     "modality": [
      "Anat"
     ],
-    "type": "file"
+    "type": "file",
+    "combinationmode": false
    },
    {
     "tag": "usecoregfileinsteadpostimp",
@@ -31,9 +34,12 @@
      "Anat"
     ],
     "type": "dir",
-    "deriv-folder": "",
+    "deriv-folder": [
+     ""
+    ],
     "filetype": "IntermediateFiles",
-    "optional": true
+    "optional": true,
+    "combinationmode": false
    },
    {
     "tag": "electrodes",
@@ -42,9 +48,12 @@
      "Ieeg"
     ],
     "type": "file",
-    "deriv-folder": "",
+    "deriv-folder": [
+     ""
+    ],
     "filetype": ".tsv",
-    "optional": true
+    "optional": true,
+    "combinationmode": false
    },
    {
     "tag": "atlas",
@@ -53,9 +62,12 @@
      "Anat"
     ],
     "type": "file",
-    "deriv-folder": "",
+    "deriv-folder": [
+     ""
+    ],
     "filetype": ".nii",
-    "optional": true
+    "optional": true,
+    "combinationmode": false
    }
   ],
   "Output": {

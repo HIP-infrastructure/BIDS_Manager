@@ -269,13 +269,13 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             self.host = 'gitlab-dynamap.timone.univ-amu.fr'
             #port is th sFTP port
             self.port = '22'
-            self.username = 'opstimvag'
+            self.username = 'galvani_ps1'
             #private_key_path is the file with the ssh key. It has to be saved in config folder
-            self.private_key_path = os.path.join(self.init_path, 'config', 'priv_key_opstimvag')
+            self.private_key_path = os.path.join(self.init_path, 'config', 'galvani_ps1_privkey')
             #protocole name is the name appearing in the datset_description of your BIDS dataset
-            protocole_name = 'opstimvag'
+            protocole_name = 'galvani_ps1'
             #secret key is the word used for anonymisation
-            self.secret_key = 'opstimvag'
+            self.secret_key = 'galvani_ps1'
         self.moda_needed = [moda for moda in self.requirements['Requirements'].keys()
                             if moda not in ["Subject"]]
         # ========================================================================================================== #
