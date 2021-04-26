@@ -426,3 +426,14 @@ def write_file_after_convert(json_dict, tsv_dict):
         except:
             log_error += 'The table for the file {} cannot be created.\n'.format(json_dict['filename'])
     return log_error, filename
+
+
+# def convert_channels_in_montage_file(channelfile, modalitytype):
+#     f = open(channelfile, 'r')
+#     f_cont = f.readlines()
+#     f.close()
+#     if modalitytype.lower() in ['ieeg', 'meg']:
+#         pass
+#     filename = channelfile.replace('channels.tsv', )
+#     for line in f_cont[1::]:
+#         pass
