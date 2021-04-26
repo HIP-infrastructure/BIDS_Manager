@@ -472,6 +472,10 @@ class PipelineSetting(dict):
                             in_out[order['montage_file']].append('bipolar_ieeg')
                         else:
                             in_out[order['montage_file']].append(file_mtg[0])
+            else:
+                # create a montage file for if doesn't exists according to channels.tsv
+                for file in in_out[in_idx]:
+                    pass
             return warning
 
         param_vars = {}
@@ -505,7 +509,7 @@ class PipelineSetting(dict):
             dataset_desc.write_file(jsonfilename=os.path.join(output_directory, 'dataset_description.json'))
 
             #Get the value for the command_line
-            cmd_arg, cmd_line, order, input_dict, output_dict = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
+            cmd_arg, cmd_line, order, input_dict, output_dict, interm = self.create_command_to_run_analysis(output_directory, subject_to_analyse) #input_dict, output_dict
         except (EOFError, TypeError, ValueError, SystemError) as er:
             exc_type, exc_obj, exc_tb = exc_info()
             err_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -528,15 +532,16 @@ class PipelineSetting(dict):
                 output_dict.get_output_values(in_out, taille, order, output_directory, idx_in)  # sub
             for sub in in_out:
                 ##To take into account the prefix and suffix in AnyWave
-                try:
-                    warn = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file)
-                    if warn:
-                        self.log_error += 'Warning {}:\n'.format(self['Name']) + warn
-                except Exception as er:
-                    self.log_error += 'Error: ' + str(er)
-                    self.write_log()
-                    shutil.rmtree(output_directory)
-                    return self.log_error, output_name, {}
+                if interm == 'Anywave':
+                    try:
+                        warn = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file)
+                        if warn:
+                            self.log_error += 'Warning {}:\n'.format(self['Name']) + warn
+                    except Exception as er:
+                        self.log_error += 'Error: ' + str(er)
+                        self.write_log()
+                        shutil.rmtree(output_directory)
+                        return self.log_error, output_name, {}
                 idx = 0
                 log_error = []
                 while idx < taille[sub]:
@@ -622,7 +627,7 @@ class PipelineSetting(dict):
 
         cmd_line, order = cmd_arg.command_line_base(cmd_line_set, mode, output_directory, input_p, output_p)#, input_dict, output_dict)
         #order.multiplesubject = input_p[0]['multiplesubject']
-        return cmd_arg, cmd_line, order, input_p, output_p
+        return cmd_arg, cmd_line, order, input_p, output_p, interm
 
     def write_json_associated(self, inout_file, output_directory, analyse):
         def create_json(input_file, output_json, analyse):
@@ -1000,17 +1005,22 @@ class AnyWave(Parameters):
         self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
         os.makedirs(self.anywave_directory, exist_ok=True)
         # Get anywave version to know if the anywave files should be in raw or not
-        cmd = '""' + self.curr_path + ' --version"'
-        try:
-            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                    universal_newlines=True)
-            error_proc = proc.communicate()
-            version = error_proc[1]
-            error = error_proc[0]
-            if version < 210301 or error == -1:
-                bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
-        except OSError:
+        # cmd = '""' + self.curr_path + ' --version"'
+        # try:
+        #     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        #                             universal_newlines=True)
+        #     error_proc = proc.communicate()
+        #     version = error_proc[1]
+        #     error = error_proc[0]
+        #     if version < 210301 or error == -1:
+        #         bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+        # except OSError:
+        #     bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+        ## Copy the bids file from derivatives
+        if os.path.exists(bids.BidsDataset.anywave_folder_user):
             bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+        else:
+            bids.handle_anywave_files('common', reverse=True)
 
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         self['plugin'] = self.callname
@@ -1544,6 +1554,12 @@ class InputArguments(Parameters):
                         chemin.append(key+'-'+val)
                     elif val and key == 'modality':
                         chemin.append(val.lower())
+                    elif not val and key == 'ses':
+                        subdir = os.path.join(self.bids_directory, '\\'.join(chemin))
+                        if os.path.exists(subdir):
+                            ses = [f for f in os.listdir(subdir) if os.path.isdir(os.path.join(subdir,f)) and f.startswith('ses-')]
+                            if len(ses) == 1:
+                                chemin.append(ses[0])
                     # elif not val:
                     #     break
                 if self.deriv_input and ('filetype' in self and self['filetype']):

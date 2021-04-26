@@ -1277,6 +1277,8 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
         if not self.bids_manager_mode:
             e = data_transfert_sftp(self.host, self.port, self.username, self.private_key_path, '',
                             temp_patient_path, 'uploader_folder')
+        else:
+            e = ''
         # ====================================================
         if e:
             QtWidgets.QMessageBox.critical(self, "error", str(e))
