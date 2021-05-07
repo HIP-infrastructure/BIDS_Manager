@@ -32,8 +32,9 @@ import subprocess
 import shutil
 import itertools
 from tkinter import messagebox, filedialog
-from bids_pipeline.convert_process_file import go_throught_dir_to_convert
+from bids_pipeline.convert_process_file import go_throught_dir_to_convert, convert_channels_in_montage_file
 from sys import exc_info
+import tempfile
 
 
 def save_batch(bids_dir, batch_dict):
@@ -442,10 +443,15 @@ class PipelineSetting(dict):
                         use_list.append(elt)
             return use_list
 
-        def anywave_constraint(order, idx_in, in_out, mtg_type=None):
+        def anywave_constraint(order, idx_in, in_out, mtg_type=None, move_files_refused=False):
             warning = ''
             in_idx = list(idx_in.keys())[0]
             order_key = list(order.keys())
+            tmp_dir = tempfile.gettempdir()
+            curr_time = datetime.datetime.now().strftime('%d%m%Y-%H%M')
+            sub_tmp_dir = os.path.join(tmp_dir, 'BP_anywave_'+curr_time)
+            if move_files_refused:
+                os.makedirs(sub_tmp_dir, exist_ok=True)
             if '--output_file' in order or '--output_prefix' in order:
                 pref_tag = [elt for elt in order if elt in ['--output_prefix', '--output_file']][0]
                 if not in_out[order[pref_tag]]:
@@ -471,12 +477,41 @@ class PipelineSetting(dict):
                             warning += 'There is no montage file for analysis {}, bipolar_ieeg will be used.\n'.format(filename)
                             in_out[order['montage_file']].append('bipolar_ieeg')
                         else:
-                            in_out[order['montage_file']].append(file_mtg[0])
-            else:
-                # create a montage file for if doesn't exists according to channels.tsv
-                for file in in_out[in_idx]:
-                    pass
-            return warning
+                            if move_files_refused:
+                                dirname, filename = os.path.split(file_mtg[0])
+                                filename_mtg = os.path.join(sub_tmp_dir, filename)
+                                shutil.copy2(file_mtg[0], filename_mtg)
+                            else:
+                                filename_mtg = file_mtg[0]
+                            in_out[order['montage_file']].append(filename_mtg)
+            # create a montage file if doesn't exists according to channels.tsv
+            # and move the files in tmp folder if no permission to write in the folder
+            for file in in_out[in_idx]:
+                if "c,rfDC" in file:
+                    file = os.path.dirname(file)
+                dirname, filename = os.path.split(file)
+                sfile = filename.split('_')
+                channelfile = os.path.join(dirname, '_'.join(sfile[0:-1]) + '_channels.tsv')
+                modalitytype = sfile[-1].split('.')
+                if move_files_refused:
+                    #copy the entry
+                    outdirname = sub_tmp_dir
+                    new_entry = os.path.join(sub_tmp_dir, filename)
+                    shutil.copy2(file, new_entry)
+                    in_out[in_idx] = new_entry
+                    #copy anywave file
+                    anywave_subfolder = os.path.join(bids.BidsDataset.dirname, 'derivatives', 'anywave', bids.BidsBrick.curr_user, dirname)
+                    for anyfile in os.listdir(anywave_subfolder):
+                        f, ext = os.path.splitext(anyfile)
+                        if ext in bids.BidsDataset.anywave_ext and not os.path.exists(os.path.join(sub_tmp_dir, anyfile)):
+                            shutil.copy2(os.path.join(anywave_subfolder, anyfile), os.path.join(sub_tmp_dir, anyfile))
+                else:
+                    outdirname =None
+                if os.path.exists(channelfile):
+                    err = convert_channels_in_montage_file(channelfile, modalitytype[0], outdirname)
+                    if err:
+                        warning += warning
+            return warning, sub_tmp_dir
 
         param_vars = {}
         for key in results['analysis_param']:
@@ -532,9 +567,9 @@ class PipelineSetting(dict):
                 output_dict.get_output_values(in_out, taille, order, output_directory, idx_in)  # sub
             for sub in in_out:
                 ##To take into account the prefix and suffix in AnyWave
-                if interm == 'Anywave':
+                if interm == 'AnyWave':
                     try:
-                        warn = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file)
+                        warn, sub_tmp_dir = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file, cmd_arg.move_files_refused)
                         if warn:
                             self.log_error += 'Warning {}:\n'.format(self['Name']) + warn
                     except Exception as er:
@@ -562,10 +597,14 @@ class PipelineSetting(dict):
                 # if len(log_error) != taille[sub]:
                 #     participants.append({'participant_id': sub})
                 order_keys = [key for key in order]
+                if interm == 'AnyWave' and cmd_arg.move_files_refused:
+                    shutil.rmtree(sub_tmp_dir)
         else:
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             self.write_log()
             return self.log_error, output_name, {}
+        if interm == 'AnyWave':
+            bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=False, sublist=subject_to_analyse['sub'])
         empty_dir, log_empty = self.curr_dev.empty_dirs(output_name, rmemptysub=True)
         if not empty_dir:
             #remove the empty directory
@@ -608,9 +647,9 @@ class PipelineSetting(dict):
             interm = self['Parameters']['Intermediate']
 
         if interm:
-            cmd_arg = eval(interm + '(curr_path=self.curr_path, dev_path=output_directory, callname=callname)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
+            cmd_arg = eval(interm + '(curr_path=self.curr_path, dev_path=output_directory, callname=callname, subject_to_analyse=subject_to_analyse)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
         else:
-            cmd_arg = Parameters(curr_path=self.curr_path, dev_path=output_directory, callname=callname)
+            cmd_arg = Parameters(curr_path=self.curr_path, dev_path=output_directory, callname=callname, subject_to_analyse=subject_to_analyse)
 
         for key in self['Parameters']:
             if isinstance(self['Parameters'][key], Arguments):
@@ -764,7 +803,7 @@ class Parameters(dict):
     arg_readbids = []
     filename = 'BP_parameters_file.json'
 
-    def __init__(self, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None, subject_to_analyse=None):
         if dev_path:
             self.derivatives_directory = dev_path
         if callname:
@@ -836,6 +875,8 @@ class Parameters(dict):
 
         interm = None
         if 'Intermediate' in self.keys():
+            if self['Intermediate'].lower() == 'anywave':
+                self['Intermediate'] = 'AnyWave'
             interm = self['Intermediate']
         name, ext = type_of_software(self['Callname'], interm)
         if not name:
@@ -993,8 +1034,9 @@ class Parameters(dict):
 
 class AnyWave(Parameters):
     anywave_directory = None
+    move_files_refused=False
 
-    def __init__(self, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None, subject_to_analyse=None):
         if dev_path:
             self.derivatives_directory = dev_path
         if callname:
@@ -1004,23 +1046,16 @@ class AnyWave(Parameters):
         home = os.path.expanduser('~')
         self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
         os.makedirs(self.anywave_directory, exist_ok=True)
-        # Get anywave version to know if the anywave files should be in raw or not
-        # cmd = '""' + self.curr_path + ' --version"'
-        # try:
-        #     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        #                             universal_newlines=True)
-        #     error_proc = proc.communicate()
-        #     version = error_proc[1]
-        #     error = error_proc[0]
-        #     if version < 210301 or error == -1:
-        #         bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
-        # except OSError:
-        #     bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
         ## Copy the bids file from derivatives
+        sublist = None
+        if subject_to_analyse is not None:
+            sublist = subject_to_analyse['sub']
         if os.path.exists(bids.BidsDataset.anywave_folder_user):
-            bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+            log = bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True, sublist=sublist)
         else:
-            bids.handle_anywave_files('common', reverse=True)
+            log = bids.handle_anywave_files('common', reverse=True, sublist=sublist)
+        if log:
+            self.move_files_refused = True
 
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         self['plugin'] = self.callname
@@ -1148,7 +1183,7 @@ class AnyWave(Parameters):
 class Docker(Parameters):
     keylist = ['command_line_base', 'Intermediate', 'Callname']
 
-    def __init__(self, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None, subject_to_analyse=None):
         super().__init__(curr_path=curr_path, dev_path=dev_path, callname=callname)
         out_docker = subprocess.check_output("docker -v", shell=True)
         out_docker = out_docker.decode("utf-8")

@@ -3047,7 +3047,7 @@ class BidsDataset(MetaBrick):
     parsing_path = os.path.join('derivatives', 'parsing')
     log_path = os.path.join('derivatives', 'log')
     update_text = None
-    anywave_ext = ['.flt', '.levels', '.bad', '.mrk', '.mtg']
+    anywave_ext = ['.flt', '.levels', '.bad', '.mrk', '.mtg', '.display', '.sel']
     anywave_folder_user = ''
     anywave_folder_common = ''
 
@@ -3074,7 +3074,7 @@ class BidsDataset(MetaBrick):
             if flag:
                 self.parse_bids()
             else:
-                handle_anywave_files(BidsBrick.curr_user, reverse=False)
+                # handle_anywave_files(BidsBrick.curr_user, reverse=False)
                 if self.update_text:
                     self.update_text(self.curr_log, delete_flag=False)
         except (FileNotFoundError, KeyError) as err:
@@ -3193,26 +3193,33 @@ class BidsDataset(MetaBrick):
                             subinfo[mod_dir][-1]['fileLoc'] = file.path
                             # here again, modified dict behaviour, it appends to a list therefore checking the last
                             # element is equivalent to checking the newest element
-                            if not srcdata:
+                            if not srcdata and not flag_process:
                                 subinfo[mod_dir][-1].get_attributes_from_filename()
                                 subinfo[mod_dir][-1].get_sidecar_files()
                                 subinfo.check_file_in_scans(file.name, mod_dir)
+                            elif flag_process:
+                                try:
+                                    subinfo[mod_dir][-1].get_attributes_from_filename()
+                                    subinfo[mod_dir][-1].get_sidecar_files()
+                                    subinfo.check_file_in_scans(file.name, mod_dir)
+                                except:
+                                    continue
                             if 'MegHeadShape' in subinfo[mod_dir][-1] and isinstance(subinfo[mod_dir][-1]['MegHeadShape'], MegHeadShape):
                                 subinfo[mod_dir][-1]['MegHeadShape'].clear_head()
-                        elif ext.lower() in BidsDataset.anywave_ext and not flag_process and not file.name.endswith('_montage.mtg') :
-                            # move anywave file in derivatives
-                            sub_dirname = os.path.dirname(file.path)
-                            if BidsDataset.dirname in file.path:
-                                sub_dirname = sub_dirname.replace(BidsDataset.dirname + '\\', '')
-                            sub_anywave_folder = os.path.normpath(os.path.join(BidsDataset.anywave_folder_user, sub_dirname))
-                            sub_anywave_folder_common = os.path.normpath(
-                                os.path.join(BidsDataset.anywave_folder_common, sub_dirname))
-                            os.makedirs(sub_anywave_folder, exist_ok=True)
-                            if not os.path.exists(os.path.join(sub_anywave_folder_common, file.name)):
-                                os.makedirs(sub_anywave_folder_common, exist_ok=True)
-                                shutil.copy2(file.path, os.path.join(sub_anywave_folder_common, file.name))
-                            shutil.move(file.path, os.path.join(sub_anywave_folder, file.name))
-                            is_moved = True
+                        # elif ext.lower() in BidsDataset.anywave_ext and not flag_process and not file.name.endswith('_montage.mtg') :
+                        #     # move anywave file in derivatives
+                        #     sub_dirname = os.path.dirname(file.path)
+                        #     if BidsDataset.dirname in file.path:
+                        #         sub_dirname = sub_dirname.replace(BidsDataset.dirname + '\\', '')
+                        #     sub_anywave_folder = os.path.normpath(os.path.join(BidsDataset.anywave_folder_user, sub_dirname))
+                        #     sub_anywave_folder_common = os.path.normpath(
+                        #         os.path.join(BidsDataset.anywave_folder_common, sub_dirname))
+                        #     os.makedirs(sub_anywave_folder, exist_ok=True)
+                        #     if not os.path.exists(os.path.join(sub_anywave_folder_common, file.name)):
+                        #         os.makedirs(sub_anywave_folder_common, exist_ok=True)
+                        #         shutil.copy2(file.path, os.path.join(sub_anywave_folder_common, file.name))
+                        #     shutil.move(file.path, os.path.join(sub_anywave_folder, file.name))
+                        #     is_moved = True
                             # need to find corresponding json file and import it in modality json class
                         elif mod_dir + 'GlobalSidecars' in BidsBrick.get_list_subclasses_names() and ext.lower() \
                                 in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
@@ -3228,8 +3235,8 @@ class BidsDataset(MetaBrick):
                         #     subinfo[mod_dir][-1].get_attributes_from_filename()
                         #     subinfo[mod_dir][-1].get_sidecar_files()
                         try:
-                            if not is_moved:
-                                is_bids.append(validator(file.path, subinfo.cwdir))
+                            # if not is_moved:
+                            is_bids.append(validator(file.path, subinfo.cwdir))
                         except:
                             continue
                     elif mod_dir and file.is_dir():
@@ -4549,6 +4556,8 @@ class BidsDataset(MetaBrick):
                     issue['MismatchedElectrodes'] = []
                     issue['Action'] = []
                     issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issue))
+                if 'remove_issue=True' in issue['Action'][0]['command']:
+                    issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issue))
                 issues_copy.save_as_json()
             for issue in self.issues['ImportIssue']:
                 if not issue['Action']:
@@ -4880,7 +4889,7 @@ class IssueType(BidsBrick):
 
     def add_action(self, desc, command, elec_name=None):
         action = Action()
-        if isinstance(self, ElectrodeIssue):
+        if isinstance(self, ElectrodeIssue) and elec_name is not None:
             """verify that the given electrode name is part of the mismatched electrodes"""
             if elec_name not in self.list_mismatched_electrodes():
                 return
@@ -5372,16 +5381,16 @@ for elmt in Electrophy.get_list_subclasses_names():
     setattr(modules[__name__], newclass.__name__, newclass)
 
 
-def handle_anywave_files(foldername, reverse=False):
-
-    def parse_sub_dir(dirname, original_dirname=None, dirname_dest=None, reverse=False):
+def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None):
+    # Add security to not overwrite
+    def parse_sub_dir(dirname, original_dirname=None, dirname_dest=None, reverse=False, overwrite=None):
         with os.scandir(dirname) as it:
             for entry in it:
                 [filename, ext] = os.path.splitext(entry.name)
                 if entry.name.startswith('ses-') and entry.is_dir():
-                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse)
+                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse, overwrite=overwrite)
                 elif entry.name.capitalize() in ModalityType.get_list_subclasses_names() and entry.is_dir():
-                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse)
+                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse, overwrite=overwrite)
                 elif entry.is_file() and ext.lower() in BidsDataset.anywave_ext and not entry.name.endswith('_montage.mtg'):
                     if dirname_dest is None:
                         dirname_dest = BidsDataset.dirname
@@ -5391,11 +5400,45 @@ def handle_anywave_files(foldername, reverse=False):
                     if reverse:
                         shutil.copy2(entry.path, os.path.join(dirname_dest_sub, entry.name))
                     else:
-                        shutil.move(entry.path, os.path.join(dirname_dest_sub, entry.name))
+                        if not os.path.exists(dirname_dest_sub):
+                            os.makedirs(dirname_dest_sub)
+                        if (os.path.exists(os.path.join(dirname_dest_sub, entry.name)) and (overwrite is None or overwrite)) or not os.path.exists(os.path.join(dirname_dest_sub, entry.name)):
+                            shutil.move(entry.path, os.path.join(dirname_dest_sub, entry.name))
+                elif entry.is_dir() and entry.name.endswith('_meg'):
+                    if dirname_dest is None:
+                        dirname_dest = BidsDataset.dirname
+                    sub_dirname = entry.path
+                    sub_dirname = sub_dirname.replace(original_dirname + '\\', '')
+                    dirname_dest_sub = os.path.normpath(os.path.join(dirname_dest, sub_dirname))
+                    for file in os.listdir(entry.path):
+                        [filename, ext] = os.path.splitext(file)
+                        if ext.lower() in BidsDataset.anywave_ext:
+                            if reverse:
+                                shutil.copy2(os.path.join(entry.path, file), os.path.join(dirname_dest_sub, file))
+                            else:
+                                if not os.path.exists(dirname_dest_sub):
+                                    os.makedirs(dirname_dest_sub)
+                                if (os.path.exists(os.path.join(dirname_dest_sub, entry.name)) and (
+                                        overwrite is None or overwrite)) or not os.path.exists(
+                                        os.path.join(dirname_dest_sub, entry.name)):
+                                    shutil.move(os.path.join(entry.path, file), os.path.join(dirname_dest_sub, file))
 
+    log = ''
+    access = Access(BidsBrick.curr_user)
+    if access[BidsBrick.curr_user]['permission'] == 'read' and reverse:
+        log += '/!\\ WARNING /!\\ Current user {} cannot write in the BIDS dataset folder.\n'.format(BidsBrick.curr_user)
+        return log
+    elif len(access.keys()) >1:
+        if any(us['import_data'] or us['analyse_data'] for us in access if not us==BidsBrick.curr_user):
+            log += '/!\\ WARNING /!\\ Anywave files cannot be moved because the dataset is in used by someone else.\n'
+            return log
+    if sublist is None:
+        sublist = [sub for sub in os.listdir(BidsDataset.dirname) if sub.startswith(('sub-'))]
+    else:
+        if 'sub-' not in sublist[0]:
+            sublist = ['sub-' + sub for sub in sublist]
     anywave_folder = os.path.join(BidsDataset.dirname, 'derivatives', 'anywave', foldername)
     if reverse:
-        sublist = [sub for sub in os.listdir(BidsDataset.dirname) if sub.startswith(('sub-'))]
         with os.scandir(anywave_folder) as it:
             for entry in it:
                 if entry.name.startswith('sub-') and entry.name in sublist:
@@ -5403,8 +5446,13 @@ def handle_anywave_files(foldername, reverse=False):
     else:
         with os.scandir(BidsDataset.dirname) as it:
             for entry in it:
-                if entry.name.startswith('sub-') and entry.is_dir():
-                    parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder)
+                if entry.name.startswith('sub-') and entry.is_dir() and entry.name in sublist:
+                    parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder, overwrite=overwrite)
+        anywave_common = os.path.join(BidsDataset.dirname, 'derivatives', 'anywave', 'common')
+        if not os.path.exists(anywave_common):
+            os.makedirs(anywave_common)
+            shutil.copytree(anywave_folder, anywave_common)
+    return log
 
 
 def chmod_recursive(this_path, mode, debug=False):

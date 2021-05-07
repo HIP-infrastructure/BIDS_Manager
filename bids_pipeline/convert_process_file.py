@@ -428,12 +428,32 @@ def write_file_after_convert(json_dict, tsv_dict):
     return log_error, filename
 
 
-# def convert_channels_in_montage_file(channelfile, modalitytype):
-#     f = open(channelfile, 'r')
-#     f_cont = f.readlines()
-#     f.close()
-#     if modalitytype.lower() in ['ieeg', 'meg']:
-#         pass
-#     filename = channelfile.replace('channels.tsv', )
-#     for line in f_cont[1::]:
-#         pass
+def convert_channels_in_montage_file(channelfile, modalitytype, outdirname=None):
+    err = ''
+    dirname, filename = os.path.split(channelfile)
+    f = open(channelfile, 'r')
+    f_cont = f.readlines()
+    f.close()
+    if modalitytype.lower() in ['ieeg', 'eeg']:
+        newfilename = channelfile.replace('channels.tsv', modalitytype.lower() + '.vhdr.mtg')
+    elif modalitytype.lower() in ['meg']:
+        megdirname = os.path.join(dirname, channelfile.replace('channels.tsv', modalitytype.lower()))
+        if os.path.exists(megdirname):
+            dirname = megdirname
+            newfilename = 'c,rfDC.mtg'
+        else:
+            err += 'Cannot create the montage file for {} modality.\n'.format(modalitytype)
+            return err
+    if outdirname is not None:
+        dirname=outdirname
+    mtgfile = os.path.join(dirname, newfilename)
+    if not os.path.exists(mtgfile):
+        with open(mtgfile, 'w') as file:
+            file.write('<!DOCTYPE AnyWaveMontage>\n<Montage>\n')
+            for line in f_cont[1::]:
+                sline = line.split('\t')
+                channame = sline[0]
+                modtype = sline[1]
+                file.write('\t<Channel name="{}">\n\t\t<type>{}</type>\n\t\t<reference></reference>\n\t\t<color>black</color>\n\t</Channel>\n'.format(channame, modtype))
+            file.write('</Montage>')
+    return err

@@ -445,6 +445,15 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 return
 
         self.curr_bids.get_requirements()
+        # Check if there is anywave files
+        flag = messagebox.askyesno('INFO', 'If AnyWave files exist in BIDS dataset, they will be moved in your anywave folder in derivatives.\n'
+                                           'if those files already exists in your anywave folder, do you want to overwrite them with the ones coming from BIDS dataset?')
+        overwrite=False
+        if flag:
+            overwrite=True
+        log = bids.handle_anywave_files(self.curr_bids.curr_user, reverse=False, overwrite=overwrite)
+        if log:
+            self.update_text(log)
         # enable all bids sub-menu
         self.change_menu_state(self.bids_menu)
         self.change_menu_state(self.pipeline_menu)
@@ -922,15 +931,29 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
         self.make_available()
 
     def handle_anywave_files(self, folder):
+        permission = self.curr_bids.access[self.curr_bids.curr_user]['permission']
+        if permission == 'read':
+            messagebox.showwarning('WARNING', 'You don"t have the permission to copy anywave files in BIDS dataset !!!')
+            return
         self.make_idle('Copying AnyWave files in process')
-        bids.handle_anywave_files(folder, reverse=True)
+        log = bids.handle_anywave_files(folder, reverse=True)
         self.anywave_reverse = True
+        if log:
+            self.update_text(log)
         self.make_available()
 
     def close_window(self):
         if self.curr_bids:
             if self.anywave_reverse:
-                bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+                flag = messagebox.askyesno('INFO',
+                                           'If AnyWave files exist in BIDS dataset, they will be moved in your anywave folder in derivatives.\n'
+                                           'if those files already exists in your anywave folder, do you want to overwrite them with the ones coming from BIDS dataset?')
+                overwrite = False
+                if flag:
+                    overwrite = True
+                log = bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=False, overwrite=overwrite)
+                if log:
+                    self.update_text(log)
             #do a parsing before to close
             flag = messagebox.askyesno('Info', 'Do you want to Refresh your dataset before to close?')
             if flag:

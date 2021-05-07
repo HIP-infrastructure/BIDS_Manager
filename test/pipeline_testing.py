@@ -132,7 +132,7 @@ class ParameterTest(unittest.TestCase):
         subjects_results = {'sub': ['01', '02', '03'], 'Input_--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run':
             ['01']}, 'Input_--input_anat': {'modality': ['Anat'], 'acq': ['preimp'], 'mod': ['T1w']}}
         self.assertEqual(subjects, subjects_results)
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = 'D:/Data/testing --input_ieeg {0} --input_anat {1} --output_file {2} --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertEqual(cmd_line, cmd_tmp)
@@ -156,7 +156,7 @@ class ParameterTest(unittest.TestCase):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_dir', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertFalse(order)
 
@@ -166,7 +166,7 @@ class ParameterTest(unittest.TestCase):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_directory', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertIsNotNone(order)
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
@@ -190,7 +190,7 @@ class ParameterTest(unittest.TestCase):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_infile_outdir', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertIsNotNone(order)
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
@@ -206,25 +206,25 @@ class ParameterTest(unittest.TestCase):
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         #assert intermediate instance
         analyse = pip.PipelineSetting(__bids_dataset__, 'h2')
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'C:/anywave_february/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_tmp = 'C:/anywave_mars/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
         self.assertIsInstance(cmd_arg, pip.AnyWave)
         self.assertEqual(cmd_line, cmd_tmp)
 
         analyse = pip.PipelineSetting(__bids_dataset__, 'example')
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = 'docker run -i --rm -v D:\\Data\\testing\\test_dataset:/bids_dataset:ro -v D:\\Data\\testing\\test_dataset\\derivatives\\testing:/outputs bids/example /bids_dataset /outputs --participant_label [01 02 03]'
         self.assertIsInstance(cmd_arg, pip.Docker)
         self.assertEqual(cmd_line, cmd_tmp)
 
         analyse = pip.PipelineSetting(__bids_dataset__, 'averaging_EP')
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = "matlab -wait -nosplash -nodesktop -r \"cd('D:\\Matlab'); averaging_EP('{0}', '{1}'); exit\""
         self.assertIsInstance(cmd_arg, pip.Matlab)
         self.assertEqual(cmd_line, cmd_tmp)
 
         analyse = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd_bool', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir, subjects)
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
         cmd_tmp = 'D:/Software/Bids_Manager/statistics_bdd.exe --participants False --bidsdirectory D:\\Data\\testing\\test_dataset --outputdirectory D:\\Data\\testing\\test_dataset\\derivatives\\testing --subjectlist "01, 02, 03"'
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertEqual(cmd_line, cmd_tmp)
@@ -256,7 +256,7 @@ class ParameterTest(unittest.TestCase):
         self.results['input_param']['Input_--input_delphos'] = {'deriv-folder': 'Delphos', 'modality': 'Ieeg', 'ses': '01'}
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir,
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir,
                                                                                                    subjects)
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertIsNotNone(order)
@@ -281,7 +281,7 @@ class ParameterTest(unittest.TestCase):
                                                                 'ses': '01'}
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
-        cmd_arg, cmd_line, order, input_dict, output_dict = analyse.create_command_to_run_analysis(self.output_dir,
+        cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir,
                                                                                                    subjects)
         self.assertIsInstance(cmd_arg, pip.Matlab)
         self.assertIsNotNone(order)
