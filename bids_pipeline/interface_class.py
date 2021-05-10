@@ -136,7 +136,7 @@ class Interface(dict):
             elif att_type == 'Label':
                 res_dict[key] = val_temp
             elif att_type == 'File':
-                if len(val_temp) >1 and val_temp[1]:
+                if len(val_temp) > 1 and val_temp[1]:
                     if isinstance(val_temp[1], list):
                         res_dict[key] = ', '.join(val_temp[1])
                     else:
@@ -181,6 +181,7 @@ class ParameterInterface(Interface):
     file_value = ['fileLoc', 'extension']
     bool_value = ['default', 'incommandline']
     bids_value = ['readbids', 'type']
+    savereadingbysub = {}
 
     def __init__(self, bids_data, parameter_soft=None, nbr=None):
         nb = ''
@@ -221,6 +222,7 @@ class ParameterInterface(Interface):
                     self[key]['attribut'] = 'Bool'
                     self[key]['value'] = self.parameters[key]['default']
                 elif keys == self.read_value:
+                    self.savereadingbysub[key] = {}
                     if self.parameters[key]['multipleselection']:
                         st_type = 'Variable'
                     else:
@@ -289,6 +291,7 @@ class ParameterInterface(Interface):
         elements = self.parameters[key]['elementstoread']
         mark_to_remove = ['?', '***', '*']
         param = []
+        parambysub = {}
         is_same = True
         for subject in os.listdir(dir2read):
             if subject.endswith(reading_file) and os.path.isfile(os.path.join(dir2read, subject)):
@@ -297,6 +300,10 @@ class ParameterInterface(Interface):
                     param = [elt for elt in file_param]
                 else:
                     is_same = compare_listes(param, file_param)
+                if subject not in parambysub:
+                    parambysub[subject] = file_param
+                else:
+                    is_same = compare_listes(parambysub[subject], file_param)
                 break
             elif subject.startswith('sub') and os.path.isdir(os.path.join(dir2read, subject)):
                 for session in os.listdir(os.path.join(dir2read, subject)):
@@ -311,6 +318,10 @@ class ParameterInterface(Interface):
                                                 param = [elt for elt in file_param]
                                             else:
                                                 is_same = compare_listes(param, file_param)
+                                            if subject not in parambysub:
+                                                parambysub[subject] = file_param
+                                            else:
+                                                is_same = compare_listes(parambysub[subject], file_param)
                             elif os.path.isfile(
                                     os.path.join(dir2read, subject, session, mod)) and mod.endswith(
                                     reading_file):
@@ -320,8 +331,13 @@ class ParameterInterface(Interface):
                                     param = [elt for elt in file_param]
                                 else:
                                     is_same = compare_listes(param, file_param)
+                                if subject not in parambysub:
+                                    parambysub[subject] = file_param
+                                else:
+                                    is_same = compare_listes(parambysub[subject], file_param)
         param = list(set(param))
         param.sort()
+        self.savereadingbysub[key] = parambysub
         return [par for par in param if not par in mark_to_remove]
 
 

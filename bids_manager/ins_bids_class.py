@@ -3066,7 +3066,7 @@ class BidsDataset(MetaBrick):
         # self.access['access_time'] = self.access_time.strftime("%Y-%m-%dT%H:%M:%S")
         self.requirements = BidsDataset.requirements
         self.nomenclatures = BidsDataset.nomenclatures
-        BidsDataset.anywave_folder_user = os.path.join(self.dirname, 'derivatives', 'anywave', BidsBrick.curr_user.lower())
+        BidsDataset.anywave_folder_user = os.path.join(self.dirname, 'derivatives', 'anywave', BidsBrick.curr_user) #BidsBrick.curr_user.lower()
         BidsDataset.anywave_folder_common = os.path.join(self.dirname, 'derivatives', 'anywave', 'common')
         # check if there is a parsing file in the derivatives and load it as the current dataset state
         try:

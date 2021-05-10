@@ -41,7 +41,7 @@ try:
     from importlib import reload
 except:
     pass
-
+from threading import Thread
 
 class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class Py2 compatible
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
@@ -2642,6 +2642,8 @@ class BidsSelectDialog(TemplateDialog):
         self.frame_soft = {}
         self.batch = False
         self.batch_file = None
+        self.dev_list = [pip['name'] for pip in self.bids_data['Derivatives'][0]['Pipeline'] if pip['name'] not in ['log', 'parsing', 'bids_uploader'
+                                                                                                                    'bids_pipeline', 'anywave']]
         self.subject_interface = itf.Interface(self.bids_data)
         if analysis_dict and isinstance(analysis_dict, pip.PipelineSetting):
             self.soft_name = analysis_dict.jsonfilename
@@ -2702,6 +2704,7 @@ class BidsSelectDialog(TemplateDialog):
         self.All_sub = IntVar()
         self.Id_sub = IntVar()
         self.Crit_sub = IntVar()
+        self.Dev_sub = IntVar()
         frame_subject = Frame(parent,  relief=GROOVE, borderwidth=2)
         Label(frame_subject, text='Select subjects for analysis', font='bold', fg='#1F618D').pack(side=TOP)
         frame_subject.pack(side=TOP)
@@ -2712,9 +2715,13 @@ class BidsSelectDialog(TemplateDialog):
         Id_sub_butt.pack(side=LEFT)
         Crit_sub_butt = Checkbutton(frame_sub_check, text='Select subjects by criteria', variable=self.Crit_sub, command=lambda: enable_frames(Frame_subject_criteria, self.Crit_sub))
         Crit_sub_butt.pack(side=LEFT)
+        dev_folder_sub_butt = Checkbutton(frame_sub_check, text='Select subject that are not in specific analysis folder', variable=self.Dev_sub, command=lambda: enable_frames(Frame_subject_dev, self.Crit_sub))
+        dev_folder_sub_butt.pack(side=LEFT)
         Frame_subject_list = Frame(frame_subject)
-        Frame_subject_criteria = Frame(frame_subject)
+        frame_temp = Frame(frame_subject)
+        Frame_subject_criteria = Frame(frame_temp)
         Label(Frame_subject_criteria, text='Select criteria for multiple subjects analysis', font='bold', fg='#1F618D').grid(row=0)
+        Frame_subject_dev = Frame(frame_temp)
 
         #Subject list
         self.subject = Label(Frame_subject_list, text='Subject', font='bold', fg='#1F618D')
@@ -2738,15 +2745,24 @@ class BidsSelectDialog(TemplateDialog):
             Crit_sub_butt.config(state=DISABLED)
             cntC = 0
 
+        #Select the derivatives folder
+        self.dev_label = Label(Frame_subject_dev, text='Select the derivatives folder to append subjects', font='bold', fg='#1F618D')
+        self.dev_label.grid(row=0, column=0, sticky=W)
+        self.dev_select = CheckbuttonList(Frame_subject_dev, self.dev_list, row_list=0, col_list=3).variable_list
+
         #place the frame
         if cntC < 1:
             cntC = 1
         frame_sub_check.pack(side=TOP)
         Frame_subject_list.pack(side=LEFT)#.grid(row=1, column=0, columnspan=1, rowspan=cntR + cntC)
         enable(Frame_subject_list, 'disabled')
-        Frame_subject_criteria.pack(side=LEFT)#.grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
+        Frame_subject_criteria.pack(side=TOP)#.grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
         enable(Frame_subject_criteria, 'disabled')
+        Frame_subject_dev.pack(side=TOP)  # .grid(row=cntR+1, column=1, rowspan=cntC, columnspan=max_crit)
+        enable(Frame_subject_dev, 'disabled')
+        frame_temp.pack(side=LEFT)
         frame_subject.pack(side=TOP)
+        # probleme with enable as the frame are in a frame
 
         frame_okcancel = Frame(parent)
         frame_okcancel.pack(side=BOTTOM)
@@ -2871,6 +2887,9 @@ class BidsSelectDialog(TemplateDialog):
         elif self.Crit_sub.get():
             res_dict = self.subject_interface.get_parameter()
             self.select_sub = self.subject_interface.get_subject_list(res_dict)
+        elif self.Dev_sub.get():
+            dev_dict = self.dev_select.get()
+
         else:
             messagebox.showerror('Error Subjects', 'Please select subjects to analyse')
             return
@@ -3094,6 +3113,11 @@ class BidsSelectDialog(TemplateDialog):
     #Voir comment dynanimiser la GUI
     def update_parameter_frame(self):
         pass
+
+    def refresh_gui(self, thread):
+        if thread.is_alive():
+            self.after(100, lambda: self.monitor(thread))
+
 
 
 class RequirementsDialog(TemplateDialog):
