@@ -25,6 +25,22 @@ import os
 import bids_manager.ins_bids_class as bids
 
 
+def compare_listes(liste_final, liste_file, get_only_common=False):
+    is_same = True
+    sX = set(liste_final)
+    sY = set(liste_file)
+    set_common = sX - sY
+    if not set_common == sX:
+        is_same = False
+    if not get_only_common:
+        for elt in liste_file:
+            if elt not in liste_final:
+                liste_final.append(elt)
+    else:
+        liste_final = list(set_common)
+    return is_same
+
+
 class Interface(dict):
 
     def __init__(self, bids_data):
@@ -267,18 +283,6 @@ class ParameterInterface(Interface):
             f.close()
             return param
 
-        def compare_listes(liste_final, liste_file):
-            is_same = True
-            sX = set(liste_final)
-            sY = set(liste_file)
-            set_common = sX - sY
-            if not set_common == sX:
-                is_same = False
-            for elt in liste_file:
-                if elt not in liste_final:
-                    liste_final.append(elt)
-            return is_same
-
         reading_file = self.parameters[key]['read'].strip('*')
         [filetype, ext] = reading_file.split('.')
         if '.'+ext in bids.BidsDataset.anywave_ext:
@@ -343,6 +347,8 @@ class ParameterInterface(Interface):
 
 
 class InputParameterInterface(Interface):
+    savereadingbysub = {}
+
     def __init__(self, bids_data, parameter_soft_input=None):
         self.bids_data = bids_data
         if parameter_soft_input:
@@ -363,7 +369,8 @@ class InputParameterInterface(Interface):
                 self['deriv-folder'] = dict()
                 self['deriv-folder']['attribut'] = 'Listbox'
                 deriv_list = [elt for elt in os.listdir(os.path.join(self.bids_data.cwdir, 'derivatives'))if
-                                  elt not in ['log', 'parsing', 'parsing_old', 'log_old'] and os.path.isdir(os.path.join(self.bids_data.cwdir, 'derivatives',elt))]
+                                  elt not in ['log', 'parsing', 'parsing_old', 'log_old'] and
+                              os.path.isdir(os.path.join(self.bids_data.cwdir, 'derivatives',elt))]
                 self['deriv-folder']['value'] = deriv_list
             self['modality'] = dict()
             if self.parameters['modality']:
@@ -387,17 +394,19 @@ class InputParameterInterface(Interface):
             modality = self['modality']['value']
         if not self.parameters.deriv_input:
             for sub in self.bids_data['Subject']:
+                self.savereadingbysub[sub] = {}
                 for mod in sub:
                     if mod and mod in modality:
                         keys = [elt for elt in self.keylist if elt in eval('bids.' + mod + '.keylist') and elt != 'sub']
                         if mod in bids.Imaging.get_list_subclasses_names() and 'mod' not in keys:
                             keys.append('mod')
                         if sub[mod]:
-                            self.get_values(mod, keys, sub)
+                            self.get_values(mod, keys, sub, self.savereadingbysub[sub])
         else:
             for pip in self.bids_data['Derivatives'][0]['Pipeline']:
                 sub_list = [sub for sub in pip['SubjectProcess']]
                 for sub in sub_list:
+                    self.savereadingbysub[sub] = {}
                     for mod in sub:
                         if mod and mod.split('Process')[0] in modality:
                             keys = [elt for elt in self.keylist if
@@ -405,14 +414,14 @@ class InputParameterInterface(Interface):
                             if mod in bids.ImagingProcess.get_list_subclasses_names() and 'mod' not in keys:
                                 keys.append('mod')
                             if sub[mod]:
-                                self.get_values(mod, keys, sub)
+                                self.get_values(mod, keys, sub, self.savereadingbysub[sub])
         clefs = [key for key in self]
         for key in clefs:
             if self[key]['attribut'] == 'Label' and key not in ['modality', 'ses']:
                 del self[key]
         #Ecrire qqch si juste la modality en label et rien d'autre
 
-    def get_values(self, mod, keys, sub):
+    def get_values(self, mod, keys, sub, dict2update):
         for key in keys:
             value = [elt[key] for elt in sub[mod]]
             if key == 'mod':
@@ -428,6 +437,7 @@ class InputParameterInterface(Interface):
                 #         self[key]['value'].extend(value)
                 if key == 'ses' and '' in value:
                     value.remove('')
+                dict2update[key] = value
                 if not key in self:
                     self[key] = {}
                     self[key]['value'] = value
