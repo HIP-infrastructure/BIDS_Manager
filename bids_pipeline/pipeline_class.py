@@ -741,8 +741,12 @@ class PipelineSetting(dict):
         os.makedirs(log_dir, exist_ok=True)
         time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         log_filename = 'bids-pipeline_' + time_format + '.log'
-        with open(os.path.join(log_dir, log_filename), 'w+') as file:
-            file.write(self.log_error + '\n')
+        try:
+            with open(os.path.join(log_dir, log_filename), 'w+') as file:
+                file.write(self.log_error + '\n')
+        except MemoryError:
+            with open(os.path.join(log_dir, log_filename), 'w+') as file:
+                file.write('The log is too big to be written.\n')
 
     def write_command_line_log(self):
         log_dir = os.path.join(self.curr_dev.bp_folder, 'command_line')

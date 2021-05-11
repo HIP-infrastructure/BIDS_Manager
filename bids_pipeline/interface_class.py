@@ -144,6 +144,7 @@ class Interface(dict):
 
         return res_dict
 
+
     def get_subject_list(self, input_dict):
         subject_list = []
         for elt in self.bids_data['ParticipantsTSV'][1::]:

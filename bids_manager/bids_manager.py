@@ -2642,8 +2642,9 @@ class BidsSelectDialog(TemplateDialog):
         self.frame_soft = {}
         self.batch = False
         self.batch_file = None
-        self.dev_list = [pip['name'] for pip in self.bids_data['Derivatives'][0]['Pipeline'] if pip['name'] not in ['log', 'parsing', 'bids_uploader'
+        self.dev_list = [elt['name'] for elt in self.bids_data['Derivatives'][0]['Pipeline'] if elt['name'] not in ['log', 'parsing', 'bids_uploader'
                                                                                                                     'bids_pipeline', 'anywave']]
+        self.dev_output = ''
         self.subject_interface = itf.Interface(self.bids_data)
         if analysis_dict and isinstance(analysis_dict, pip.PipelineSetting):
             self.soft_name = analysis_dict.jsonfilename
@@ -2715,7 +2716,7 @@ class BidsSelectDialog(TemplateDialog):
         Id_sub_butt.pack(side=LEFT)
         Crit_sub_butt = Checkbutton(frame_sub_check, text='Select subjects by criteria', variable=self.Crit_sub, command=lambda: enable_frames(Frame_subject_criteria, self.Crit_sub))
         Crit_sub_butt.pack(side=LEFT)
-        dev_folder_sub_butt = Checkbutton(frame_sub_check, text='Select subject that are not in specific analysis folder', variable=self.Dev_sub, command=lambda: enable_frames(Frame_subject_dev, self.Crit_sub))
+        dev_folder_sub_butt = Checkbutton(frame_sub_check, text='Select subject that are not in specific analysis folder', variable=self.Dev_sub, command=lambda: enable_frames(Frame_subject_dev, self.Dev_sub))
         dev_folder_sub_butt.pack(side=LEFT)
         Frame_subject_list = Frame(frame_subject)
         frame_temp = Frame(frame_subject)
@@ -2748,7 +2749,8 @@ class BidsSelectDialog(TemplateDialog):
         #Select the derivatives folder
         self.dev_label = Label(Frame_subject_dev, text='Select the derivatives folder to append subjects', font='bold', fg='#1F618D')
         self.dev_label.grid(row=0, column=0, sticky=W)
-        self.dev_select = CheckbuttonList(Frame_subject_dev, self.dev_list, row_list=0, col_list=3).variable_list
+        self.dev_select = ttk.Combobox(Frame_subject_dev, values=self.dev_list)#CheckbuttonList(Frame_subject_dev, self.dev_list, row_list=0, col_list=3).variable_list
+        self.dev_select.grid(row=0, column=3)
 
         #place the frame
         if cntC < 1:
@@ -2789,6 +2791,7 @@ class BidsSelectDialog(TemplateDialog):
         self.ok_cancel_button(frame_okcancel)
         save = Button(frame_okcancel, text='Save', command=lambda: self.save())
         save.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
+        self.after(5000, lambda: self.refresh_gui())
 
     def create_frame_parameters(self, parent, soft_name=None, soft_dict=None):
         if len(self.parameter_list) == 9:
@@ -2864,7 +2867,8 @@ class BidsSelectDialog(TemplateDialog):
         select_param_button.pack(side=LEFT)
         if soft_dict:
             select_param_button.select()
-            max_param, cntP = self.create_button(frame_param_select, self.parameter_list[soft_name_key]['Parameters'], value_dict=soft_dict['analysis_param'])
+            max_param, cntP = self.create_button(frame_param_select, self.parameter_list[soft_name_key]['Parameters'],
+                                                 value_dict=soft_dict['analysis_param'])
             enable(frame_param_select, 'normal')
         else:
             max_param, cntP = self.create_button(frame_param_select, self.parameter_list[soft_name_key]['Parameters'])
@@ -2878,7 +2882,7 @@ class BidsSelectDialog(TemplateDialog):
         self.frame_soft[soft_name].destroy()
         del self.parameter_list[soft_name]
 
-    def get_subjects_selection(self):
+    def get_subjects_selection(self, refresh=False):
         if self.All_sub.get():
             self.select_sub = self.subject_interface.subject
         elif self.Id_sub.get():
@@ -2888,18 +2892,22 @@ class BidsSelectDialog(TemplateDialog):
             res_dict = self.subject_interface.get_parameter()
             self.select_sub = self.subject_interface.get_subject_list(res_dict)
         elif self.Dev_sub.get():
-            dev_dict = self.dev_select.get()
-
-        else:
+            # dev_dict = [self.dev_list[cnt] for cnt, elt in enumerate(self.dev_select) if elt.get()]
+            self.dev_output = self.dev_list[self.dev_select.current()]
+            sub_in_dev = [sub.replace('sub-', '') for sub in os.listdir(os.path.join(self.bids_data.dirname, 'derivatives', self.dev_output))
+                          if sub.startswith('sub-')]
+            self.select_sub = [sub['sub'] for sub in self.bids_data['Subject'] if sub['sub'] not in sub_in_dev]
+        elif not refresh:
             messagebox.showerror('Error Subjects', 'Please select subjects to analyse')
             return
-        if not self.select_sub:
+        if not self.select_sub and not refresh:
             flag = messagebox.askyesno('Subject selection', 'Do you want to run the analysis on all subject?')
             if flag:
                 self.select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
             else:
                 self.select_sub = []
-        self.select_sub = list(set(self.select_sub))
+        if self.select_sub:
+            self.select_sub = list(set(self.select_sub))
 
     def get_results(self):
         self.results = {key: {'input_param': {}, 'analysis_param': {}, 'subject_selected': []} for key in
@@ -3098,6 +3106,21 @@ class BidsSelectDialog(TemplateDialog):
 
         return max_col, cnt
 
+    def update_parameter(self, var_dict, new_value):
+        att_type = var_dict['attribut']
+        val_temp = new_value
+        if att_type == 'Variable':
+            var_dict['results'] = CheckbuttonList(frame, val_temp, row_list=cnt + 1,
+                                                       col_list=max_col).variable_list
+            if val_sel:
+                if isinstance(val_sel, list):
+                    for var in val_sel:
+                        idx = val_temp.index(var)
+                        var_dict[key]['results'][idx].set(1)
+                elif isinstance(val_sel, str):
+                    idx = val_temp.index(val_sel)
+                    var_dict[key]['results'][idx].set(1)
+
     def ask4file(self, file):
         #ajouter directory ask
         if file == ['dir']:
@@ -3114,9 +3137,21 @@ class BidsSelectDialog(TemplateDialog):
     def update_parameter_frame(self):
         pass
 
-    def refresh_gui(self, thread):
-        if thread.is_alive():
-            self.after(100, lambda: self.monitor(thread))
+    def refresh_gui(self):
+        self.get_subjects_selection(refresh=True)
+        if self.select_sub:
+            # refresh the parameters
+            for key in self.parameter_interface['Parameters']:
+                if key in self.parameter_interface['Parameters'].savereadingbysub:
+                    #prendre que ceux en commun
+                    new_val = [self.parameter_interface['Parameters'].savereadingbysub[key][sub]
+                               for sub in self.parameter_interface['Parameters'].savereadingbysub[key]
+                               if sub.replace('sub-', '') in self.select_sub]
+                    new_val = list(set(new_val))
+                    self.parameter_interface['Parameters'][key]['value']
+
+            pass
+        self.after(5000, lambda: self.refresh_gui())
 
 
 
