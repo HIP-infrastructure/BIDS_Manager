@@ -5429,7 +5429,7 @@ def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None
         log += '/!\\ WARNING /!\\ Current user {} cannot write in the BIDS dataset folder.\n'.format(BidsBrick.curr_user)
         return log
     elif len(access.keys()) >1:
-        if any(us['import_data'] or us['analyse_data'] for us in access if not us==BidsBrick.curr_user):
+        if any(access[us]['import_data'] or access[us]['analyse_data'] for us in access if not us == BidsBrick.curr_user):
             log += '/!\\ WARNING /!\\ Anywave files cannot be moved because the dataset is in used by someone else.\n'
             return log
     if sublist is None:

@@ -377,7 +377,7 @@ class PipelineSetting(dict):
             self.write_file(os.path.join(self.soft_path, soft_name + '.json'))
         self.curr_dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
         self.curr_dev.bp_folder = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline')
-        os.makedirs(self.curr_dev.bp_folder , exist_ok=True)
+        os.makedirs(self.curr_dev.bp_folder, exist_ok=True)
 
     def __setitem__(self, key, value):
         if key in self.keylist:
@@ -534,8 +534,15 @@ class PipelineSetting(dict):
             if err:
                 raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
-            output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
             participants = bids.ParticipantsProcessTSV()
+            if not results['derivatives_output']:
+                output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
+            else:
+                output_name = results['derivatives_output']
+                output_directory = os.path.join(self.cwdir, 'derivatives', output_name)
+                dataset_desc = bids.DatasetDescPipeline(filename=os.path.join(output_directory, 'dataset_description.json'))
+                participants.read_file(os.path.join(output_directory, 'participants.tsv'))
+
 
             # Check if the subjects have all the required values
             #self['Parameters'].write_file(output_directory)
@@ -1892,7 +1899,7 @@ class Arguments(Parameters):
                     if self['value_selected'] and any(c.isdigit() for c in self['value_selected']):
                         if '.' in self['value_selected'] or ',' in self['value_selected']:
                             self['value_selected'] = float(self['value_selected'])
-                        else:
+                        elif all(c.isdigit() for c in self['value_selected']):
                             self['value_selected'] = int(self['value_selected'])
                 elif 'type' in self.keys():
                     unit = self['type']
@@ -1944,6 +1951,7 @@ class SubjectToAnalyse(Parameters):
     def remove(self, subid):
         self['sub'].remove(subid)
 
+
 def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
     warn_txt = ''
     err_txt = ''
@@ -1976,27 +1984,6 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
             deriv_folder = input_vars[key]['deriv-folder'][-1]
             if deriv_folder == '' or 'Previous analysis results' in deriv_folder:# or deriv_folder == ['']:
                 continue
-        # if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
-        #     mod = []
-        #     for elmt in input_vars[key]['modality']:
-        #         if elmt in bids.ModalityType.get_list_subclasses_names():
-        #             mod.append(elmt)
-        #         else:
-        #             val = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elmt in eval('bids.' + elt + '.allowed_modalities')]
-        #             if deriv_folder:
-        #                 val = [va for va in val if va in bids.Process.get_list_subclasses_names()]
-        #             else:
-        #                 val = [va for va in val if va not in bids.Process.get_list_subclasses_names()]
-        #             mod.extend(val)
-        #     mod = list(set(mod))
-        # else:
-        #     mod = input_vars[key]['modality']
-
-        # if len(mod) > 1:
-        #     err_txt += 'Modalities selected in the input {} are too differents\n.'.format(key)
-        #     return warn_txt, err_txt
-        # else:
-        #     mod = mod[-1]
         keylist = [clef for clef in input_vars[key] if (clef != 'modality' and clef != 'deriv-folder')]
 
         for clef in keylist:
