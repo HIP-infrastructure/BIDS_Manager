@@ -1127,7 +1127,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             output_dict = BidsSelectDialog(self, self.curr_bids, analysis_dict=nameS, batch_file=batch_file)
             if output_dict.log_error:
                 self.update_text(output_dict.log_error)
-                self.curr_bids.access.use_token('analyse_data', bids.BidsBrick.curr_user)
+                self.curr_bids.access.use_token_analyse(bids.BidsBrick.curr_user)
                 self.make_available()
                 return
             #save batch and possibility to upload it in the GUI
@@ -2752,11 +2752,12 @@ class BidsSelectDialog(TemplateDialog):
             cntC = 0
 
         #Select the derivatives folder
-        self.dev_label = Label(Frame_subject_dev, text='Select the derivatives folder to append subjects', font='bold', fg='#1F618D')
-        self.dev_label.grid(row=0, column=0, sticky=W)
-        self.dev_select = ttk.Combobox(Frame_subject_dev, values=self.dev_list)#CheckbuttonList(Frame_subject_dev, self.dev_list, row_list=0, col_list=3).variable_list
-        self.dev_select.current(0)
-        self.dev_select.grid(row=0, column=3)
+        if not self.batch:
+            self.dev_label = Label(Frame_subject_dev, text='Select the derivatives folder to append subjects', font='bold', fg='#1F618D')
+            self.dev_label.grid(row=0, column=0, sticky=W)
+            self.dev_select = ttk.Combobox(Frame_subject_dev, values=self.dev_list)#CheckbuttonList(Frame_subject_dev, self.dev_list, row_list=0, col_list=3).variable_list
+            self.dev_select.current(0)
+            self.dev_select.grid(row=0, column=3)
 
         #place the frame
         if cntC < 1:
@@ -2792,17 +2793,17 @@ class BidsSelectDialog(TemplateDialog):
             frame_add_soft.pack(side=TOP)
             frame_multi_soft = DoubleScrollbarFrame(parent)
             if not self.batch:
-                self.create_frame_parameters(frame_multi_soft)
+                soft_name_key = self.create_frame_parameters(frame_multi_soft)
             else:
                 soft_list_button = ttk.Combobox(frame_add_soft, values=self.soft_list)
                 soft_list_button.grid(row=0, column=0)
-                add_soft = Button(frame_add_soft, text='+', command=lambda: self.create_frame_parameters(frame_multi_soft, soft_name=self.soft_list[soft_list_button.current()]))
+                add_soft = Button(frame_add_soft, text='+', command=lambda: self.create_frame_parameters_for_batch(frame_multi_soft, soft_name=self.soft_list[soft_list_button.current()]))
                 add_soft.grid(row=0, column=1)
                 if self.batch_file:
                     enable(Frame_subject_list, 'normal')
                     for key in self.batch_file:
                         soft_name = self.batch_file[key]['JsonName']
-                        self.create_frame_parameters(frame_multi_soft, soft_name=soft_name, soft_dict=self.batch_file[key])
+                        soft_name_key = self.create_frame_parameters(frame_multi_soft, soft_name=soft_name, soft_dict=self.batch_file[key])
             frame_multi_soft.frame.pack(side=TOP)
             frame_multi_soft.update_scrollbar()
 
@@ -2810,7 +2811,8 @@ class BidsSelectDialog(TemplateDialog):
         self.ok_cancel_button(frame_okcancel)
         save = Button(frame_okcancel, text='Save', command=lambda: self.save())
         save.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
-        self.after(5000, lambda fr=frame_multi_soft: self.refresh_gui(fr))
+        if not self.batch:
+            self.after(3000, lambda fr=frame_multi_soft: self.refresh_gui(fr))
 
     def create_frame_parameters(self, parent, soft_name=None, soft_dict=None):
         if len(self.parameter_list) == 9:
@@ -2850,14 +2852,18 @@ class BidsSelectDialog(TemplateDialog):
             self.frame_soft[soft_name_key] = frame_parameters
 
         # do it with function
-        if soft_dict:
-            soft_dict = soft_dict['input_param']
-        self.update_frame_input(soft_name_key, soft_dict=soft_dict)
+        in_dict = {}
+        if soft_dict and 'input_param' in soft_dict:
+            in_dict = soft_dict['input_param']
+        self.update_frame_input(soft_name_key, soft_dict=in_dict)
 
         # Use the new fonction to update
-        if soft_dict:
-            soft_dict = soft_dict['analysis_param']
-        self.update_frame_parameter(parent, soft_name_key, soft_dict)
+        param_dict = {}
+        if soft_dict and 'analysis_param' in soft_dict:
+            param_dict = soft_dict['analysis_param']
+        self.update_frame_parameter(parent, soft_name_key, param_dict)
+
+        return soft_name_key
 
     def delete_software_in_batch(self, soft_name):
         self.frame_soft[soft_name].destroy()
@@ -2874,9 +2880,6 @@ class BidsSelectDialog(TemplateDialog):
             self.select_sub = self.subject_interface.get_subject_list(res_dict)
         elif self.Dev_sub.get():
             # dev_dict = [self.dev_list[cnt] for cnt, elt in enumerate(self.dev_select) if elt.get()]
-            if self.batch:
-                messagebox.showerror('Error Subjects', 'Selected derivatives output is not possible in batch mode')
-                return
             self.dev_output = self.dev_list[self.dev_select.current()]
             if not self.dev_output == '':
                 if self.soft_name not in self.dev_output:
@@ -2905,6 +2908,8 @@ class BidsSelectDialog(TemplateDialog):
         self.get_subjects_selection()
         err_dict = {}
         warn_dict = {}
+        soft_dict = None
+        out_dict = None
         if self.dev_output:
             batch_file = os.path.join(self.bids_data.dirname, 'derivatives', self.dev_output, 'BP_parameters_file.json')
             if os.path.exists(batch_file):
@@ -2912,13 +2917,21 @@ class BidsSelectDialog(TemplateDialog):
                     soft_dict = json.load(file)
             else:
                 soft_dict = None
+        if self.out_local.get():
+            out_dict = self.out_local_path[1]
+            if not os.path.exists(out_dict):
+                err_dict['All'] = 'The directory {} doesn"t exist'.format(out_dict)
+                return warn_dict, err_dict
+        if out_dict is not None and soft_dict is not None:
+            warn_dict['All'] = 'The folder {} will be used to determine parameters and subject selection but the ' \
+                               'results will be written in {}\n'.format(self.dev_output, out_dict)
         # get the subject selected
         if self.parameter_list:
             for key in self.parameter_list:
                 if self.dev_output:
                     self.results[key]['derivatives_output'] = self.dev_output
-                if self.out_local_path:
-                    self.results[key]['local_output'] = self.out_local_path
+                if out_dict:
+                    self.results[key]['local_output'] = out_dict
                 if self.dev_output and self.out_local_path:
                     err_dict[key] += 'You cannot select a derivatives output and a local output\n'
                 self.results[key]['subject_selected'] = self.select_sub
@@ -2966,6 +2979,8 @@ class BidsSelectDialog(TemplateDialog):
         str_err = ''
         for key in err:
             if err[key]:
+                if key not in warn:
+                    warn[key] = ''
                 str_err += 'Error parameters {}'.format(key) + ': ' + warn[key] + err[key] + '\n'
         if str_err:
             messagebox.showerror('Error parameters', str_err)
@@ -3064,8 +3079,8 @@ class BidsSelectDialog(TemplateDialog):
             att_type = var_dict[key]['attribut']
             val_temp = var_dict[key]['value']
             val_sel = None
-            if value_dict and key in value_dict.keys():
-                val_sel = value_dict[key]
+            if value_dict and lab in value_dict.keys():
+                val_sel = value_dict[lab]
             if att_type == 'StringVar':
                 if isinstance(val_temp, str):
                     var_dict[key]['value'] = StringVar()
@@ -3129,6 +3144,8 @@ class BidsSelectDialog(TemplateDialog):
                         val = False
                 elif isinstance(val_temp, bool):
                     val = val_temp
+                elif isinstance(val_temp, BooleanVar):
+                    val = val_temp.get()
                 if val_sel:
                     val = val_sel
                 var_dict[key]['value'] = BooleanVar()
@@ -3223,6 +3240,14 @@ class BidsSelectDialog(TemplateDialog):
             entry_2write.delete(0, END)
             entry_2write.insert(END, filename)
 
+    def create_frame_parameters_for_batch(self, frame, soft_name):
+        self.get_subjects_selection(refresh=True)
+        soft_name_key = self.create_frame_parameters(frame, soft_name)
+        soft_dict = None
+        self.refresh_input_selection(soft_name_key, self.select_sub, soft_dict, clean=True)
+        self.refresh_parameter_selection(soft_name_key, self.select_sub, frame, soft_dict)
+
+
     def refresh_gui(self, fr):
         # faire le refresh toute les 5sec en verifiant que le get_subject donne la mm chose une fois que c'est le cas
         # stop le refresh il faut aussi garder les valeurs indiquer dans les paramètres aux cas ou l'utilsateur aurait
@@ -3265,7 +3290,7 @@ class BidsSelectDialog(TemplateDialog):
                     self.refresh_input_selection(soft, self.select_sub, clean=True)
                     self.refresh_parameter_selection(soft, self.select_sub, fr)
             self.tmp_subjects = [sub for sub in self.select_sub]
-        self.after(5000, lambda fr=fr: self.refresh_gui(fr))
+        self.after(3000, lambda fr=fr: self.refresh_gui(fr))
 
     def refresh_parameter_selection(self, soft_name_key, sub_selected, parent, soft_dict=None):
         param_dict = self.parameter_list[soft_name_key]['Parameters']
@@ -3307,6 +3332,8 @@ class BidsSelectDialog(TemplateDialog):
                 if new_val:
                     param_dict[key][elt]['value'] = new_val
         if (soft_dict is None and have_already_selected) or (soft_dict is not None and not soft_dict['input_param'] and have_already_selected):
+            if soft_dict is None:
+                soft_dict = {}
             soft_dict['input_param'] = inp_select
         elif soft_dict is not None and soft_dict['input_param']:
             # compare the two dict

@@ -3,8 +3,6 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 
 ## [Unreleased]
 - Export option is working, need to test more the merge option
-- Make the interface dynamic
-- Possibility to choose a local output in BP
 - Possibility to import derivatives folder in BIDS dataset
 
 ## [v0.3.1] - 2021-04-30
@@ -13,6 +11,10 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 - Extension '.mtg' and '.mrk' to be parsed in derivatives and called as input in BP
 - Management of multiple access to the database
 - Write the command line used for the process in derivatives/bids_pipeline/command_line
+- Interface Dynamical, the parameters are updated according to the subject selection
+- Possibility to write the results of the analysis in local directory
+- Possibility to select subject that has not been done in previous analysis, and write automatically the results in this
+folder
 
 ### Fixed
 - Taking into account multiple session to check the integrity of electrode names

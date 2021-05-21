@@ -50,6 +50,39 @@ def save_batch(bids_dir, batch_dict):
             file.write(json_str)
 
 
+def check_pipeline_presence_locally(pip_name, output_dir, param_var, subject_to_analyse):
+    def determine_variant_name(name, dirlist):
+        if name in dirlist:
+            oldname = name.split('-v')
+            new_variant = str(int(oldname[1])+1)
+            new_name = oldname[0] + '-v' + new_variant
+            finale_name = determine_variant_name(new_name, dirlist)
+        else:
+            finale_name = name
+        return finale_name
+    dirlist = [file for file in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, file))]
+    isin =0
+    variant_list = []
+    for folder in dirlist:
+        if folder.lower().startswith(pip_name.lower()):
+            isin= isin+1
+            name = folder.split('-')
+            if len(name) >1:
+                variant_list.append(name[1])
+    if isin > 0:
+        output_name = pip_name.lower() + '-v' + str(isin + 1)
+        if output_name in dirlist:
+            output_name = determine_variant_name(output_name, dirlist)
+    else:
+        output_name = pip_name.lower()
+    output_directory = os.path.join(output_dir, output_name)
+    os.makedirs(output_directory, exist_ok=True)
+    desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_to_analyse)
+    desc_data['Name'] = output_name
+
+    return output_directory, output_name, desc_data
+
+
 class DerivativesSetting(object):
     path = None
     pipelines = []
@@ -255,12 +288,12 @@ class DerivativesSetting(object):
     #         return False
 
 ## nouvelle fonction empty dirs a tester
-    def empty_dirs(self, pip_name, rmemptysub=False):
+    def empty_dirs(self, output_directory, rmemptysub=False):
         def sub_empty(subdir):
             empty_dirs = []
             emp_dirs = []
-            dir2check = os.path.join(pip_directory, subdir)
-            for root, dirs, files in os.walk(dir2check, topdown=False):
+            # dir2check = os.path.join(output_directory, subdir)
+            for root, dirs, files in os.walk(subdir, topdown=False):
                 # print root, dirs, files
                 if not dirs:
                     all_subs_empty = True  # until proven otherwise
@@ -278,14 +311,15 @@ class DerivativesSetting(object):
                         empty_dirs.append(False)
                         # yield root
             return empty_dirs
-        pip_directory = os.path.join(self.path, pip_name)
-        subdir = {sub: True for sub in os.listdir(pip_directory) if sub.startswith('sub-') and os.path.isdir(os.path.join(pip_directory, sub))}
+        #pip_directory = os.path.join(self.path, pip_name)
+        subdir = {sub: True for sub in os.listdir(output_directory) if sub.startswith('sub-') and os.path.isdir(os.path.join(output_directory, sub))}
         all_files = []
+        pip_name = os.path.basename(output_directory)
         analyse_name = pip_name.split('-')[0].lower()
         default_files = [bids.DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename,
                          'log_error_analyse.log', analyse_name + '_parameters.json']
         log = ''
-        with os.scandir(pip_directory) as it:
+        with os.scandir(output_directory) as it:
             for entry in it:
                 if entry.is_dir():
                     isempty = sub_empty(entry.path)
@@ -305,8 +339,8 @@ class DerivativesSetting(object):
             if rmemptysub:
                 for sub in subdir:
                     if subdir[sub]:
-                        shutil.rmtree(os.path.join(pip_directory, sub))
-                        log += 'Subject {} has been removed from the derivatives folder {}\n'.format(sub, pip_directory)
+                        shutil.rmtree(os.path.join(output_directory, sub))
+                        log += 'Subject {} has been removed from the derivatives folder {}\n'.format(sub, output_directory)
                         #remove from dataste_desc
                         for pip in self.pipelines:
                             if pip['name'] == pip_name:
@@ -314,7 +348,7 @@ class DerivativesSetting(object):
                                     try:
                                         subname = sub.replace('sub-', '')
                                         pip['DatasetDescJSON']['SourceDataset']['sub'].remove(subname)
-                                        pip['DatasetDescJSON'].write_file(os.path.join(pip_directory, bids.DatasetDescPipeline.filename))
+                                        pip['DatasetDescJSON'].write_file(os.path.join(output_directory, bids.DatasetDescPipeline.filename))
                                         break
                                     except:
                                         continue
@@ -322,7 +356,7 @@ class DerivativesSetting(object):
                                     ids = [cnt for cnt, line in enumerate(pip['ParticipantsProcessTSV']) if line[0] == sub]
                                     if ids:
                                         pip['ParticipantsProcessTSV'].pop(ids[0])
-                                        pip['ParticipantsProcessTSV'].write_file(os.path.join(pip_directory, bids.ParticipantsTSV.filename))
+                                        pip['ParticipantsProcessTSV'].write_file(os.path.join(output_directory, bids.ParticipantsTSV.filename))
             return False, log
 
     def possible_output_for_analysis(self, analysis_name):
@@ -514,6 +548,7 @@ class PipelineSetting(dict):
             return warning, sub_tmp_dir
 
         param_vars = {}
+        res_outside = False
         for key in results['analysis_param']:
             if key[0].isdigit() and key[1] == '_':
                 lab = key[2::]
@@ -535,8 +570,12 @@ class PipelineSetting(dict):
                 raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
             participants = bids.ParticipantsProcessTSV()
-            if not results['derivatives_output']:
+            if not results['derivatives_output'] and not results['local_output']:
                 output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
+            elif results['local_output']:
+                # Check in the output directory if the analysis doesnot exist
+                output_directory, output_name, dataset_desc = check_pipeline_presence_locally(self['Name'], results['local_output'], param_vars, subject_to_analyse)
+                res_outside = True
             else:
                 output_name = results['derivatives_output']
                 output_directory = os.path.join(self.cwdir, 'derivatives', output_name)
@@ -612,7 +651,7 @@ class PipelineSetting(dict):
             return self.log_error, output_name, {}
         if interm == 'AnyWave':
             bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=False, sublist=subject_to_analyse['sub'])
-        empty_dir, log_empty = self.curr_dev.empty_dirs(output_name, rmemptysub=True)
+        empty_dir, log_empty = self.curr_dev.empty_dirs(output_directory, rmemptysub=True)
         if not empty_dir:
             #remove the empty directory
             sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
@@ -628,8 +667,9 @@ class PipelineSetting(dict):
                 go_throught_dir_to_convert(output_directory)
             except:
                 pass
-            self.curr_dev.parse_pipeline(output_directory, output_name)
-            self.curr_bids.save_as_json()
+            if not res_outside:
+                self.curr_dev.parse_pipeline(output_directory, output_name)
+                self.curr_bids.save_as_json()
             temp = self.write_analysis_done_log(dataset_desc, filename=os.path.join(output_directory, Parameters.filename))
         else:
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'Warning: The folder {0} has no results so your analysis may not succeed. The folder {0} will be erased.\n'.format(output_name)
