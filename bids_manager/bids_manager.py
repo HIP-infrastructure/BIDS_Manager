@@ -2932,7 +2932,7 @@ class BidsSelectDialog(TemplateDialog):
                     self.results[key]['derivatives_output'] = self.dev_output
                 if out_dict:
                     self.results[key]['local_output'] = out_dict
-                if self.dev_output and self.out_local_path:
+                if self.dev_output and self.out_local.get():
                     err_dict[key] += 'You cannot select a derivatives output and a local output\n'
                 self.results[key]['subject_selected'] = self.select_sub
                 self.results[key]['JsonName'] = self.parameter_list[key]['JsonName']

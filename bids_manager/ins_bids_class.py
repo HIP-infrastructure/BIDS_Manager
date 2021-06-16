@@ -2782,7 +2782,7 @@ class ParticipantsProcessTSV(ParticipantsTSV):
             if line[0].replace('sub-', '') in sub2remove:
                 idx_line2remove.append(cnt)
             elif line[0].replace('sub-', '') in sub2add:
-                sub2add.remove(line[0])
+                sub2add.remove(line[0].replace('sub-', ''))
         for elt in idx_line2remove:
             self.pop(elt)
         for sub in sub2add:
@@ -4714,9 +4714,13 @@ class Access(BidsJSON):
             return ''
 
     def read_file(self, filename=None):
+        if filename is not None:
+            self.filename = filename
         super().read_file(self.filename)
 
     def write_file(self, jsonfilename=None):
+        if jsonfilename is not None:
+            self.filename = jsonfilename
         super().write_file(self.filename)
 
     def delete_file(self, user):
@@ -5450,7 +5454,7 @@ def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None
                     parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder, overwrite=overwrite)
         anywave_common = os.path.join(BidsDataset.dirname, 'derivatives', 'anywave', 'common')
         if not os.path.exists(anywave_common):
-            os.makedirs(anywave_common)
+            os.makedirs(anywave_common, exist_ok=True)
             shutil.copytree(anywave_folder, anywave_common)
     return log
 

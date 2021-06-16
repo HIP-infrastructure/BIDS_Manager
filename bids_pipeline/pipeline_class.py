@@ -597,7 +597,9 @@ class PipelineSetting(dict):
             self.log_error += 'Error type: ' + str(exc_type) + ', scriptname: ' + err_name + ', line number, ' + str(
                 exc_tb.tb_lineno) + ': ' + str(er)
             self.write_log()
-            shutil.rmtree(output_directory)
+            empty_dir, log_empty = self.curr_dev.empty_dirs(output_directory, rmemptysub=False)
+            if empty_dir:
+                shutil.rmtree(output_directory)
             return self.log_error, output_name, {}
 
         if not order:

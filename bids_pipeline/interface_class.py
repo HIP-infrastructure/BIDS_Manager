@@ -408,7 +408,7 @@ class InputParameterInterface(Interface):
             for pip in self.bids_data['Derivatives'][0]['Pipeline']:
                 sub_list = [sub for sub in pip['SubjectProcess']]
                 for sub in sub_list:
-                    self.savereadingbysub[sub] = {}
+                    self.savereadingbysub[sub['sub']] = {}
                     for mod in sub:
                         if mod and mod.split('Process')[0] in modality:
                             keys = [elt for elt in self.keylist if
@@ -416,7 +416,7 @@ class InputParameterInterface(Interface):
                             if mod in bids.ImagingProcess.get_list_subclasses_names() and 'mod' not in keys:
                                 keys.append('mod')
                             if sub[mod]:
-                                self.get_values(mod, keys, sub, self.savereadingbysub[sub])
+                                self.get_values(mod, keys, sub, self.savereadingbysub[sub['sub']])
         clefs = [key for key in self]
         for key in clefs:
             if self[key]['attribut'] == 'Label' and key not in ['modality', 'ses']:
