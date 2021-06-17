@@ -104,7 +104,7 @@ class DerivativesSetting(object):
                 if entry.is_dir():
                     pip = bids.Pipeline()
                     pip.dirname = entry.path
-                    empty_dir, log = self.empty_dirs(entry.name)#, recursive=True)
+                    empty_dir, log = self.empty_dirs(entry.path)#, recursive=True)
                     log_reading += log
                     if not empty_dir:
                         self.parse_pipeline(pip.dirname, entry.name)
@@ -570,6 +570,10 @@ class PipelineSetting(dict):
                 raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
             participants = bids.ParticipantsProcessTSV()
+            if 'derivatives_output' not in results:
+                results['derivatives_output'] = []
+            if 'local_output' not in results:
+                results['local_output'] = []
             if not results['derivatives_output'] and not results['local_output']:
                 output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
             elif results['local_output']:

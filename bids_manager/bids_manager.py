@@ -1256,7 +1256,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             self.make_available()
             return
         try:
-            exp.export_data(self.curr_bids, output_dict.results)
+            exp.export_data(self.curr_bids, output_dict.results, self)
         except Exception as err:
             messagebox.showerror('ERROR', err)
             self.curr_bids._assign_bids_dir(self.curr_bids.dirname)
@@ -2811,7 +2811,7 @@ class BidsSelectDialog(TemplateDialog):
         self.ok_cancel_button(frame_okcancel)
         save = Button(frame_okcancel, text='Save', command=lambda: self.save())
         save.pack(side=RIGHT, fill=Y, expand=1, padx=10, pady=5)
-        if not self.batch:
+        if not self.batch and self.soft_name is not None:
             self.after(3000, lambda fr=frame_multi_soft: self.refresh_gui(fr))
 
     def create_frame_parameters(self, parent, soft_name=None, soft_dict=None):
@@ -2894,11 +2894,12 @@ class BidsSelectDialog(TemplateDialog):
             messagebox.showerror('Error Subjects', 'Please select subjects to analyse')
             return
         if not self.select_sub and not refresh:
-            flag = messagebox.askyesno('Subject selection', 'Do you want to run the analysis on all subject?')
+            flag = messagebox.askyesno('Subject selection', 'No subjects correspond to your selection. Do you want to continue?')
             if flag:
-                self.select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
-            else:
                 self.select_sub = []
+                #self.select_sub = [sub['sub'] for sub in self.bids_data['Subject']]
+            else:
+                return
         if self.select_sub:
             self.select_sub = list(set(self.select_sub))
 
@@ -2994,10 +2995,10 @@ class BidsSelectDialog(TemplateDialog):
                                        'Your parameter selection has created warnings.\n' + str_warn + 'Do you want to modify your selection?')
             if flag:
                 return
-        if not self.select_sub:
-            flag = messagebox.askyesno('No subject selected', 'Do you want to modify your selection?')
-            if flag:
-                return
+        # if not self.select_sub:
+        #     flag = messagebox.askyesno('No subject selected', 'Do you want to modify your selection?')
+        #     if flag:
+        #         return
         # save the reading subject for parameters and Input
         path_to_save = os.path.join(self.bids_data.dirname, 'derivatives', 'bids_pipeline', 'elements_by_subject')
         os.makedirs(path_to_save, exist_ok=True)
@@ -3005,7 +3006,7 @@ class BidsSelectDialog(TemplateDialog):
         for soft in self.parameter_list:
             to_save_all[soft] = {'Parameters': {}, 'Input': {}}
             for param in self.parameter_list[soft]['Parameters']:
-                if param in self.parameter_list[soft]['Parameters'].savereadingbysub:
+                if 'savereadingbysub' in self.parameter_list[soft]['Parameters'] and param in self.parameter_list[soft]['Parameters'].savereadingbysub:
                     to_save_all[soft]['Parameters'][param] = self.parameter_list[soft]['Parameters'].savereadingbysub[param]
             for inp in self.parameter_list[soft]['Input']:
                 to_save_all[soft]['Input'][inp] = self.parameter_list[soft]['Input'][inp].savereadingbysub
@@ -3247,7 +3248,6 @@ class BidsSelectDialog(TemplateDialog):
         self.refresh_input_selection(soft_name_key, self.select_sub, soft_dict, clean=True)
         self.refresh_parameter_selection(soft_name_key, self.select_sub, frame, soft_dict)
 
-
     def refresh_gui(self, fr):
         # faire le refresh toute les 5sec en verifiant que le get_subject donne la mm chose une fois que c'est le cas
         # stop le refresh il faut aussi garder les valeurs indiquer dans les paramètres aux cas ou l'utilsateur aurait
@@ -3295,7 +3295,7 @@ class BidsSelectDialog(TemplateDialog):
     def refresh_parameter_selection(self, soft_name_key, sub_selected, parent, soft_dict=None):
         param_dict = self.parameter_list[soft_name_key]['Parameters']
         for key in param_dict:
-            if key in param_dict.savereadingbysub:
+            if 'savereadingbysub' in param_dict and key in param_dict.savereadingbysub:
                 new_val = []
                 for sub in param_dict.savereadingbysub[key]:
                     if sub.replace('sub-', '') in sub_selected:

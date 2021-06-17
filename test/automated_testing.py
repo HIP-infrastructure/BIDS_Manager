@@ -388,14 +388,23 @@ class TestImport(unittest.TestCase):
         data2impt = bids.Data2Import(self.import_dir)
         self.assertTrue(data2impt.is_empty(), 'data2import was not emptied')
 
-    def update_to_current_date(self):
-        update_idx = self.correct_parsing['ParticipantsTSV'][0].index('upload_date')
-        for line in self.correct_parsing['ParticipantsTSV'][1:]:
-            line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+    def update_to_current_date(self, markers=False):
+        if not markers:
+            update_idx = self.correct_parsing['ParticipantsTSV'][0].index('upload_date')
+            for line in self.correct_parsing['ParticipantsTSV'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
 
-        update_idx = self.correct_parsing['SourceData'][0]['SrcDataTrack'][0].index('upload_date')
-        for line in self.correct_parsing['SourceData'][0]['SrcDataTrack'][1:]:
-            line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+            update_idx = self.correct_parsing['SourceData'][0]['SrcDataTrack'][0].index('upload_date')
+            for line in self.correct_parsing['SourceData'][0]['SrcDataTrack'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+        else:
+            update_idx = self.correct_parsing_markers['ParticipantsTSV'][0].index('upload_date')
+            for line in self.correct_parsing_markers['ParticipantsTSV'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+
+            update_idx = self.correct_parsing_markers['SourceData'][0]['SrcDataTrack'][0].index('upload_date')
+            for line in self.correct_parsing_markers['SourceData'][0]['SrcDataTrack'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
 
     def test_import_invisible_subject(self):
         new_bids = bids.BidsDataset(self.bids_dir)
@@ -461,7 +470,7 @@ class TestImport(unittest.TestCase):
         # import without manually checking the data to import
         new_bids.make_upload_issues(data2impt, force_verif=True)
         new_bids.import_data(data2impt)
-        self.update_to_current_date()
+        self.update_to_current_date(markers=True)
 
         #check the parsing
         self.assertEqual(new_bids, self.correct_parsing_markers, 'Import 2 went wrong!')
@@ -791,24 +800,24 @@ class TestElectrodeIssues(unittest.TestCase):
         # take the electrode OCU which is set as SEEG and turn it to OCU (2nd electrode, first one is EEG)
         mismatch_el = ex_elec_iss['MismatchedElectrodes'][0]['name']
         input_dict, opt_dict = __bm__.prepare_chg_eletype(ex_elec_iss, mismatch_el)
-        output_dict = {'type': opt_dict['type'][11]}
+        output_dict = {'type': opt_dict['type'][12]}
         __bm__.make_cmd4electypechg(output_dict, input_dict, ex_elec_iss, mismatch_el)
         self.assertTrue(ex_elec_iss['Action'])
-        self.assertEqual(ex_elec_iss['Action'][0]['command'], 'type="EOG"')
+        self.assertEqual(ex_elec_iss['Action'][0]['command'], 'type="ECG"')
         # apply the action
         self.curr_bids.apply_actions()
         # check channels.tsv of corresponding file was change
         # firstly in bids variable
         obj = self.curr_bids.get_object_from_filename(ex_elec_iss['fileLoc'], sub_id=ex_elec_iss['sub'])
         channels = obj['IeegChannelsTSV']
-        elmts = channels.find_lines_which('type', 'EOG', 'group')
-        self.assertIn('OCU', elmts)
+        elmts = channels.find_lines_which('type', 'ECG', 'group')
+        self.assertIn('ecg+', elmts)
         # secondly in the actual electrode file
         channels = bids.IeegChannelsTSV()
         chnl_file = ex_elec_iss['fileLoc'].replace('_ieeg.vhdr', '_channels.tsv')
         channels.read_file(os.path.join(self.bids_dir, chnl_file))
-        elmts = channels.find_lines_which('type', 'EOG', 'group')
-        self.assertIn('OCU', elmts)
+        elmts = channels.find_lines_which('type', 'ECG', 'group')
+        self.assertIn('ecg+', elmts)
 
     def modify_channel_name(self):
         ex_elec_iss = self.curr_bids.issues['ElectrodeIssue'][0]
@@ -870,7 +879,12 @@ class TestAccess(unittest.TestCase):
         cls.acces_multiple = os.path.join(__main_dir__, 'all_data_orig', 'TestAccess', 'access_multiple.json')
         cls.access_read = os.path.join(__main_dir__, 'all_data_orig', 'TestAccess', 'access_read_template.json')
 
+    def update_date_access(self):
+        curr_time = "2019-01-01T00-00-00"
+        self.curr_bids.access[self.curr_bids.curr_user]['access_time'] = curr_time
+
     def test_access_writing(self):
+        self.update_date_access()
         self.assertEqual(self.curr_bids.access, self.access_tmp, 'The access is not correct')
 
     def test_multiple_access(self):
@@ -880,19 +894,19 @@ class TestAccess(unittest.TestCase):
         self.curr_bids.access.read_file()
 
         ## try to import
-        perm, users, log_info = self.access.use_token_import(self.curr_user)
+        perm, users, log_info = self.curr_bids.access.use_token_import(self.curr_bids.curr_user)
         self.assertFalse(perm)
         self.assertEqual(users, ['medina'])
         self.assertEqual(log_info, '/!\\ WAIT /!\\ Users medina are importing data, please wait before to do yours.\n Please contact the users if needed.')
 
         ## try to run analsysis
-        perm, users, log_info = self.access.use_token_analyse(self.curr_user, soft='h2')
+        perm, users, log_info = self.curr_bids.access.use_token_analyse(self.curr_bids.curr_user, soft='h2')
         self.assertFalse(perm)
         self.assertEqual(users, ['garnier'])
         self.assertEqual(log_info, '/!\\ WAIT /!\\ Users garnier are analysing data with pipeline h2, please wait before to do yours.\n Please contact the users if needed.')
 
         ## try to run another analysis
-        perm, users, log_info = self.access.use_token_analyse(self.curr_user, soft='ica')
+        perm, users, log_info = self.curr_bids.access.use_token_analyse(self.curr_bids.curr_user, soft='ica')
         self.assertTrue(perm)
         self.assertEqual(users, [])
         self.assertEqual(log_info, '')
@@ -900,18 +914,19 @@ class TestAccess(unittest.TestCase):
     def test_permission_access(self):
         # change the access in the folder
         access_bids = os.path.join(self.bids_dir, 'derivatives', 'log', 'access.json')
-        shutil.copy2(self.acces_read, access_bids)
-        self.curr_bids.access.read_file()
+        shutil.copy2(self.access_read, access_bids)
+        self.curr_bids.access = bids.Access(self.curr_bids.curr_user)
+        self.curr_bids.access.read_file(access_bids)
 
         ## try to import
-        perm, users, log_info = self.access.use_token_import(self.curr_user)
+        perm, users, log_info = self.curr_bids.access.use_token_import(self.curr_bids.curr_user)
         self.assertFalse(perm)
         self.assertEqual(users, [])
         self.assertEqual(log_info,
-                         '/!\\ ERROR /!\\ User jegou do not have the permission to write data in bids dataset {}.')
+                         '/!\\ ERROR /!\\ User jegou do not have the permission to write data in bids dataset D:\\Data\\testing\\Test_BM_BP\\new_bids_markers.')
 
         ## try to run another analysis
-        perm, users, log_info = self.access.use_token_analyse(self.curr_user, soft='ica')
+        perm, users, log_info = self.curr_bids.access.use_token_analyse(self.curr_bids.curr_user, soft='ica')
         self.assertTrue(perm)
         self.assertEqual(users, [])
         self.assertEqual(log_info, '')
@@ -1005,7 +1020,7 @@ def suite_init():
     suite.addTest(TestParsingBids('test_parsing_writing'))
     suite.addTest(TestParsingBids('test_parsingjson_recovery'))
     suite.addTest(TestParsingBids('test_small_requests'))
-    # # import related  tests
+    # import related  tests
     suite.addTest(TestImport('test_writing_data2import'))
     suite.addTest(TestImport('test_import_pat1'))
     suite.addTest(TestImport('test_import_invisible_subject'))

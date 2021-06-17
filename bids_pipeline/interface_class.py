@@ -65,7 +65,11 @@ class Interface(dict):
 
         participant_dict = self.bids_data['ParticipantsTSV']
         req_keys = self.bids_data.requirements['Requirements']['Subject']['keys']
-        display_dict = {key: value for key, value in req_keys.items() if value or 'age' in key or 'duration' in key}
+        if isinstance(req_keys, dict):
+            display_dict = {key: value for key, value in req_keys.items() if value or 'age' in key or 'duration' in key}
+        elif isinstance(req_keys, list):
+            display_dict = {key: '' for key in req_keys if 'age' in key or 'duration' in key}
+        #display_dict = {key: value for key, value in req_keys.items() if value or 'age' in key or 'duration' in key}
         # for key, value in req_keys.items():
             # if value:
             #     display_dict[key] = value

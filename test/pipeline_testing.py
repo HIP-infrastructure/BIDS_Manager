@@ -7,10 +7,10 @@ from bids_manager import ins_bids_class as bids
 from bids_pipeline import interface_class as itf
 from bids_pipeline import export_merge as exp
 
-__main_dir__ = r'D:\Data\testing'
-__bids_dir__ = r'D:\Data\testing\test_dataset'
+__main_dir__ = r'D:\Data\testing\Test_BM_BP'
+__bids_dir__ = os.path.join(__main_dir__, 'test_dataset')
 __bids_dataset__ = bids.BidsDataset(__bids_dir__)
-
+__soft_path__ = os.path.join(__main_dir__, 'software_pipeline')
 
 class PipelineTest(unittest.TestCase):
 
@@ -23,17 +23,17 @@ class PipelineTest(unittest.TestCase):
         with self.assertRaises(EOFError):
             soft_analyse = pip.PipelineSetting(os.path.join(__main_dir__, 'bids_vide'), self.software_name)
         with self.assertRaises(EOFError):
-            soft_analyse = pip.PipelineSetting(__bids_dir__, 'h2', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+            soft_analyse = pip.PipelineSetting(__bids_dir__, 'h2', soft_path=__soft_path__)
         with self.assertRaises(EOFError):
             soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_path_error',
-                                                   soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+                                                   soft_path=__soft_path__)
         with self.assertRaises(EOFError):
             soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror',
-                                               soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+                                               soft_path=__soft_path__)
         with self.assertRaises(KeyError):
             soft_analyse = pip.PipelineSetting(__bids_dataset__, 'testing_output',
-                                               soft_path=os.path.join(__main_dir__, 'software_pipeline'))
-        soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+                                               soft_path=__soft_path__)
+        soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=__soft_path__)
         keys = [key for key in soft_analyse]
         self.assertEqual(keys, pip.PipelineSetting.keylist)
         for key in soft_analyse['Parameters']:
@@ -48,12 +48,12 @@ class PipelineTest(unittest.TestCase):
 
     def test_get_arguments(self):
         with self.assertRaises(EOFError):
-            soft = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+            soft = pip.PipelineSetting(__bids_dataset__, 'testing_paramerror', soft_path=__soft_path__)
             param_vars = itf.ParameterInterface(__bids_dataset__, soft['Parameters'])
             in_vars = {}
             for inp in soft['Parameters']['Input']:
                 in_vars['Input_'+inp['tag']] = itf.InputParameterInterface(__bids_dataset__, inp)
-        soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        soft_analyse = pip.PipelineSetting(__bids_dataset__, self.software_name, soft_path=__soft_path__)
         param_vars = itf.ParameterInterface(__bids_dataset__, soft_analyse['Parameters'])
         in_vars = {}
         for inp in soft_analyse['Parameters']['Input']:
@@ -106,7 +106,7 @@ class PipelineTest(unittest.TestCase):
     def test_read_json(self):
         pip_file = 'testing_modality'
         soft = pip.PipelineSetting(__bids_dataset__, pip_file,
-                                                   soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+                                                   soft_path=__soft_path__)
         for cnt, elt in enumerate(soft['Parameters']['Input']):
             if cnt == 0:
                 self.assertEqual(elt['modality'], ['Ieeg'])
@@ -126,7 +126,7 @@ class ParameterTest(unittest.TestCase):
         self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 
     def test_multiple_input_output(self):
-        analyse = pip.PipelineSetting(__bids_dataset__, 'testing', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        analyse = pip.PipelineSetting(__bids_dataset__, 'testing', soft_path=__soft_path__)
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         subjects_results = {'sub': ['01', '02', '03'], 'Input_--input_ieeg': {'modality': ['Ieeg'], 'ses': ['01'], 'run':
@@ -140,20 +140,20 @@ class ParameterTest(unittest.TestCase):
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
         for sub in in_out:
-            in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr'.format(sub)], ['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\anat\\sub-{0}_ses-01_acq-preimp_T1w.nii'.format(sub)], [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.mat'.format(sub), 'D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.tsv'.format(sub)]]]
+            in_out_res = [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr'.format(sub)], ['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-{0}\\ses-01\\anat\\sub-{0}_ses-01_acq-preimp_T1w.nii'.format(sub)], [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.mat'.format(sub), 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.tsv'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
             idx = 0
             while idx < taille[sub]:
                 use_list = list_for_str_format(in_out[sub], idx)
                 cmd = cmd_line.format(*use_list)
-                cmd_final = 'D:/Data/testing --input_ieeg D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr --input_anat D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\anat\\sub-{0}_ses-01_acq-preimp_T1w.nii --output_file "D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.mat, D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.tsv" --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'.format(sub)
+                cmd_final = 'D:/Data/testing --input_ieeg D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr --input_anat D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-{0}\\ses-01\\anat\\sub-{0}_ses-01_acq-preimp_T1w.nii --output_file "D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.mat, D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_testing.tsv" --duration 20 --criteria "Stim, stim" --criteriadata ses --task preimp'.format(sub)
                 self.assertEqual(cmd, cmd_final)
                 idx = idx + 1
 
     def test_bids_directory_input(self):
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_dir'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_dir', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_dir', soft_path=__soft_path__)
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
@@ -163,7 +163,7 @@ class ParameterTest(unittest.TestCase):
     def test_input_directory(self):
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_dir'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_directory', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        analyse = pip.PipelineSetting(__bids_dataset__, 'testing_input_directory', soft_path=__soft_path__)
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
@@ -172,7 +172,7 @@ class ParameterTest(unittest.TestCase):
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
         for sub in in_out:
-            in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg'.format(sub)], [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
+            in_out_res = [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-{0}\\ses-01\\ieeg'.format(sub)], [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
         # self.results['input_param'] = {}
         # self.results['input_param']['Input_--input_dir'] = {'modality': 'Anat', 'acq': ['preimp'], 'mod': ['T1w']}
@@ -187,7 +187,7 @@ class ParameterTest(unittest.TestCase):
     def test_infile_outdir(self):
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01', 'run': '01'}
-        analyse = pip.PipelineSetting(__bids_dataset__, 'testing_infile_outdir', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        analyse = pip.PipelineSetting(__bids_dataset__, 'testing_infile_outdir', soft_path=__soft_path__)
         analyse['Parameters'].update_values(self.results['analysis_param'], self.results['input_param'])
         subjects = pip.SubjectToAnalyse(self.results['subject_selected'], input_dict=self.results['input_param'])
         cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
@@ -196,8 +196,8 @@ class ParameterTest(unittest.TestCase):
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
         for sub in in_out:
-            in_out_res = [['D:\\Data\\testing\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr'.format(sub)],
-                          [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
+            in_out_res = [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-{0}\\ses-01\\ieeg\\sub-{0}_ses-01_task-ccep_run-01_ieeg.vhdr'.format(sub)],
+                          [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-{0}\\ses-01\\ieeg'.format(sub)]]]
             self.assertEqual(in_out[sub], in_out_res)
 
     def test_instance_parameter(self):
@@ -207,13 +207,13 @@ class ParameterTest(unittest.TestCase):
         #assert intermediate instance
         analyse = pip.PipelineSetting(__bids_dataset__, 'h2')
         cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'C:/anywave_mars/AnyWave.exe --run D:\\Data\\testing\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
+        cmd_tmp = 'C:/anywave_mars/AnyWave.exe --run D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\h2_parameters.json --input_file {0} --output_dir {1} --output_file {2} --log_dir C:\\Users\\jegou\\AnyWave\\Log'
         self.assertIsInstance(cmd_arg, pip.AnyWave)
         self.assertEqual(cmd_line, cmd_tmp)
 
         analyse = pip.PipelineSetting(__bids_dataset__, 'example')
         cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'docker run -i --rm -v D:\\Data\\testing\\test_dataset:/bids_dataset:ro -v D:\\Data\\testing\\test_dataset\\derivatives\\testing:/outputs bids/example /bids_dataset /outputs --participant_label [01 02 03]'
+        cmd_tmp = 'docker run -i --rm -v D:\\Data\\testing\\Test_BM_BP\\test_dataset:/bids_dataset:ro -v D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing:/outputs bids/example /bids_dataset /outputs --participant_label [01 02 03]'
         self.assertIsInstance(cmd_arg, pip.Docker)
         self.assertEqual(cmd_line, cmd_tmp)
 
@@ -223,9 +223,9 @@ class ParameterTest(unittest.TestCase):
         self.assertIsInstance(cmd_arg, pip.Matlab)
         self.assertEqual(cmd_line, cmd_tmp)
 
-        analyse = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd_bool', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        analyse = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd_bool', soft_path=__soft_path__)
         cmd_arg, cmd_line, order, input_dict, output_dict, interm = analyse.create_command_to_run_analysis(self.output_dir, subjects)
-        cmd_tmp = 'D:/Software/Bids_Manager/statistics_bdd.exe --participants False --bidsdirectory D:\\Data\\testing\\test_dataset --outputdirectory D:\\Data\\testing\\test_dataset\\derivatives\\testing --subjectlist "01, 02, 03"'
+        cmd_tmp = 'D:/Software/Bids_Manager/statistics_bdd.exe --participants False --bidsdirectory D:\\Data\\testing\\Test_BM_BP\\test_dataset --outputdirectory D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing --subjectlist "01, 02, 03"'
         self.assertIsInstance(cmd_arg, pip.Parameters)
         self.assertEqual(cmd_line, cmd_tmp)
 
@@ -250,7 +250,7 @@ class ParameterTest(unittest.TestCase):
 
     def test_multiple_input(self):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_multiple_input',
-                                      soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+                                      soft_path=__soft_path__)
         self.results['input_param'] = {}
         self.results['input_param']['Input_--input_ieeg'] = {'modality': 'Ieeg', 'ses': '01'}
         self.results['input_param']['Input_--input_delphos'] = {'deriv-folder': 'Delphos', 'modality': 'Ieeg', 'ses': '01'}
@@ -263,18 +263,18 @@ class ParameterTest(unittest.TestCase):
         taille, idx_in, in_out, error_in = input_dict.get_input_values(subjects, order)
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
         self.assertIn('ERROR: The elements in the list don"t have the same size.\nThe subject 01 won"t be analysed because it doesn"t match the inputs specificity.\n', error_in)
-        in_out_res = {'02': [['D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_ieeg.vhdr', 'D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_ieeg.vhdr'],
-                            ['D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_delphos.mat', 'D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_delphos.mat'],
-                            [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg'], ['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg']]],
-                      '03': [['D:\\Data\\testing\\test_dataset\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_ieeg.vhdr'],
-                             ['D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_delphos.mat'],
-                             [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-03\\ses-01\\ieeg']]]
+        in_out_res = {'02': [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_ieeg.vhdr', 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_ieeg.vhdr'],
+                            ['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_delphos.mat', 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_delphos.mat'],
+                            [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg'], ['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg']]],
+                      '03': [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_ieeg.vhdr'],
+                             ['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\Delphos\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_delphos.mat'],
+                             [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-03\\ses-01\\ieeg']]]
                       }
         self.assertDictEqual(in_out, in_out_res)
 
     def test_multiple_input_dev(self):
         analyse = pip.PipelineSetting(__bids_dataset__, 'testing_multiple_input_dev',
-                                      soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+                                      soft_path=__soft_path__)
         self.results['input_param'] = {}
         self.results['input_param']['Input_in0'] = {'modality': 'Ieeg', 'ses': '01'}
         self.results['input_param']['Input_in1'] = {'deriv-folder': 'Delphos', 'modality': 'Ieeg',
@@ -289,21 +289,21 @@ class ParameterTest(unittest.TestCase):
         output_dict.get_output_values(in_out, taille, order, self.output_dir, idx_in)
         self.assertIn('ERROR: The elements in the list don"t have the same size.\nThe subject 01 won"t be analysed because it doesn"t match the inputs specificity.\n', error_in)
         in_out_res = {'02': [
-            ['D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_ieeg.vhdr',
-             'D:\\Data\\testing\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_ieeg.vhdr'],
+            ['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_ieeg.vhdr',
+             'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_ieeg.vhdr'],
             [
-                'D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_delphos.mat',
-                'D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_delphos.mat'],
-            [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg'],
-             ['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg']]],
+                'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-01_delphos.mat',
+                'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\Delphos\\sub-02\\ses-01\\ieeg\\sub-02_ses-01_task-ccep_run-02_delphos.mat'],
+            [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg'],
+             ['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-02\\ses-01\\ieeg']]],
                       '03': [[
-                                 'D:\\Data\\testing\\test_dataset\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_ieeg.vhdr'],
+                                 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_ieeg.vhdr'],
                              [
-                                 'D:\\Data\\testing\\test_dataset\\derivatives\\Delphos\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_delphos.mat'],
-                             [['D:\\Data\\testing\\test_dataset\\derivatives\\testing\\sub-03\\ses-01\\ieeg']]]
+                                 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\Delphos\\sub-03\\ses-01\\ieeg\\sub-03_ses-01_task-ccep_run-01_delphos.mat'],
+                             [['D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing\\sub-03\\ses-01\\ieeg']]]
                       }
         self.assertDictEqual(in_out, in_out_res)
-        cmd_res = "matlab -wait -nosplash -nodesktop -r \"cd('D:/Data/testing/software_pipeline'); testing('{0}', '{1}', '--output_dir', '{2}', '--duration', 20, '--criteria', 'Stim, stim', '--criteriadata', 'ses'); exit\""
+        cmd_res = "matlab -wait -nosplash -nodesktop -r \"cd('D:/Data/testing/Test_BM_BP/software_pipeline'); testing('{0}', '{1}', '--output_dir', '{2}', '--duration', 20, '--criteria', 'Stim, stim', '--criteriadata', 'ses'); exit\""
         self.assertEqual(cmd_line, cmd_res)
 
 
@@ -319,23 +319,23 @@ class DerivativesTest(unittest.TestCase):
         #self.output_dir = os.path.join(__bids_dir__, 'derivatives', 'testing')
 
     def test_create_output_directory(self):
-        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory'):
-            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
-        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2'):
-            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
-        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v3'):
-            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v3')
-        if os.path.exists('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v4'):
-            shutil.rmtree('D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v4')
+        if os.path.exists('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory'):
+            shutil.rmtree('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory')
+        if os.path.exists('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v2'):
+            shutil.rmtree('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v2')
+        if os.path.exists('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v3'):
+            shutil.rmtree('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v3')
+        if os.path.exists('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v4'):
+            shutil.rmtree('D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v4')
         __bids_dataset__.parse_bids()
         dev = pip.DerivativesSetting(__bids_dataset__['Derivatives'][0])
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory', self.results['analysis_param'], self.subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory')
         dev.parse_pipeline(output_directory, output_name)
         # Add subject with same parameter
         new_subject = pip.SubjectToAnalyse(['03'], input_dict=self.results['input_param'])
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory', self.results['analysis_param'], new_subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory')
         dev.parse_pipeline(output_directory, output_name)
         sub_in = dataset_desc['SourceDataset']['sub']
         sub_in.sort()
@@ -348,7 +348,7 @@ class DerivativesTest(unittest.TestCase):
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     new_subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory')
         dataset_desc.update(new_subject, subanalysed=['01', '02', '03'])
         self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01', '02', '03'])
         self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_anat']['acq'], ['preimp', 'postimp'], 'The acq in dataset_description was not well updated')
@@ -361,7 +361,7 @@ class DerivativesTest(unittest.TestCase):
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     new_subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory')
         dataset_desc.update(new_subject, subanalysed=['01', '02', '03'])
         self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01', '02', '03'])
         self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_anat']['modality'], ['Anat', 'Dwi'],
@@ -373,7 +373,7 @@ class DerivativesTest(unittest.TestCase):
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     new_subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory')
         dataset_desc.update(new_subject, subanalysed=['01', '02', '03'])
         self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01', '02', '03'])
         self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_ieeg']['ses'], ['01', '02'],
@@ -386,7 +386,7 @@ class DerivativesTest(unittest.TestCase):
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     new_subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v2')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v2')
         dataset_desc.update(new_subject, subanalysed=['01'])
         self.assertCountEqual(dataset_desc['SourceDataset']['sub'], ['01'])
         self.assertCountEqual(dataset_desc['SourceDataset']['Input_--input_ieeg']['ses'], ['01', '02'],
@@ -399,7 +399,7 @@ class DerivativesTest(unittest.TestCase):
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     self.subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v3')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v3')
         dev.parse_pipeline(output_directory, output_name)
         # Create new directory because not same parameters
         self.results['analysis_param'] = {'Mode': 'automatic', '--duration': '40', '--criteria': ['Stim', 'stim'],
@@ -407,7 +407,7 @@ class DerivativesTest(unittest.TestCase):
         output_directory, output_name, dataset_desc = dev.create_pipeline_directory('testing_input_directory',
                                                                                     self.results['analysis_param'],
                                                                                     self.subject)
-        self.assertEqual(output_directory, 'D:\\Data\\testing\\test_dataset\\derivatives\\testing_input_directory-v4')
+        self.assertEqual(output_directory, 'D:\\Data\\testing\\Test_BM_BP\\test_dataset\\derivatives\\testing_input_directory-v4')
         dev.parse_pipeline(output_directory, output_name)
         # test the dataset update by removing an elements
         self.subject.remove('02')
@@ -436,11 +436,11 @@ class DerivativesTest(unittest.TestCase):
         deriv = pip.DerivativesSetting(outdev)
         self.assertEqual(deriv.log, 'Folder empty has been removed from the derivatives BIDS dataset because it is empty.\n')
         self.assertTrue(len(os.listdir(outdev)) == 2)
-        isempty, loghalf = deriv.empty_dirs('half-empty', rmemptysub=True)
+        isempty, loghalf = deriv.empty_dirs(os.path.join(outdev,'half-empty'), rmemptysub=True)
         self.assertFalse(isempty)
-        self.assertEqual(loghalf, 'Subject sub-01 has been removed from the derivatives folder D:\\Data\\testing\\testempty\\derivatives\\half-empty\n')
+        self.assertEqual(loghalf, 'Subject sub-01 has been removed from the derivatives folder D:\\Data\\testing\\Test_BM_BP\\testempty\\derivatives\\half-empty\n')
         self.assertTrue(len(os.listdir(os.path.join(outdev, 'half-empty'))) == 4)
-        isempty, lognot = deriv.empty_dirs('notempty', rmemptysub=True)
+        isempty, lognot = deriv.empty_dirs(os.path.join(outdev,'notempty'), rmemptysub=True)
         self.assertFalse(isempty)
         self.assertEqual(lognot, '')
         shutil.rmtree(outdev)
@@ -449,12 +449,12 @@ class DerivativesTest(unittest.TestCase):
 
 class RunSoftwareTest(unittest.TestCase):
     def setUp(self):
-        self.soft = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd', soft_path=os.path.join(__main_dir__, 'software_pipeline'))
+        self.soft = pip.PipelineSetting(__bids_dataset__, 'statistics_bdd', soft_path=__soft_path__)
         self.results = {}
         self.results['analysis_param'] = {'Mode': 'automatic', '--participants': True, '--criteriaparticipants': ['age','sex']}
         self.results['input_param'] = {'Input_': {}}
         self.results['subject_selected'] = ['01', '02', '03']
-        filename = os.path.join(__main_dir__, 'Test_BM_BP', 'all_data_orig', 'TestParsing', 'parsing_export_dataset.json')
+        filename = os.path.join(__main_dir__, 'all_data_orig', 'TestParsing', 'parsing_export_dataset.json')
         with open(filename, 'r') as file:
             self.correct_parsing = json.load(file)
 
@@ -465,9 +465,9 @@ class RunSoftwareTest(unittest.TestCase):
 
     def test_export_data(self):
         outdev = os.path.join(__main_dir__, 'testexport')
-        os.makedirs(outdev, exist_ok=True)
         if os.path.exists(outdev):
             shutil.rmtree(outdev)
+        os.makedirs(outdev)
         results = {'0_exp':{}}
         results['0_exp']['analysis_param'] = {'output_directory': outdev, 'select_session': ['all'], 'select_modality': ['all'], 'anonymise': 'None', 'derivatives': ['Delphos', 'gardel'], 'defaceanat': ''}
         results['0_exp']['subject_selected'] = ['01', '02']
@@ -480,7 +480,7 @@ class RunSoftwareTest(unittest.TestCase):
 def suite_init():
     suite = unittest.TestSuite()
     #Test the def to create the gui to select the parameters
-    # suite.addTest(PipelineTest('test_init'))
+    suite.addTest(PipelineTest('test_init'))
     suite.addTest(PipelineTest('test_read_json'))
     suite.addTest(PipelineTest('test_get_arguments'))
     #test the parameter selected

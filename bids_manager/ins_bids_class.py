@@ -942,7 +942,7 @@ class BidsBrick(dict):
             cmd_line = '""' + converter_path + '"' + ' --toBIDS ' + input_cmd + \
                         os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
                         Data2Import.dirname + '" ' + name_cmd + bids_format
-            cmd_line_markers = cmd_line + ' --use_markers "' + ', '.join(events2import) + '""'
+            cmd_line_markers = cmd_line + ' --use_markers "' + ','.join(events2import) + '""'
 
             os.system(cmd_line_markers)
             list_filename = [filename + ext for ext in conv_ext]
@@ -4003,7 +4003,7 @@ class BidsDataset(MetaBrick):
         # could make it faster by just appending a new line instead of writing the whole file again
         self['ParticipantsTSV'].write_file()
         self.save_as_json()
-
+        self.access.free_token('import_data', self.curr_user)
         # if self['SourceData'] and self['SourceData'][-1]['SrcDataTrack']:
         #     # could make it faster by just appending a new line instead of writing the whole file again
         #     self['SourceData'][-1]['SrcDataTrack'].write_file()
@@ -5454,8 +5454,9 @@ def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None
                     parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder, overwrite=overwrite)
         anywave_common = os.path.join(BidsDataset.dirname, 'derivatives', 'anywave', 'common')
         if not os.path.exists(anywave_common):
-            os.makedirs(anywave_common, exist_ok=True)
-            shutil.copytree(anywave_folder, anywave_common)
+            #os.makedirs(anywave_common, exist_ok=True)
+            if os.path.exists(anywave_folder):
+                shutil.copytree(anywave_folder, anywave_common)
     return log
 
 

@@ -26,7 +26,7 @@ from .interface_class import Interface
 from generic_uploader import deltamed, micromed, anonymize_edf, anonymizeDicom
 from generic_uploader.generic_uploader import valide_mot, hash_object, valide_date
 from tkinter import filedialog
-from tkinter import Tk,  Button, Frame, Label, GROOVE, messagebox, Entry
+from tkinter import Tk,  Button, Frame, Label, GROOVE, messagebox, Entry, Toplevel, BOTH
 from tkinter.ttk import Combobox
 from tkcalendar import DateEntry
 import re
@@ -38,7 +38,7 @@ import platform
 __param__ = ['import_in_bids', 'output_directory', 'select_session', 'select_modality', 'anonymise', 'derivatives']
 
 
-def export_data(bids_data, output_select):
+def export_data(bids_data, output_select, root):
     log = ''
     anonymize = False
     new_bids_attributes = None
@@ -88,8 +88,11 @@ def export_data(bids_data, output_select):
         if param['anonymise'] == 'full-anonymisation':
             full = True
     if not param['import_in_bids']:
-        header = [elt for elt in bids_data['ParticipantsTSV'].header if
-                  not elt.endswith('_ready') and not elt.endswith('_integrity')]
+        if not full:
+            header = [elt for elt in bids_data['ParticipantsTSV'].header if
+                      not elt.endswith('_ready') and not elt.endswith('_integrity')]
+        else:
+            header = ['participant_id']
         new_partTSV = bids.ParticipantsTSV(header=header, required_fields=['participant_id'])
         random.shuffle(sub_selected)
         sub_anonymize = {}
@@ -114,9 +117,7 @@ def export_data(bids_data, output_select):
         other_part.read_file(os.path.join(param['output_directory'], other_part.filename))
         #get the subject ID from the new
         subinside = [sub['sub'] for sub in new_bids_data['Subject']]
-        root = Tk()
         results = AssociateSubjects(root, sub_selected, subinside, secret_key, anonymize)
-        root.mainloop()
         newsub_dict = results.new_id
         random.shuffle(sub_selected)
         try:
@@ -232,6 +233,7 @@ def export_data(bids_data, output_select):
         new_bids_data._assign_bids_dir(new_bids_data.dirname)
         new_bids_data.parse_bids()
         bids_data._assign_bids_dir(bids_data.dirname)
+
     return
 
 
@@ -544,50 +546,75 @@ class ParametersInterface(Interface):
         self['defaceanat']['value'] = ['Mango', 'SPM', 'None']
 
 
-class AssociateSubjects(Frame):
+class AssociateSubjects(Toplevel, Frame):
 
     def __init__(self, root, subject2import, subjectinside, protocolname, anonymise=False):
-        super().__init__()
+        #super().__init__()
+        Toplevel.__init__(self, root)
 
-        self.root = root
-        self.root.geometry('500x500')
-        self.root.resizable(True, True)
-        nbr_sub = len(subject2import)
+        self.geometry('500x500')
+        self.wm_resizable(True, True)
+        self.withdraw()
+        self.subject2import = subject2import
+        self.subjectinside = subjectinside
+        self.protocolname = protocolname
+        self.anonymise =anonymise
+        self.initial_focus = None
+        if root.winfo_viewable():
+            self.transient(root)
+        self.parent = root
+        self.body_widget = Frame(self)
+        self.body_widget.pack(padx=2, pady=2, fill=BOTH, expand=1)
+        self.body(self.body_widget)
 
-        self.root.title('Choose the ID of your subject or give is Name to create the appropriate ID')
-        frame_subject2import = Frame(self.root, relief=GROOVE, borderwidth=2)
+        if not self.initial_focus:
+            self.initial_focus = self
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+        self.deiconify()
+        self.initial_focus.focus_set()
+        self.center()
+        self.wait_visibility()
+        self.grab_set()
+        self.wait_window(self)
+
+    def body(self, parent):
+        nbr_sub = len(self.subject2import)
+        self.finish = False
+
+        self.title('Choose the ID of your subject or give is Name to create the appropriate ID')
+        frame_subject2import = Frame(parent, relief=GROOVE, borderwidth=2)
         Label(frame_subject2import, text='Subjects ID to import').grid(row=0, column=0, columnspan=2)
         Label(frame_subject2import, text='').grid(row=1, column=0)
         frame_subject2import.grid(row=0, column=0, rowspan=nbr_sub+1)
 
-        frame_selectid = Frame(self.root, relief=GROOVE, borderwidth=2)
+        frame_selectid = Frame(parent, relief=GROOVE, borderwidth=2)
         Label(frame_selectid, text='Subjects ID in the BIDS target').grid(row=0, column=0, columnspan=2)
         Label(frame_selectid, text='').grid(row=1, column=0)
         frame_selectid.grid(row=0, column=1, rowspan=nbr_sub+1)
 
-        frame_names = Frame(self.root, relief=GROOVE, borderwidth=2)
+        frame_names = Frame(parent, relief=GROOVE, borderwidth=2)
         Label(frame_names, text='Indicate Name of your subject to create the proper ID').grid(row=0, column=0, columnspan=3)
         Label(frame_names, text='Last Name').grid(row=1, column=0)
         Label(frame_names, text='First Name').grid(row=1, column=1)
         Label(frame_names, text='Date Of Birth').grid(row=1, column=2)
         frame_names.grid(row=0, column=2, rowspan=nbr_sub+1, columnspan=3)
 
-        frame_id = Frame(self.root, relief=GROOVE, borderwidth=2)
+        frame_id = Frame(parent, relief=GROOVE, borderwidth=2)
         Label(frame_id, text='Indicate the new ID if no anonymisation').grid(row=0, column=0, columnspan=2)
         Label(frame_id, text='').grid(row=1, column=0)
         frame_id.grid(row=0, column=5)
 
-        frame_button = Frame(self.root)
+        frame_button = Frame(parent)
         frame_button.grid(row=nbr_sub*2+2, column=1, columnspan=2)
         #initiate variables
         self.frame_name = ['frame_subject2import', 'frame_selectid', 'frame_names', 'frame_id']
         self.frame_button = {key: {} for key in self.frame_name}
-        self.new_id = {sub: '' for sub in subject2import}
-        self.subjectinside = subjectinside
-        self.secret_key = protocolname
+        self.new_id = {sub: '' for sub in self.subject2import}
+        self.subjectinside = self.subjectinside
+        self.secret_key = self.protocolname
 
         #listchoice = Variable(frame_selectid, self.subjectinside)
-        for cnt,sub in enumerate(subject2import):
+        for cnt,sub in enumerate(self.subject2import):
             if cnt == 0:
                 nbrow = 2
             else:
@@ -608,7 +635,7 @@ class AssociateSubjects(Frame):
         Button(frame_button, text='OK', width=4, command=self.ok).grid(row=0, column=1)
         Button(frame_button, text='Cancel',width=8, command=self.cancel).grid(row=0, column=2)
 
-        if not anonymise:
+        if not self.anonymise:
             fr = frame_names
         else:
             fr = frame_id
@@ -617,8 +644,8 @@ class AssociateSubjects(Frame):
                 child.configure(state='disabled')
             except:
                 pass
-        self.root.update_idletasks()
-        self.center()
+        self.update_idletasks()
+
 
     def ok(self):
         for sub in self.new_id:
@@ -648,23 +675,25 @@ class AssociateSubjects(Frame):
                 self.new_id[sub] = hash_object(graine)
             elif idnoan:
                 self.new_id[sub] = idnoan
-        self.root.destroy()
+        # self.root.destroy()
+        Toplevel.destroy(self)
 
     def cancel(self):
         self.frame_button = {}
         self.new_id = {}
         self.subjectinside = []
         self.secret_key = ''
-        self.root.destroy()
+        # self.root.destroy()
+        Toplevel.destroy(self)
 
     def center(self):
-        self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
         if width > 1800:
             width = 1800
-        if width < 1000 and self.root.winfo_screenwidth()>1000:
+        if width < 1000 and self.winfo_screenwidth()>1000:
             width = 1000
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry('{}x{}+{}+{}'.format(width, height, x, y))
