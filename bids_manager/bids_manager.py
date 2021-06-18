@@ -2648,6 +2648,7 @@ class BidsSelectDialog(TemplateDialog):
         self.dev_list.insert(0, '')
         self.dev_output = ''
         self.tmp_subjects = []
+        self.sub2remove = []
         self.subject_interface = itf.Interface(self.bids_data)
         if analysis_dict and isinstance(analysis_dict, pip.PipelineSetting):
             self.soft_name = analysis_dict.jsonfilename
@@ -2907,6 +2908,7 @@ class BidsSelectDialog(TemplateDialog):
         self.results = {key: {'input_param': {}, 'analysis_param': {}, 'subject_selected': [], 'derivatives_output': '', 'local_output':''}
                         for key in self.parameter_list}
         self.get_subjects_selection()
+        self.select_sub = [sub for sub in self.select_sub if sub not in self.sub2remove]
         err_dict = {}
         warn_dict = {}
         soft_dict = None
@@ -3260,8 +3262,12 @@ class BidsSelectDialog(TemplateDialog):
             self.tmp_subjects = [sub for sub in self.select_sub]
         elif not (set(self.select_sub)-set(self.tmp_subjects)):
             do_the_refresh = False
+        elif (set(self.select_sub)-set(self.tmp_subjects)) and all(elt in self.sub2remove for elt in list(set(self.select_sub)-set(self.tmp_subjects))):
+            self.select_sub = self.tmp_subjects
+            do_the_refresh = False
         if do_the_refresh:
             soft_dict = None
+            self.sub2remove = []
             # read parameters from old analysis
             if self.dev_output:
                 batch_file = os.path.join(self.bids_data.dirname, 'derivatives', self.dev_output, 'BP_parameters_file.json')
@@ -3308,6 +3314,31 @@ class BidsSelectDialog(TemplateDialog):
                     param_dict[key]['value'] = new_val
         if soft_dict is None:
             soft_dict = {'analysis_param':None}
+
+        if soft_dict['analysis_param'] is not None:
+            for param in soft_dict['analysis_param']:
+                if (hasattr(param_dict, 'savereadingbysub') and param_dict.savereadingbysub is not None) and param in param_dict.savereadingbysub:
+                    for sub in soft_dict['subject_selected']:
+                        sub = 'sub-'+sub
+                        if sub not in param_dict.savereadingbysub[param]:
+                            messagebox.showerror('WARNING', 'Subject {} doesn"t have the required elements. He will be removed.'.format(sub))
+                            self.sub2remove.append(sub.replace('sub-', ''))
+                        else:
+                            if any(elt not in param_dict.savereadingbysub[param][sub] for elt in soft_dict['analysis_param'][param]):
+                                messagebox.showerror('WARNING',
+                                                     'Subject {} doesn"t have the required elements. He will be removed.'.format(
+                                                         sub))
+                                self.sub2remove.append(sub.replace('sub-', ''))
+                    if self.sub2remove:
+                        for sub in self.sub2remove:
+                            soft_dict['subject_selected'].remove(sub)
+                            if sub in self.select_sub:
+                                self.select_sub.remove(sub)
+        if 'subject_selected' in soft_dict and not soft_dict['subject_selected']:
+            messagebox.showerror('WARNING', 'The Subject selection by analysis folder is not correct. '
+                                            'Please verify your JSON file software because the events used are not the same.')
+            soft_dict['analysis_param'] = None
+            self.dev_output = ''
         self.update_frame_parameter(parent, soft_name_key, soft_dict['analysis_param'])
 
     def refresh_input_selection(self, soft_name_key, sub_selected, soft_dict=None, clean=False):
@@ -3339,14 +3370,15 @@ class BidsSelectDialog(TemplateDialog):
             # compare the two dict
             for key in soft_dict['input_param']:
                 for elt in soft_dict['input_param'][key]:
-                    if any(v not in param_dict[key][elt]['value'] for v in soft_dict['input_param'][key][elt]):
-                        try:
-                            if have_already_selected and all(v not in param_dict[key][elt]['value'] for v in inp_select[key][elt]):
-                                soft_dict['input_param'][key][elt] = [v for v in inp_select[key][elt]]
-                            else:
+                    if elt in param_dict[key]:
+                        if any(v not in param_dict[key][elt]['value'] for v in soft_dict['input_param'][key][elt]):
+                            try:
+                                if have_already_selected and all(v not in param_dict[key][elt]['value'] for v in inp_select[key][elt]):
+                                    soft_dict['input_param'][key][elt] = [v for v in inp_select[key][elt]]
+                                else:
+                                    soft_dict['input_param'][key][elt] = []
+                            except:
                                 soft_dict['input_param'][key][elt] = []
-                        except:
-                            soft_dict['input_param'][key][elt] = []
         elif soft_dict is None or ('input_param' not in soft_dict):
             soft_dict = {'input_param': None}
         self.update_frame_input(soft_name_key, soft_dict['input_param'], clean=clean)

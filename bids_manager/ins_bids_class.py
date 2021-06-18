@@ -4738,12 +4738,15 @@ class Access(BidsJSON):
             access_type = []
             for i in range(0, ace_count):
                 rev, access, usersid = dacl.GetAce(i)
-                user, group, type = win32security.LookupAccountSid('', usersid)
-                sid, system, type1 = win32security.LookupAccountName(None, user)
-                if win32security.CheckTokenMembership(None, sid):
-                    # get the permission type
-                    if access in permission_dict:
-                        access_type.append(permission_dict[access])
+                try:
+                    user, group, type = win32security.LookupAccountSid('', usersid)
+                    sid, system, type1 = win32security.LookupAccountName(None, user)
+                    if win32security.CheckTokenMembership(None, sid):
+                        # get the permission type
+                        if access in permission_dict:
+                            access_type.append(permission_dict[access])
+                except:
+                    access_type.append('full')
             if 'full' in access_type or 'modify' in access_type:
                 userdict['permission'] = 'full'
             elif 'read_only' in access_type:
@@ -5408,6 +5411,8 @@ def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None
                             os.makedirs(dirname_dest_sub)
                         if (os.path.exists(os.path.join(dirname_dest_sub, entry.name)) and (overwrite is None or overwrite)) or not os.path.exists(os.path.join(dirname_dest_sub, entry.name)):
                             shutil.move(entry.path, os.path.join(dirname_dest_sub, entry.name))
+                        elif not overwrite and os.path.exists(os.path.join(dirname_dest_sub, entry.name)):
+                            os.remove(entry.path)
                 elif entry.is_dir() and entry.name.endswith('_meg'):
                     if dirname_dest is None:
                         dirname_dest = BidsDataset.dirname
