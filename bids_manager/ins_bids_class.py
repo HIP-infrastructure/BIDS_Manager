@@ -2549,7 +2549,7 @@ class DatasetDescPipeline(DatasetDescJSON):
             is_same_param = False
             no_subject = False
             # mettre qqch comme quoi on en peut pas comparer, est-ce que vous voulez ajouter à ce dossier
-            return is_same_param, no_subject
+            return is_same_param, no_subject, is_same_input
         # compare the parameters selected by the user and the one in the dataset_description
         for key in keylist:
             if key in self['PipelineDescription']:
@@ -2558,7 +2558,7 @@ class DatasetDescPipeline(DatasetDescJSON):
                 else:
                     is_same_param.append(False)
             else:
-                return False, False
+                return False, False, False
         is_same_param = all(is_same_param)
 
         # check the subject list
