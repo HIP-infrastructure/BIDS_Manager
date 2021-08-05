@@ -5,6 +5,11 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 - Possibility to import derivatives folder in BIDS dataset
 - Improve the information in the log during the analysis
 
+## [v0.3.2] - 2021-08-06
+### Added
+- Progress bar to see the progression of the analysis (required PySimpleGUI library)
+- Check in data2import to avoid special character in the name
+
 ## [v0.3.1] - 2021-04-30
 ### Added
 - Possibility to apply the change of the name or type of the electrode on multiple files

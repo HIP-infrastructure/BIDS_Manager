@@ -43,6 +43,7 @@ def export_data(bids_data, output_select, root):
     anonymize = False
     new_bids_attributes = None
     deface = None
+    full = False
     #initiate the parameter value
     if isinstance(bids_data, str):
         bids_data = bids.BidsDataset(bids_data)

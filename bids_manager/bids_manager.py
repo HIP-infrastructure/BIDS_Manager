@@ -34,7 +34,7 @@ from generic_uploader.generic_uploader import call_generic_uploader
 from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrolledtext, Toplevel, \
     Label, Button, Entry, StringVar, BooleanVar, IntVar, DISABLED, NORMAL, END, W, N, E, BOTH, X, Y, RIGHT, LEFT,\
     TOP, BOTTOM, BROWSE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, \
-    Variable, Canvas, font
+    Variable, Canvas, font, HORIZONTAL
 from bids_pipeline.convert_process_file import write_big_table
 from ctypes import windll
 from datetime import datetime
@@ -42,13 +42,14 @@ try:
     from importlib import reload
 except:
     pass
-from threading import Thread
+#from threading import Thread #thought to do multiple analysis at once
+
 
 class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class Py2 compatible
     # (https://stackoverflow.com/questions/18171328/python-2-7-super-error) While it is true that Tkinter uses
     # old-style classes, this limitation can be overcome by additionally deriving the subclass Application from object
     # (using Python multiple inheritance) !!!!!!!!!
-    version = '0.3.1'
+    version = '0.3.2'
     bids_startfile = os.path.join(os.getcwd(), 'Data')
     import_startfile = os.path.join(os.getcwd(), 'Data')
     folder_software = os.path.join(os.getcwd(), 'SoftwarePipeline')
@@ -1119,7 +1120,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
     def cite_paper(self):
         citation = 'Roehri, N., Medina-Villalon, S., Jegou, A., Colombet, B., Giusiano, B., Ponz, A., & Bénar, C. G. (2020)\n' \
                    'Transfer , collection and organisation of electrophysiological and imaging data for multicenter studies.\n'\
-                    '(submitted)'
+                    'Neuroinformatics. 2021 Feb 10. doi: 10.1007/s12021-020-09503-6.\n'
         messagebox.showinfo('Citation', citation)
 
     def run_analysis(self, nameS, batch_file=None):
@@ -1188,7 +1189,7 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
                 # verify modality is present with one value
             clef = [key for key in output_dict.results][0]
             #add the parameters
-            self.update_text('Subjects selected \n' + '\n'.join(output_dict.results[clef]['subject_selected']) + '\nThe analysis is ready to be run')
+            self.update_text('Subjects selected \n' + '\n'.join(output_dict.results[clef]['subject_selected']) + '\nThe analysis is ready to be run', delete_flag=True)
             self.make_idle('Analysis in process')
             log_analysis, output_name, batch_file_soft = soft_analyse.set_everything_for_analysis(output_dict.results[clef]) #['analysis_param'], output_dict.results['subject_selected'], output_dict.reults['input_param']
             #self.update_text(log_analysis)
@@ -3301,17 +3302,21 @@ class BidsSelectDialog(TemplateDialog):
     def refresh_parameter_selection(self, soft_name_key, sub_selected, parent, soft_dict=None):
         param_dict = self.parameter_list[soft_name_key]['Parameters']
         for key in param_dict:
-            if 'savereadingbysub' in param_dict and key in param_dict.savereadingbysub:
-                new_val = []
-                for sub in param_dict.savereadingbysub[key]:
-                    if sub.replace('sub-', '') in sub_selected:
-                        if not new_val:
-                            is_same, other = itf.compare_listes(new_val, param_dict.savereadingbysub[key][sub])
-                        else:
-                            is_same, other = itf.compare_listes(new_val, param_dict.savereadingbysub[key][sub], get_only_common=True)
-                            new_val = [elt for elt in other]
-                if new_val:
-                    param_dict[key]['value'] = new_val
+            try:
+                if key in param_dict.savereadingbysub: #'savereadingbysub' in param_dict and
+                    new_val = []
+                    for sub in param_dict.savereadingbysub[key]:
+                        if sub.replace('sub-', '') in sub_selected:
+                            if not new_val:
+                                is_same, other = itf.compare_listes(new_val, param_dict.savereadingbysub[key][sub])
+                            else:
+                                is_same, other = itf.compare_listes(new_val, param_dict.savereadingbysub[key][sub], get_only_common=True)
+                                new_val = [elt for elt in other]
+                    if new_val:
+                        new_val.sort()
+                        param_dict[key]['value'] = new_val
+            except:
+                continue
         if soft_dict is None:
             soft_dict = {'analysis_param':None}
 

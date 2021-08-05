@@ -5,7 +5,7 @@ here = path.abspath(path.dirname(__file__))
 
 setup(
     name='bids_manager',
-    version='0.3.0',
+    version='0.3.2',
     zip_safe=False,
     #modifier l'url
     url='https://github.com/Dynamap/BIDS_Manager',
@@ -25,7 +25,8 @@ setup(
         'xlrd',
         'nibabel',
         'tkcalendar',
-        'pywin32'
+        'pywin32',
+        'pysimplegui'
     ],
     include_package_data=True,
     #voir à quoi correspond data_files

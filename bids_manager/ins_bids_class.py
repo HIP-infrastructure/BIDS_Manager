@@ -696,9 +696,10 @@ class BidsBrick(dict):
                             sub_index = self.curr_subject['index']
                             curr_sub_mod = self['Subject'][sub_index][bidsbrick_key[0]]
                             bln_list = []
-                            for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
-                                flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
-                                bln_list.append(flag_req)
+                            if bidsbrick_key[0] in self.requirements['Requirements']['Subject']:
+                                for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
+                                    flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
+                                    bln_list.append(flag_req)
                             parttsv_idx = present_sub_list.index(sub)
                             self['ParticipantsTSV'][1+parttsv_idx][bidsbrick_key[1]] = str(all(bln_list))
 
@@ -2632,6 +2633,7 @@ class DatasetDescPipeline(DatasetDescJSON):
                         self['SourceDataset'][elt].sort()
                 if subject2remove is not None and subject2remove:
                     idx2remove = [cnt for cnt, sub in enumerate(self['SourceDataset'][elt]) if sub in subject2remove]
+        idx2remove.sort(reverse=True)
         for ids in idx2remove:
             self['SourceDataset']['sub'].pop(ids)
         if order_keys is not None:
@@ -2988,6 +2990,7 @@ class Data2Import(MetaBrick):
     filename = 'data2import.json'
     requirements = None
     curr_log = ''
+    not_accepted_character = ['-', '_', ' ', '/', '\'', '%', 'é', 'è', 'à', 'ù', '$']
 
     def __init__(self, data2import_dir=None, requirements_fileloc=None):
         """initiate a  dict var for Subject info"""
@@ -3005,6 +3008,12 @@ class Data2Import(MetaBrick):
                     inter_dict = json.load(file)
                     self.copy_values(inter_dict)
                     # self.write_log('Importation procedure ready!')
+                    bad_str = self.verification_validity_file()
+                    if bad_str:
+                        str_error = 'The data2import file is not valid:\n' + bad_str
+                        self.write_log(str_error)
+                        super().__init__()
+                        raise FileExistsError(str_error)
             else:
                 self['UploadDate'] = datetime.now().strftime(self.time_format)
         else:
@@ -3016,6 +3025,29 @@ class Data2Import(MetaBrick):
         if savedir is None:
             savedir = self.dirname
         super().save_as_json(savedir=savedir, file_start=None, write_date=write_date, compress=False)
+
+    def verification_validity_file(self):
+        bad_str = ''
+        for sub in self['Subject']:
+            for mod in sub:
+                if isinstance(sub[mod], list) and sub[mod]:
+                    for elt in sub[mod]:
+                        for key in elt:
+                            if isinstance(elt[key], str) and key != 'fileLoc':
+                                if any((c in self.not_accepted_character) for c in elt[key]):
+                                    bad_str += 'Error: In {0}, {1} have a characters in {2}, please correct it to import data.\n'.format(mod, key, ', '.join(self.not_accepted_character))
+        for dev in self['Derivatives']:
+            for pip in dev['Pipeline']:
+                for sub in pip['SubjectProcess']:
+                    for mod in sub:
+                        if isinstance(sub[mod], list) and sub[mod]:
+                            for elt in sub[mod]:
+                                for key in elt:
+                                    if isinstance(elt[key], str) and key != 'fileLoc':
+                                        if any((c in self.not_accepted_character) for c in elt[key]):
+                                            bad_str += 'Error: In {0}, {1} have a characters in {2}, please correct it to import data.\n'.format(
+                                                mod, key, ', '.join(self.not_accepted_character))
+        return bad_str
 
     @classmethod
     def _assign_import_dir(cls, data2import_dir):
@@ -4010,6 +4042,10 @@ class BidsDataset(MetaBrick):
 
     def remove(self, element2remove, with_issues=True, in_deriv=None):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
+        ## Check the access first
+        if hasattr(self, 'access') and self.access[self.curr_user]['permission'] == 'read':
+            self.write_log('Current User {} do not have the permission to delete files.'.format(self.curr_user))
+            return
         # a bit bulky rewrite to make it nice
         if element2remove is self and not isinstance(element2remove, Pipeline):
             shutil.rmtree(self.dirname)
@@ -5026,8 +5062,9 @@ class Issue(BidsBrick):
                                     issue.add_action(action['description'], action['command'])
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
-
         log_path = os.path.join(BidsDataset.dirname, 'derivatives', 'log')
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
         super().save_as_json(savedir=log_path, file_start=None, write_date=True, compress=False)
 
     def formatting(self, specific_issue=None, comment_type=None, elec_name=None):
@@ -5434,8 +5471,8 @@ def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None
 
     log = ''
     access = Access(BidsBrick.curr_user)
-    if access[BidsBrick.curr_user]['permission'] == 'read' and reverse:
-        log += '/!\\ WARNING /!\\ Current user {} cannot write in the BIDS dataset folder.\n'.format(BidsBrick.curr_user)
+    if access[BidsBrick.curr_user]['permission'] == 'read': #peut-etre ne pas mettre reverse car finalement si juste en lecture il ne peuvent pas move
+        log += '/!\\ WARNING /!\\ Current user {} cannot write or move in the BIDS dataset folder so the AnyWave files won"t be moved\n'.format(BidsBrick.curr_user)
         return log
     elif len(access.keys()) >1:
         if any(access[us]['import_data'] or access[us]['analyse_data'] for us in access if not us == BidsBrick.curr_user):

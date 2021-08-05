@@ -35,7 +35,7 @@ from tkinter import messagebox, filedialog
 from bids_pipeline.convert_process_file import go_throught_dir_to_convert, convert_channels_in_montage_file
 from sys import exc_info
 import tempfile
-
+import PySimpleGUI as sg
 
 def save_batch(bids_dir, batch_dict):
     batch_dir = os.path.join(bids_dir, 'derivatives', 'bids_pipeline', 'batch')
@@ -586,7 +586,14 @@ class PipelineSetting(dict):
                 dataset_desc = bids.DatasetDescPipeline(filename=os.path.join(output_directory, 'dataset_description.json'))
                 participants.read_file(os.path.join(output_directory, 'participants.tsv'))
 
-
+            ##Create the progression bar
+            sg.theme('Light Grey 1')
+            layout = [
+                [sg.Text(self['Name'] + ' is running saved in ' +output_name, justification='center')],
+                [sg.InputText(readonly=True, key='-INPUT-')],
+                [sg.ProgressBar(max_value=200, orientation='h', size=(30, 20), key='progress')]
+            ]
+            window = sg.Window('Bids Pipeline: Progression bar', layout, finalize=True)
             # Check if the subjects have all the required values
             #self['Parameters'].write_file(output_directory)
 
@@ -604,9 +611,15 @@ class PipelineSetting(dict):
             empty_dir, log_empty = self.curr_dev.empty_dirs(output_directory, rmemptysub=False)
             if empty_dir:
                 shutil.rmtree(output_directory)
+            window.close()
             return self.log_error, output_name, {}
 
+        # while True:
+        #     event, values = window.read()
+        progress_bar = window['progress']
+        progress_bar.UpdateBar(0)
         if not order:
+            window['-INPUT-'].update('BIDS Pipeline cannot give the progression for this pipeline.')
             proc = subprocess.Popen(cmd_line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
@@ -617,7 +630,10 @@ class PipelineSetting(dict):
             self.log_error += err_input
             if output_dict:
                 output_dict.get_output_values(in_out, taille, order, output_directory, idx_in)  # sub
+            nbrtot = sum([taille[sub] for sub in taille])
+            init =1
             for sub in in_out:
+                window['-INPUT-'].update(sub + ' being analysed')
                 ##To take into account the prefix and suffix in AnyWave
                 if interm == 'AnyWave':
                     try:
@@ -638,6 +654,8 @@ class PipelineSetting(dict):
                     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             universal_newlines=True)
                     error_proc = proc.communicate()
+                    valueBar = round(init * 200 / nbrtot)
+                    progress_bar.UpdateBar(valueBar)
                     self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
                     if error_proc[1]:
                         log_error.append(error_proc[1])
@@ -646,6 +664,7 @@ class PipelineSetting(dict):
                     else:
                         log_error.append(error_proc[1])
                     idx = idx + 1
+                    init = init+1
                 # if len(log_error) != taille[sub]:
                 #     participants.append({'participant_id': sub})
                 order_keys = [key for key in order]
@@ -654,7 +673,9 @@ class PipelineSetting(dict):
         else:
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             self.write_log()
+            window.close()
             return self.log_error, output_name, {}
+        window.close()
         if interm == 'AnyWave':
             bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=False, sublist=subject_to_analyse['sub'])
         empty_dir, log_empty = self.curr_dev.empty_dirs(output_directory, rmemptysub=True)
