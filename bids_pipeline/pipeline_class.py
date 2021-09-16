@@ -32,9 +32,10 @@ import subprocess
 import shutil
 import itertools
 from tkinter import messagebox, filedialog
-from bids_pipeline.convert_process_file import go_throught_dir_to_convert
+from bids_pipeline.convert_process_file import go_throught_dir_to_convert, convert_channels_in_montage_file
 from sys import exc_info
-
+import tempfile
+import PySimpleGUI as sg
 
 def save_batch(bids_dir, batch_dict):
     batch_dir = os.path.join(bids_dir, 'derivatives', 'bids_pipeline', 'batch')
@@ -47,6 +48,39 @@ def save_batch(bids_dir, batch_dict):
         with open(os.path.join(batch_dir, filename), 'w+') as file:
             json_str = json.dumps(batch_dict, indent=1, separators=(',', ': '), ensure_ascii=False, sort_keys=False)
             file.write(json_str)
+
+
+def check_pipeline_presence_locally(pip_name, output_dir, param_var, subject_to_analyse):
+    def determine_variant_name(name, dirlist):
+        if name in dirlist:
+            oldname = name.split('-v')
+            new_variant = str(int(oldname[1])+1)
+            new_name = oldname[0] + '-v' + new_variant
+            finale_name = determine_variant_name(new_name, dirlist)
+        else:
+            finale_name = name
+        return finale_name
+    dirlist = [file for file in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, file))]
+    isin =0
+    variant_list = []
+    for folder in dirlist:
+        if folder.lower().startswith(pip_name.lower()):
+            isin= isin+1
+            name = folder.split('-')
+            if len(name) >1:
+                variant_list.append(name[1])
+    if isin > 0:
+        output_name = pip_name.lower() + '-v' + str(isin + 1)
+        if output_name in dirlist:
+            output_name = determine_variant_name(output_name, dirlist)
+    else:
+        output_name = pip_name.lower()
+    output_directory = os.path.join(output_dir, output_name)
+    os.makedirs(output_directory, exist_ok=True)
+    desc_data = bids.DatasetDescPipeline(param_vars=param_var, subject_list=subject_to_analyse)
+    desc_data['Name'] = output_name
+
+    return output_directory, output_name, desc_data
 
 
 class DerivativesSetting(object):
@@ -70,7 +104,7 @@ class DerivativesSetting(object):
                 if entry.is_dir():
                     pip = bids.Pipeline()
                     pip.dirname = entry.path
-                    empty_dir, log = self.empty_dirs(entry.name)#, recursive=True)
+                    empty_dir, log = self.empty_dirs(entry.path)#, recursive=True)
                     log_reading += log
                     if not empty_dir:
                         self.parse_pipeline(pip.dirname, entry.name)
@@ -254,12 +288,12 @@ class DerivativesSetting(object):
     #         return False
 
 ## nouvelle fonction empty dirs a tester
-    def empty_dirs(self, pip_name, rmemptysub=False):
+    def empty_dirs(self, output_directory, rmemptysub=False):
         def sub_empty(subdir):
             empty_dirs = []
             emp_dirs = []
-            dir2check = os.path.join(pip_directory, subdir)
-            for root, dirs, files in os.walk(dir2check, topdown=False):
+            # dir2check = os.path.join(output_directory, subdir)
+            for root, dirs, files in os.walk(subdir, topdown=False):
                 # print root, dirs, files
                 if not dirs:
                     all_subs_empty = True  # until proven otherwise
@@ -277,14 +311,15 @@ class DerivativesSetting(object):
                         empty_dirs.append(False)
                         # yield root
             return empty_dirs
-        pip_directory = os.path.join(self.path, pip_name)
-        subdir = {sub: True for sub in os.listdir(pip_directory) if sub.startswith('sub-') and os.path.isdir(os.path.join(pip_directory, sub))}
+        #pip_directory = os.path.join(self.path, pip_name)
+        subdir = {sub: True for sub in os.listdir(output_directory) if sub.startswith('sub-') and os.path.isdir(os.path.join(output_directory, sub))}
         all_files = []
+        pip_name = os.path.basename(output_directory)
         analyse_name = pip_name.split('-')[0].lower()
         default_files = [bids.DatasetDescPipeline.filename, bids.ParticipantsTSV.filename, Parameters.filename,
                          'log_error_analyse.log', analyse_name + '_parameters.json']
         log = ''
-        with os.scandir(pip_directory) as it:
+        with os.scandir(output_directory) as it:
             for entry in it:
                 if entry.is_dir():
                     isempty = sub_empty(entry.path)
@@ -304,8 +339,8 @@ class DerivativesSetting(object):
             if rmemptysub:
                 for sub in subdir:
                     if subdir[sub]:
-                        shutil.rmtree(os.path.join(pip_directory, sub))
-                        log += 'Subject {} has been removed from the derivatives folder {}\n'.format(sub, pip_directory)
+                        shutil.rmtree(os.path.join(output_directory, sub))
+                        log += 'Subject {} has been removed from the derivatives folder {}\n'.format(sub, output_directory)
                         #remove from dataste_desc
                         for pip in self.pipelines:
                             if pip['name'] == pip_name:
@@ -313,7 +348,7 @@ class DerivativesSetting(object):
                                     try:
                                         subname = sub.replace('sub-', '')
                                         pip['DatasetDescJSON']['SourceDataset']['sub'].remove(subname)
-                                        pip['DatasetDescJSON'].write_file(os.path.join(pip_directory, bids.DatasetDescPipeline.filename))
+                                        pip['DatasetDescJSON'].write_file(os.path.join(output_directory, bids.DatasetDescPipeline.filename))
                                         break
                                     except:
                                         continue
@@ -321,7 +356,7 @@ class DerivativesSetting(object):
                                     ids = [cnt for cnt, line in enumerate(pip['ParticipantsProcessTSV']) if line[0] == sub]
                                     if ids:
                                         pip['ParticipantsProcessTSV'].pop(ids[0])
-                                        pip['ParticipantsProcessTSV'].write_file(os.path.join(pip_directory, bids.ParticipantsTSV.filename))
+                                        pip['ParticipantsProcessTSV'].write_file(os.path.join(output_directory, bids.ParticipantsTSV.filename))
             return False, log
 
     def possible_output_for_analysis(self, analysis_name):
@@ -376,7 +411,7 @@ class PipelineSetting(dict):
             self.write_file(os.path.join(self.soft_path, soft_name + '.json'))
         self.curr_dev = DerivativesSetting(self.curr_bids['Derivatives'][0])
         self.curr_dev.bp_folder = os.path.join(self.cwdir, 'derivatives', 'bids_pipeline')
-        os.makedirs(self.curr_dev.bp_folder , exist_ok=True)
+        os.makedirs(self.curr_dev.bp_folder, exist_ok=True)
 
     def __setitem__(self, key, value):
         if key in self.keylist:
@@ -442,10 +477,15 @@ class PipelineSetting(dict):
                         use_list.append(elt)
             return use_list
 
-        def anywave_constraint(order, idx_in, in_out, mtg_type=None):
+        def anywave_constraint(order, idx_in, in_out, mtg_type=None, move_files_refused=False):
             warning = ''
             in_idx = list(idx_in.keys())[0]
             order_key = list(order.keys())
+            tmp_dir = tempfile.gettempdir()
+            curr_time = datetime.datetime.now().strftime('%d%m%Y-%H%M')
+            sub_tmp_dir = os.path.join(tmp_dir, 'BP_anywave_'+curr_time)
+            if move_files_refused:
+                os.makedirs(sub_tmp_dir, exist_ok=True)
             if '--output_file' in order or '--output_prefix' in order:
                 pref_tag = [elt for elt in order if elt in ['--output_prefix', '--output_file']][0]
                 if not in_out[order[pref_tag]]:
@@ -471,14 +511,44 @@ class PipelineSetting(dict):
                             warning += 'There is no montage file for analysis {}, bipolar_ieeg will be used.\n'.format(filename)
                             in_out[order['montage_file']].append('bipolar_ieeg')
                         else:
-                            in_out[order['montage_file']].append(file_mtg[0])
-            else:
-                # create a montage file for if doesn't exists according to channels.tsv
-                for file in in_out[in_idx]:
-                    pass
-            return warning
+                            if move_files_refused:
+                                dirname, filename = os.path.split(file_mtg[0])
+                                filename_mtg = os.path.join(sub_tmp_dir, filename)
+                                shutil.copy2(file_mtg[0], filename_mtg)
+                            else:
+                                filename_mtg = file_mtg[0]
+                            in_out[order['montage_file']].append(filename_mtg)
+            # create a montage file if doesn't exists according to channels.tsv
+            # and move the files in tmp folder if no permission to write in the folder
+            for file in in_out[in_idx]:
+                if "c,rfDC" in file:
+                    file = os.path.dirname(file)
+                dirname, filename = os.path.split(file)
+                sfile = filename.split('_')
+                channelfile = os.path.join(dirname, '_'.join(sfile[0:-1]) + '_channels.tsv')
+                modalitytype = sfile[-1].split('.')
+                if move_files_refused:
+                    #copy the entry
+                    outdirname = sub_tmp_dir
+                    new_entry = os.path.join(sub_tmp_dir, filename)
+                    shutil.copy2(file, new_entry)
+                    in_out[in_idx] = new_entry
+                    #copy anywave file
+                    anywave_subfolder = os.path.join(bids.BidsDataset.dirname, 'derivatives', 'anywave', bids.BidsBrick.curr_user, dirname)
+                    for anyfile in os.listdir(anywave_subfolder):
+                        f, ext = os.path.splitext(anyfile)
+                        if ext in bids.BidsDataset.anywave_ext and not os.path.exists(os.path.join(sub_tmp_dir, anyfile)):
+                            shutil.copy2(os.path.join(anywave_subfolder, anyfile), os.path.join(sub_tmp_dir, anyfile))
+                else:
+                    outdirname =None
+                if os.path.exists(channelfile):
+                    err = convert_channels_in_montage_file(channelfile, modalitytype[0], outdirname)
+                    if err:
+                        warning += warning
+            return warning, sub_tmp_dir
 
         param_vars = {}
+        res_outside = False
         for key in results['analysis_param']:
             if key[0].isdigit() and key[1] == '_':
                 lab = key[2::]
@@ -499,9 +569,31 @@ class PipelineSetting(dict):
             if err:
                 raise ValueError(err+warn)
             subject_to_analyse = SubjectToAnalyse(results['subject_selected'], input_dict=results['input_param'])
-            output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
             participants = bids.ParticipantsProcessTSV()
+            if 'derivatives_output' not in results:
+                results['derivatives_output'] = []
+            if 'local_output' not in results:
+                results['local_output'] = []
+            if not results['derivatives_output'] and not results['local_output']:
+                output_directory, output_name, dataset_desc = self.curr_dev.create_pipeline_directory(self['Name'], param_vars, subject_to_analyse)
+            elif results['local_output']:
+                # Check in the output directory if the analysis doesnot exist
+                output_directory, output_name, dataset_desc = check_pipeline_presence_locally(self['Name'], results['local_output'], param_vars, subject_to_analyse)
+                res_outside = True
+            else:
+                output_name = results['derivatives_output']
+                output_directory = os.path.join(self.cwdir, 'derivatives', output_name)
+                dataset_desc = bids.DatasetDescPipeline(filename=os.path.join(output_directory, 'dataset_description.json'))
+                participants.read_file(os.path.join(output_directory, 'participants.tsv'))
 
+            ##Create the progression bar
+            sg.theme('Light Grey 1')
+            layout = [
+                [sg.Text(self['Name'] + ' is running saved in ' +output_name, justification='center')],
+                [sg.InputText(readonly=True, key='-INPUT-')],
+                [sg.ProgressBar(max_value=200, orientation='h', size=(30, 20), key='progress')]
+            ]
+            window = sg.Window('Bids Pipeline: Progression bar', layout, finalize=True)
             # Check if the subjects have all the required values
             #self['Parameters'].write_file(output_directory)
 
@@ -516,10 +608,18 @@ class PipelineSetting(dict):
             self.log_error += 'Error type: ' + str(exc_type) + ', scriptname: ' + err_name + ', line number, ' + str(
                 exc_tb.tb_lineno) + ': ' + str(er)
             self.write_log()
-            shutil.rmtree(output_directory)
+            empty_dir, log_empty = self.curr_dev.empty_dirs(output_directory, rmemptysub=False)
+            if empty_dir:
+                shutil.rmtree(output_directory)
+            window.close()
             return self.log_error, output_name, {}
 
+        # while True:
+        #     event, values = window.read()
+        progress_bar = window['progress']
+        progress_bar.UpdateBar(0)
         if not order:
+            window['-INPUT-'].update('BIDS Pipeline cannot give the progression for this pipeline.')
             proc = subprocess.Popen(cmd_line, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             error_proc = proc.communicate()
             self.log_error += cmd_arg.verify_log_for_errors('', error_proc)
@@ -530,11 +630,14 @@ class PipelineSetting(dict):
             self.log_error += err_input
             if output_dict:
                 output_dict.get_output_values(in_out, taille, order, output_directory, idx_in)  # sub
+            nbrtot = sum([taille[sub] for sub in taille])
+            init =1
             for sub in in_out:
+                window['-INPUT-'].update(sub + ' being analysed')
                 ##To take into account the prefix and suffix in AnyWave
-                if interm == 'Anywave':
+                if interm == 'AnyWave':
                     try:
-                        warn = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file)
+                        warn, sub_tmp_dir = anywave_constraint(order, idx_in, in_out[sub], cmd_arg.mtg_file, cmd_arg.move_files_refused)
                         if warn:
                             self.log_error += 'Warning {}:\n'.format(self['Name']) + warn
                     except Exception as er:
@@ -551,6 +654,8 @@ class PipelineSetting(dict):
                     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             universal_newlines=True)
                     error_proc = proc.communicate()
+                    valueBar = round(init * 200 / nbrtot)
+                    progress_bar.UpdateBar(valueBar)
                     self.log_error += cmd_arg.verify_log_for_errors(use_list, error_proc)
                     if error_proc[1]:
                         log_error.append(error_proc[1])
@@ -559,14 +664,21 @@ class PipelineSetting(dict):
                     else:
                         log_error.append(error_proc[1])
                     idx = idx + 1
+                    init = init+1
                 # if len(log_error) != taille[sub]:
                 #     participants.append({'participant_id': sub})
                 order_keys = [key for key in order]
+                if interm == 'AnyWave' and cmd_arg.move_files_refused:
+                    shutil.rmtree(sub_tmp_dir)
         else:
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'ERROR: The analysis {0} could not be run due to an issue with the inputs and the outputs.\n'.format(self['Name'])
             self.write_log()
+            window.close()
             return self.log_error, output_name, {}
-        empty_dir, log_empty = self.curr_dev.empty_dirs(output_name, rmemptysub=True)
+        window.close()
+        if interm == 'AnyWave':
+            bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=False, sublist=subject_to_analyse['sub'])
+        empty_dir, log_empty = self.curr_dev.empty_dirs(output_directory, rmemptysub=True)
         if not empty_dir:
             #remove the empty directory
             sub_analysed = [sub.split('-')[1] for sub in os.listdir(output_directory) if sub.startswith('sub')]
@@ -582,8 +694,9 @@ class PipelineSetting(dict):
                 go_throught_dir_to_convert(output_directory)
             except:
                 pass
-            self.curr_dev.parse_pipeline(output_directory, output_name)
-            self.curr_bids.save_as_json()
+            if not res_outside:
+                self.curr_dev.parse_pipeline(output_directory, output_name)
+                self.curr_bids.save_as_json()
             temp = self.write_analysis_done_log(dataset_desc, filename=os.path.join(output_directory, Parameters.filename))
         else:
             self.log_error += datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S") + ': ' + 'Warning: The folder {0} has no results so your analysis may not succeed. The folder {0} will be erased.\n'.format(output_name)
@@ -608,9 +721,9 @@ class PipelineSetting(dict):
             interm = self['Parameters']['Intermediate']
 
         if interm:
-            cmd_arg = eval(interm + '(curr_path=self.curr_path, dev_path=output_directory, callname=callname)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
+            cmd_arg = eval(interm + '(curr_path=self.curr_path, dev_path=output_directory, callname=callname, subject_to_analyse=subject_to_analyse)') #'(bids_directory="'+self.cwdir+'", curr_path="'+self.curr_path+'", dev_path="'+output_directory+'", callname="'+callname+'")')
         else:
-            cmd_arg = Parameters(curr_path=self.curr_path, dev_path=output_directory, callname=callname)
+            cmd_arg = Parameters(curr_path=self.curr_path, dev_path=output_directory, callname=callname, subject_to_analyse=subject_to_analyse)
 
         for key in self['Parameters']:
             if isinstance(self['Parameters'][key], Arguments):
@@ -702,8 +815,12 @@ class PipelineSetting(dict):
         os.makedirs(log_dir, exist_ok=True)
         time_format = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         log_filename = 'bids-pipeline_' + time_format + '.log'
-        with open(os.path.join(log_dir, log_filename), 'w+') as file:
-            file.write(self.log_error + '\n')
+        try:
+            with open(os.path.join(log_dir, log_filename), 'w+') as file:
+                file.write(self.log_error + '\n')
+        except MemoryError:
+            with open(os.path.join(log_dir, log_filename), 'w+') as file:
+                file.write('The log is too big to be written.\n')
 
     def write_command_line_log(self):
         log_dir = os.path.join(self.curr_dev.bp_folder, 'command_line')
@@ -764,7 +881,7 @@ class Parameters(dict):
     arg_readbids = []
     filename = 'BP_parameters_file.json'
 
-    def __init__(self, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None, subject_to_analyse=None):
         if dev_path:
             self.derivatives_directory = dev_path
         if callname:
@@ -836,6 +953,8 @@ class Parameters(dict):
 
         interm = None
         if 'Intermediate' in self.keys():
+            if self['Intermediate'].lower() == 'anywave':
+                self['Intermediate'] = 'AnyWave'
             interm = self['Intermediate']
         name, ext = type_of_software(self['Callname'], interm)
         if not name:
@@ -993,8 +1112,9 @@ class Parameters(dict):
 
 class AnyWave(Parameters):
     anywave_directory = None
+    move_files_refused=False
 
-    def __init__(self, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None, subject_to_analyse=None):
         if dev_path:
             self.derivatives_directory = dev_path
         if callname:
@@ -1004,23 +1124,16 @@ class AnyWave(Parameters):
         home = os.path.expanduser('~')
         self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
         os.makedirs(self.anywave_directory, exist_ok=True)
-        # Get anywave version to know if the anywave files should be in raw or not
-        # cmd = '""' + self.curr_path + ' --version"'
-        # try:
-        #     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        #                             universal_newlines=True)
-        #     error_proc = proc.communicate()
-        #     version = error_proc[1]
-        #     error = error_proc[0]
-        #     if version < 210301 or error == -1:
-        #         bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
-        # except OSError:
-        #     bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
         ## Copy the bids file from derivatives
+        sublist = None
+        if subject_to_analyse is not None:
+            sublist = subject_to_analyse['sub']
         if os.path.exists(bids.BidsDataset.anywave_folder_user):
-            bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True)
+            log = bids.handle_anywave_files(bids.BidsBrick.curr_user, reverse=True, sublist=sublist)
         else:
-            bids.handle_anywave_files('common', reverse=True)
+            log = bids.handle_anywave_files('common', reverse=True, sublist=sublist)
+        if log:
+            self.move_files_refused = True
 
     def command_line_base(self, cmd_line_set, mode, output_directory, input_p, output_p):
         self['plugin'] = self.callname
@@ -1148,7 +1261,7 @@ class AnyWave(Parameters):
 class Docker(Parameters):
     keylist = ['command_line_base', 'Intermediate', 'Callname']
 
-    def __init__(self, curr_path=None, dev_path=None, callname=None):
+    def __init__(self, curr_path=None, dev_path=None, callname=None, subject_to_analyse=None):
         super().__init__(curr_path=curr_path, dev_path=dev_path, callname=callname)
         out_docker = subprocess.check_output("docker -v", shell=True)
         out_docker = out_docker.decode("utf-8")
@@ -1853,7 +1966,7 @@ class Arguments(Parameters):
                     if self['value_selected'] and any(c.isdigit() for c in self['value_selected']):
                         if '.' in self['value_selected'] or ',' in self['value_selected']:
                             self['value_selected'] = float(self['value_selected'])
-                        else:
+                        elif all(c.isdigit() for c in self['value_selected']):
                             self['value_selected'] = int(self['value_selected'])
                 elif 'type' in self.keys():
                     unit = self['type']
@@ -1905,6 +2018,7 @@ class SubjectToAnalyse(Parameters):
     def remove(self, subid):
         self['sub'].remove(subid)
 
+
 def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
     warn_txt = ''
     err_txt = ''
@@ -1937,27 +2051,6 @@ def verify_subject_has_parameters(curr_bids, sub_id, input_vars, param=None):
             deriv_folder = input_vars[key]['deriv-folder'][-1]
             if deriv_folder == '' or 'Previous analysis results' in deriv_folder:# or deriv_folder == ['']:
                 continue
-        # if any(elmt not in bids.ModalityType.get_list_subclasses_names() for elmt in input_vars[key]['modality']):
-        #     mod = []
-        #     for elmt in input_vars[key]['modality']:
-        #         if elmt in bids.ModalityType.get_list_subclasses_names():
-        #             mod.append(elmt)
-        #         else:
-        #             val = [elt for elt in bids.ModalityType.get_list_subclasses_names() if elmt in eval('bids.' + elt + '.allowed_modalities')]
-        #             if deriv_folder:
-        #                 val = [va for va in val if va in bids.Process.get_list_subclasses_names()]
-        #             else:
-        #                 val = [va for va in val if va not in bids.Process.get_list_subclasses_names()]
-        #             mod.extend(val)
-        #     mod = list(set(mod))
-        # else:
-        #     mod = input_vars[key]['modality']
-
-        # if len(mod) > 1:
-        #     err_txt += 'Modalities selected in the input {} are too differents\n.'.format(key)
-        #     return warn_txt, err_txt
-        # else:
-        #     mod = mod[-1]
         keylist = [clef for clef in input_vars[key] if (clef != 'modality' and clef != 'deriv-folder')]
 
         for clef in keylist:

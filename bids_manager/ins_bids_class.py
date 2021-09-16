@@ -696,9 +696,10 @@ class BidsBrick(dict):
                             sub_index = self.curr_subject['index']
                             curr_sub_mod = self['Subject'][sub_index][bidsbrick_key[0]]
                             bln_list = []
-                            for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
-                                flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
-                                bln_list.append(flag_req)
+                            if bidsbrick_key[0] in self.requirements['Requirements']['Subject']:
+                                for mod_requirement in self.requirements['Requirements']['Subject'][bidsbrick_key[0]]:
+                                    flag_req = check_dict_from_req(curr_sub_mod, mod_requirement, bidsbrick_key[0], sub)
+                                    bln_list.append(flag_req)
                             parttsv_idx = present_sub_list.index(sub)
                             self['ParticipantsTSV'][1+parttsv_idx][bidsbrick_key[1]] = str(all(bln_list))
 
@@ -942,7 +943,7 @@ class BidsBrick(dict):
             cmd_line = '""' + converter_path + '"' + ' --toBIDS ' + input_cmd + \
                         os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
                         Data2Import.dirname + '" ' + name_cmd + bids_format
-            cmd_line_markers = cmd_line + ' --use_markers "' + ', '.join(events2import) + '""'
+            cmd_line_markers = cmd_line + ' --use_markers "' + ','.join(events2import) + '""'
 
             os.system(cmd_line_markers)
             list_filename = [filename + ext for ext in conv_ext]
@@ -2549,7 +2550,7 @@ class DatasetDescPipeline(DatasetDescJSON):
             is_same_param = False
             no_subject = False
             # mettre qqch comme quoi on en peut pas comparer, est-ce que vous voulez ajouter à ce dossier
-            return is_same_param, no_subject
+            return is_same_param, no_subject, is_same_input
         # compare the parameters selected by the user and the one in the dataset_description
         for key in keylist:
             if key in self['PipelineDescription']:
@@ -2558,7 +2559,7 @@ class DatasetDescPipeline(DatasetDescJSON):
                 else:
                     is_same_param.append(False)
             else:
-                return False, False
+                return False, False, False
         is_same_param = all(is_same_param)
 
         # check the subject list
@@ -2632,6 +2633,7 @@ class DatasetDescPipeline(DatasetDescJSON):
                         self['SourceDataset'][elt].sort()
                 if subject2remove is not None and subject2remove:
                     idx2remove = [cnt for cnt, sub in enumerate(self['SourceDataset'][elt]) if sub in subject2remove]
+        idx2remove.sort(reverse=True)
         for ids in idx2remove:
             self['SourceDataset']['sub'].pop(ids)
         if order_keys is not None:
@@ -2782,7 +2784,7 @@ class ParticipantsProcessTSV(ParticipantsTSV):
             if line[0].replace('sub-', '') in sub2remove:
                 idx_line2remove.append(cnt)
             elif line[0].replace('sub-', '') in sub2add:
-                sub2add.remove(line[0])
+                sub2add.remove(line[0].replace('sub-', ''))
         for elt in idx_line2remove:
             self.pop(elt)
         for sub in sub2add:
@@ -2988,6 +2990,7 @@ class Data2Import(MetaBrick):
     filename = 'data2import.json'
     requirements = None
     curr_log = ''
+    not_accepted_character = ['-', '_', ' ', '/', '\'', '%', 'é', 'è', 'à', 'ù', '$']
 
     def __init__(self, data2import_dir=None, requirements_fileloc=None):
         """initiate a  dict var for Subject info"""
@@ -3005,6 +3008,12 @@ class Data2Import(MetaBrick):
                     inter_dict = json.load(file)
                     self.copy_values(inter_dict)
                     # self.write_log('Importation procedure ready!')
+                    bad_str = self.verification_validity_file()
+                    if bad_str:
+                        str_error = 'The data2import file is not valid:\n' + bad_str
+                        self.write_log(str_error)
+                        super().__init__()
+                        raise FileExistsError(str_error)
             else:
                 self['UploadDate'] = datetime.now().strftime(self.time_format)
         else:
@@ -3016,6 +3025,29 @@ class Data2Import(MetaBrick):
         if savedir is None:
             savedir = self.dirname
         super().save_as_json(savedir=savedir, file_start=None, write_date=write_date, compress=False)
+
+    def verification_validity_file(self):
+        bad_str = ''
+        for sub in self['Subject']:
+            for mod in sub:
+                if isinstance(sub[mod], list) and sub[mod]:
+                    for elt in sub[mod]:
+                        for key in elt:
+                            if isinstance(elt[key], str) and key != 'fileLoc':
+                                if any((c in self.not_accepted_character) for c in elt[key]):
+                                    bad_str += 'Error: In {0}, {1} have a characters in {2}, please correct it to import data.\n'.format(mod, key, ', '.join(self.not_accepted_character))
+        for dev in self['Derivatives']:
+            for pip in dev['Pipeline']:
+                for sub in pip['SubjectProcess']:
+                    for mod in sub:
+                        if isinstance(sub[mod], list) and sub[mod]:
+                            for elt in sub[mod]:
+                                for key in elt:
+                                    if isinstance(elt[key], str) and key != 'fileLoc':
+                                        if any((c in self.not_accepted_character) for c in elt[key]):
+                                            bad_str += 'Error: In {0}, {1} have a characters in {2}, please correct it to import data.\n'.format(
+                                                mod, key, ', '.join(self.not_accepted_character))
+        return bad_str
 
     @classmethod
     def _assign_import_dir(cls, data2import_dir):
@@ -3047,7 +3079,7 @@ class BidsDataset(MetaBrick):
     parsing_path = os.path.join('derivatives', 'parsing')
     log_path = os.path.join('derivatives', 'log')
     update_text = None
-    anywave_ext = ['.flt', '.levels', '.bad', '.mrk', '.mtg']
+    anywave_ext = ['.flt', '.levels', '.bad', '.mrk', '.mtg', '.display', '.sel']
     anywave_folder_user = ''
     anywave_folder_common = ''
 
@@ -3066,7 +3098,7 @@ class BidsDataset(MetaBrick):
         # self.access['access_time'] = self.access_time.strftime("%Y-%m-%dT%H:%M:%S")
         self.requirements = BidsDataset.requirements
         self.nomenclatures = BidsDataset.nomenclatures
-        BidsDataset.anywave_folder_user = os.path.join(self.dirname, 'derivatives', 'anywave', BidsBrick.curr_user.lower())
+        BidsDataset.anywave_folder_user = os.path.join(self.dirname, 'derivatives', 'anywave', BidsBrick.curr_user) #BidsBrick.curr_user.lower()
         BidsDataset.anywave_folder_common = os.path.join(self.dirname, 'derivatives', 'anywave', 'common')
         # check if there is a parsing file in the derivatives and load it as the current dataset state
         try:
@@ -3074,7 +3106,7 @@ class BidsDataset(MetaBrick):
             if flag:
                 self.parse_bids()
             else:
-                handle_anywave_files(BidsBrick.curr_user, reverse=False)
+                # handle_anywave_files(BidsBrick.curr_user, reverse=False)
                 if self.update_text:
                     self.update_text(self.curr_log, delete_flag=False)
         except (FileNotFoundError, KeyError) as err:
@@ -3193,26 +3225,33 @@ class BidsDataset(MetaBrick):
                             subinfo[mod_dir][-1]['fileLoc'] = file.path
                             # here again, modified dict behaviour, it appends to a list therefore checking the last
                             # element is equivalent to checking the newest element
-                            if not srcdata:
+                            if not srcdata and not flag_process:
                                 subinfo[mod_dir][-1].get_attributes_from_filename()
                                 subinfo[mod_dir][-1].get_sidecar_files()
                                 subinfo.check_file_in_scans(file.name, mod_dir)
+                            elif flag_process:
+                                try:
+                                    subinfo[mod_dir][-1].get_attributes_from_filename()
+                                    subinfo[mod_dir][-1].get_sidecar_files()
+                                    subinfo.check_file_in_scans(file.name, mod_dir)
+                                except:
+                                    continue
                             if 'MegHeadShape' in subinfo[mod_dir][-1] and isinstance(subinfo[mod_dir][-1]['MegHeadShape'], MegHeadShape):
                                 subinfo[mod_dir][-1]['MegHeadShape'].clear_head()
-                        elif ext.lower() in BidsDataset.anywave_ext and not flag_process and not file.name.endswith('_montage.mtg') :
-                            # move anywave file in derivatives
-                            sub_dirname = os.path.dirname(file.path)
-                            if BidsDataset.dirname in file.path:
-                                sub_dirname = sub_dirname.replace(BidsDataset.dirname + '\\', '')
-                            sub_anywave_folder = os.path.normpath(os.path.join(BidsDataset.anywave_folder_user, sub_dirname))
-                            sub_anywave_folder_common = os.path.normpath(
-                                os.path.join(BidsDataset.anywave_folder_common, sub_dirname))
-                            os.makedirs(sub_anywave_folder, exist_ok=True)
-                            if not os.path.exists(os.path.join(sub_anywave_folder_common, file.name)):
-                                os.makedirs(sub_anywave_folder_common, exist_ok=True)
-                                shutil.copy2(file.path, os.path.join(sub_anywave_folder_common, file.name))
-                            shutil.move(file.path, os.path.join(sub_anywave_folder, file.name))
-                            is_moved = True
+                        # elif ext.lower() in BidsDataset.anywave_ext and not flag_process and not file.name.endswith('_montage.mtg') :
+                        #     # move anywave file in derivatives
+                        #     sub_dirname = os.path.dirname(file.path)
+                        #     if BidsDataset.dirname in file.path:
+                        #         sub_dirname = sub_dirname.replace(BidsDataset.dirname + '\\', '')
+                        #     sub_anywave_folder = os.path.normpath(os.path.join(BidsDataset.anywave_folder_user, sub_dirname))
+                        #     sub_anywave_folder_common = os.path.normpath(
+                        #         os.path.join(BidsDataset.anywave_folder_common, sub_dirname))
+                        #     os.makedirs(sub_anywave_folder, exist_ok=True)
+                        #     if not os.path.exists(os.path.join(sub_anywave_folder_common, file.name)):
+                        #         os.makedirs(sub_anywave_folder_common, exist_ok=True)
+                        #         shutil.copy2(file.path, os.path.join(sub_anywave_folder_common, file.name))
+                        #     shutil.move(file.path, os.path.join(sub_anywave_folder, file.name))
+                        #     is_moved = True
                             # need to find corresponding json file and import it in modality json class
                         elif mod_dir + 'GlobalSidecars' in BidsBrick.get_list_subclasses_names() and ext.lower() \
                                 in eval(mod_dir + 'GlobalSidecars.allowed_file_formats') and filename.split('_')[-1]\
@@ -3228,8 +3267,8 @@ class BidsDataset(MetaBrick):
                         #     subinfo[mod_dir][-1].get_attributes_from_filename()
                         #     subinfo[mod_dir][-1].get_sidecar_files()
                         try:
-                            if not is_moved:
-                                is_bids.append(validator(file.path, subinfo.cwdir))
+                            # if not is_moved:
+                            is_bids.append(validator(file.path, subinfo.cwdir))
                         except:
                             continue
                     elif mod_dir and file.is_dir():
@@ -3996,13 +4035,17 @@ class BidsDataset(MetaBrick):
         # could make it faster by just appending a new line instead of writing the whole file again
         self['ParticipantsTSV'].write_file()
         self.save_as_json()
-
+        self.access.free_token('import_data', self.curr_user)
         # if self['SourceData'] and self['SourceData'][-1]['SrcDataTrack']:
         #     # could make it faster by just appending a new line instead of writing the whole file again
         #     self['SourceData'][-1]['SrcDataTrack'].write_file()
 
     def remove(self, element2remove, with_issues=True, in_deriv=None):
         """method to remove either the whole data set, a subject or a file (with respective sidecar files)"""
+        ## Check the access first
+        if hasattr(self, 'access') and self.access[self.curr_user]['permission'] == 'read':
+            self.write_log('Current User {} do not have the permission to delete files.'.format(self.curr_user))
+            return
         # a bit bulky rewrite to make it nice
         if element2remove is self and not isinstance(element2remove, Pipeline):
             shutil.rmtree(self.dirname)
@@ -4549,6 +4592,8 @@ class BidsDataset(MetaBrick):
                     issue['MismatchedElectrodes'] = []
                     issue['Action'] = []
                     issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issue))
+                if 'remove_issue=True' in issue['Action'][0]['command']:
+                    issues_copy['ElectrodeIssue'].pop(issues_copy['ElectrodeIssue'].index(issue))
                 issues_copy.save_as_json()
             for issue in self.issues['ImportIssue']:
                 if not issue['Action']:
@@ -4705,9 +4750,13 @@ class Access(BidsJSON):
             return ''
 
     def read_file(self, filename=None):
+        if filename is not None:
+            self.filename = filename
         super().read_file(self.filename)
 
     def write_file(self, jsonfilename=None):
+        if jsonfilename is not None:
+            self.filename = jsonfilename
         super().write_file(self.filename)
 
     def delete_file(self, user):
@@ -4725,12 +4774,15 @@ class Access(BidsJSON):
             access_type = []
             for i in range(0, ace_count):
                 rev, access, usersid = dacl.GetAce(i)
-                user, group, type = win32security.LookupAccountSid('', usersid)
-                sid, system, type1 = win32security.LookupAccountName(None, user)
-                if win32security.CheckTokenMembership(None, sid):
-                    # get the permission type
-                    if access in permission_dict:
-                        access_type.append(permission_dict[access])
+                try:
+                    user, group, type = win32security.LookupAccountSid('', usersid)
+                    sid, system, type1 = win32security.LookupAccountName(None, user)
+                    if win32security.CheckTokenMembership(None, sid):
+                        # get the permission type
+                        if access in permission_dict:
+                            access_type.append(permission_dict[access])
+                except:
+                    access_type.append('full')
             if 'full' in access_type or 'modify' in access_type:
                 userdict['permission'] = 'full'
             elif 'read_only' in access_type:
@@ -4880,7 +4932,7 @@ class IssueType(BidsBrick):
 
     def add_action(self, desc, command, elec_name=None):
         action = Action()
-        if isinstance(self, ElectrodeIssue):
+        if isinstance(self, ElectrodeIssue) and elec_name is not None:
             """verify that the given electrode name is part of the mismatched electrodes"""
             if elec_name not in self.list_mismatched_electrodes():
                 return
@@ -5010,8 +5062,9 @@ class Issue(BidsBrick):
                                     issue.add_action(action['description'], action['command'])
 
     def save_as_json(self, savedir=None, file_start=None, write_date=True, compress=True):
-
         log_path = os.path.join(BidsDataset.dirname, 'derivatives', 'log')
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
         super().save_as_json(savedir=log_path, file_start=None, write_date=True, compress=False)
 
     def formatting(self, specific_issue=None, comment_type=None, elec_name=None):
@@ -5372,16 +5425,16 @@ for elmt in Electrophy.get_list_subclasses_names():
     setattr(modules[__name__], newclass.__name__, newclass)
 
 
-def handle_anywave_files(foldername, reverse=False):
-
-    def parse_sub_dir(dirname, original_dirname=None, dirname_dest=None, reverse=False):
+def handle_anywave_files(foldername, reverse=False, sublist=None, overwrite=None):
+    # Add security to not overwrite
+    def parse_sub_dir(dirname, original_dirname=None, dirname_dest=None, reverse=False, overwrite=None):
         with os.scandir(dirname) as it:
             for entry in it:
                 [filename, ext] = os.path.splitext(entry.name)
                 if entry.name.startswith('ses-') and entry.is_dir():
-                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse)
+                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse, overwrite=overwrite)
                 elif entry.name.capitalize() in ModalityType.get_list_subclasses_names() and entry.is_dir():
-                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse)
+                    parse_sub_dir(entry.path, original_dirname=original_dirname, dirname_dest=dirname_dest, reverse=reverse, overwrite=overwrite)
                 elif entry.is_file() and ext.lower() in BidsDataset.anywave_ext and not entry.name.endswith('_montage.mtg'):
                     if dirname_dest is None:
                         dirname_dest = BidsDataset.dirname
@@ -5391,11 +5444,47 @@ def handle_anywave_files(foldername, reverse=False):
                     if reverse:
                         shutil.copy2(entry.path, os.path.join(dirname_dest_sub, entry.name))
                     else:
-                        shutil.move(entry.path, os.path.join(dirname_dest_sub, entry.name))
+                        if not os.path.exists(dirname_dest_sub):
+                            os.makedirs(dirname_dest_sub)
+                        if (os.path.exists(os.path.join(dirname_dest_sub, entry.name)) and (overwrite is None or overwrite)) or not os.path.exists(os.path.join(dirname_dest_sub, entry.name)):
+                            shutil.move(entry.path, os.path.join(dirname_dest_sub, entry.name))
+                        elif not overwrite and os.path.exists(os.path.join(dirname_dest_sub, entry.name)):
+                            os.remove(entry.path)
+                elif entry.is_dir() and entry.name.endswith('_meg'):
+                    if dirname_dest is None:
+                        dirname_dest = BidsDataset.dirname
+                    sub_dirname = entry.path
+                    sub_dirname = sub_dirname.replace(original_dirname + '\\', '')
+                    dirname_dest_sub = os.path.normpath(os.path.join(dirname_dest, sub_dirname))
+                    for file in os.listdir(entry.path):
+                        [filename, ext] = os.path.splitext(file)
+                        if ext.lower() in BidsDataset.anywave_ext:
+                            if reverse:
+                                shutil.copy2(os.path.join(entry.path, file), os.path.join(dirname_dest_sub, file))
+                            else:
+                                if not os.path.exists(dirname_dest_sub):
+                                    os.makedirs(dirname_dest_sub)
+                                if (os.path.exists(os.path.join(dirname_dest_sub, entry.name)) and (
+                                        overwrite is None or overwrite)) or not os.path.exists(
+                                        os.path.join(dirname_dest_sub, entry.name)):
+                                    shutil.move(os.path.join(entry.path, file), os.path.join(dirname_dest_sub, file))
 
+    log = ''
+    access = Access(BidsBrick.curr_user)
+    if access[BidsBrick.curr_user]['permission'] == 'read': #peut-etre ne pas mettre reverse car finalement si juste en lecture il ne peuvent pas move
+        log += '/!\\ WARNING /!\\ Current user {} cannot write or move in the BIDS dataset folder so the AnyWave files won"t be moved\n'.format(BidsBrick.curr_user)
+        return log
+    elif len(access.keys()) >1:
+        if any(access[us]['import_data'] or access[us]['analyse_data'] for us in access if not us == BidsBrick.curr_user):
+            log += '/!\\ WARNING /!\\ Anywave files cannot be moved because the dataset is in used by someone else.\n'
+            return log
+    if sublist is None:
+        sublist = [sub for sub in os.listdir(BidsDataset.dirname) if sub.startswith(('sub-'))]
+    else:
+        if 'sub-' not in sublist[0]:
+            sublist = ['sub-' + sub for sub in sublist]
     anywave_folder = os.path.join(BidsDataset.dirname, 'derivatives', 'anywave', foldername)
     if reverse:
-        sublist = [sub for sub in os.listdir(BidsDataset.dirname) if sub.startswith(('sub-'))]
         with os.scandir(anywave_folder) as it:
             for entry in it:
                 if entry.name.startswith('sub-') and entry.name in sublist:
@@ -5403,8 +5492,14 @@ def handle_anywave_files(foldername, reverse=False):
     else:
         with os.scandir(BidsDataset.dirname) as it:
             for entry in it:
-                if entry.name.startswith('sub-') and entry.is_dir():
-                    parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder)
+                if entry.name.startswith('sub-') and entry.is_dir() and entry.name in sublist:
+                    parse_sub_dir(entry.path, original_dirname=BidsDataset.dirname, dirname_dest=anywave_folder, overwrite=overwrite)
+        anywave_common = os.path.join(BidsDataset.dirname, 'derivatives', 'anywave', 'common')
+        if not os.path.exists(anywave_common):
+            #os.makedirs(anywave_common, exist_ok=True)
+            if os.path.exists(anywave_folder):
+                shutil.copytree(anywave_folder, anywave_common)
+    return log
 
 
 def chmod_recursive(this_path, mode, debug=False):

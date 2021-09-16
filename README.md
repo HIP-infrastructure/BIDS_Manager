@@ -32,6 +32,11 @@ This version of BIDS Manager uses a version of BIDS Uploader which does not yet 
 * bids-validator
 * nibabel
 * xlrd
+* paramiko
+* tkcalendar
+* pywin32
+* pysimplegui
+
 
 ## Authors
 * Main developper: Nicolas Roehri <nicolas.roehri@etu.univ-amu.fr>

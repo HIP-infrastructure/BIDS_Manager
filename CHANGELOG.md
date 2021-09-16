@@ -2,10 +2,13 @@
 All notable changes to BIDS Manager-Pipeline will be documented in this file.
 
 ## [Unreleased]
-- Export option is working, need to test more the merge option
-- Make the interface dynamic
-- Possibility to choose a local output in BP
 - Possibility to import derivatives folder in BIDS dataset
+- Improve the information in the log during the analysis
+
+## [v0.3.2] - 2021-08-06
+### Added
+- Progress bar to see the progression of the analysis (required PySimpleGUI library)
+- Check in data2import to avoid special character in the name
 
 ## [v0.3.1] - 2021-04-30
 ### Added
@@ -13,13 +16,21 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 - Extension '.mtg' and '.mrk' to be parsed in derivatives and called as input in BP
 - Management of multiple access to the database
 - Write the command line used for the process in derivatives/bids_pipeline/command_line
+- Interface Dynamical, the parameters are updated according to the subject selection
+- Possibility to write the results of the analysis in local directory
+- Possibility to select subject that has not been done in previous analysis, and write automatically the results in this
+folder
+- Can limited the events write in the electrophysiology data by creating a file names markers_nomenclatures.json
+- Command line used to launch the software are now saved in derivatives/bids_pipeline/command_line
+- If an analysis requires to read the events files of each subject, the events are saved in a json file in derivatievs/bids_pipeline/elements_by_subject
 
 ### Fixed
 - Taking into account multiple session to check the integrity of electrode names
 
 ### Changed
 - During parsing, anywave files are saved in a derivatives folder anywave/username
-- Possibility to run analysis on multiple combination of inputs
+- Possibility to run analysis on multiple combination of inputs, for that you need to add the key 'combinationmode' in
+the dict input of your json file (describing the software) and set it at true.
 
 ## [v0.3.0] - 2021-03-10
 ### Added
@@ -27,7 +38,7 @@ All notable changes to BIDS Manager-Pipeline will be documented in this file.
 
 ## [v0.2.9] - 2021-02-19
 ### Added
-- BiDS Uploader can transfer data in sFTP mode, possibility to compil only BIDS Uploader to give to other center
+- BiDS Uploader can transfer data in sFTP mode, possibility to compile only BIDS Uploader to give to other center
 - Export/Merge button, it can be used to export data or merge 2 BIDS dataset
 
 ### Fixed

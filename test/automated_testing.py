@@ -217,26 +217,44 @@ class TestImport(unittest.TestCase):
         reload(bids)
         cls.bids_dir = os.path.join(__main_dir__, 'new_bids')
         cls.import_dir = os.path.join(__main_dir__, 'import_folder')
+        cls.bids_dir_markers = os.path.join(__main_dir__, 'new_bids_markers')
+        cls.import_dir_markers = os.path.join(__main_dir__, 'import_folder_markers')
 
         if os.path.exists(cls.bids_dir):
             shutil.rmtree(cls.bids_dir)
+        if os.path.exists(cls.bids_dir_markers):
+            shutil.rmtree(cls.bids_dir_markers)
         if __copy_flag__ and os.path.exists(cls.import_dir):
             shutil.rmtree(cls.import_dir)
+        if __copy_flag__ and os.path.exists(cls.import_dir_markers):
+            shutil.rmtree(cls.import_dir_markers)
         os.makedirs(os.path.join(cls.bids_dir, 'code'))
+        os.makedirs(os.path.join(cls.bids_dir_markers, 'code'))
         # copy to code folder in bids dir the requirements
         req_templ_path = os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'requirements.json')
         cls.req_filoc = os.path.join(cls.bids_dir, 'code', 'requirements.json')
         shutil.copy2(req_templ_path, cls.req_filoc)
+        #copy the requirements and markers file in code of bids_markers
+        cls.req_filoc_markers = os.path.join(cls.bids_dir_markers, 'code', 'requirements.json')
+        shutil.copy2(req_templ_path, cls.req_filoc_markers)
+        markers_nom_temp_path = os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'markers_nomenclatures.json')
+        cls.markers_filoc = os.path.join(cls.bids_dir_markers, 'code', 'markers_nomenclatures.json')
+        shutil.copy2(markers_nom_temp_path, cls.markers_filoc)
+
         with open(cls.req_filoc, 'r') as file:
             cls.requirements = json.load(file)
         if __copy_flag__:
             # copy the folder to be imported in import_dir
             shutil.copytree(os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'pat1'), cls.import_dir)
+        if __copy_flag__:
+            # copy the folder to be imported in import_dir
+            shutil.copytree(os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'pat2'), cls.import_dir_markers)
         bids.BidsDataset.dirname = cls.bids_dir
         datasetdesc = bids.DatasetDescJSON()
         datasetdesc['Name'] = __dataset_name__
         datasetdesc['Authors'] = __authors__
         datasetdesc.write_file()
+        datasetdesc.write_file(jsonfilename=os.path.join(cls.bids_dir_markers, bids.DatasetDescJSON.filename))
         fname = os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'data2import_1.json')
         with open(fname, 'r') as file:
             cls.correct_data2import = json.load(file)
@@ -246,6 +264,11 @@ class TestImport(unittest.TestCase):
             cls.correct_parsing = json.load(file)
         if os.path.exists(os.path.join(cls.import_dir, 'data2import.json')):
             os.remove(os.path.join(cls.import_dir, 'data2import.json'))
+        fname_markers = os.path.join(__main_dir__, 'all_data_orig', 'TestImport', 'parsing_after_import_nomenclatures_1.json')
+        with open(fname_markers, 'r') as file:
+            cls.correct_parsing_markers = json.load(file)
+        if os.path.exists(os.path.join(cls.import_dir_markers, 'data2import.json')):
+            os.remove(os.path.join(cls.import_dir_markers, 'data2import.json'))
 
     def test_writing_data2import(self):
         # give the bids requirements file to update subject keys
@@ -365,14 +388,23 @@ class TestImport(unittest.TestCase):
         data2impt = bids.Data2Import(self.import_dir)
         self.assertTrue(data2impt.is_empty(), 'data2import was not emptied')
 
-    def update_to_current_date(self):
-        update_idx = self.correct_parsing['ParticipantsTSV'][0].index('upload_date')
-        for line in self.correct_parsing['ParticipantsTSV'][1:]:
-            line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+    def update_to_current_date(self, markers=False):
+        if not markers:
+            update_idx = self.correct_parsing['ParticipantsTSV'][0].index('upload_date')
+            for line in self.correct_parsing['ParticipantsTSV'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
 
-        update_idx = self.correct_parsing['SourceData'][0]['SrcDataTrack'][0].index('upload_date')
-        for line in self.correct_parsing['SourceData'][0]['SrcDataTrack'][1:]:
-            line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+            update_idx = self.correct_parsing['SourceData'][0]['SrcDataTrack'][0].index('upload_date')
+            for line in self.correct_parsing['SourceData'][0]['SrcDataTrack'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+        else:
+            update_idx = self.correct_parsing_markers['ParticipantsTSV'][0].index('upload_date')
+            for line in self.correct_parsing_markers['ParticipantsTSV'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
+
+            update_idx = self.correct_parsing_markers['SourceData'][0]['SrcDataTrack'][0].index('upload_date')
+            for line in self.correct_parsing_markers['SourceData'][0]['SrcDataTrack'][1:]:
+                line[update_idx] = bids.BidsBrick.access_time.strftime('%Y-%m-%dT%H:%M:%S')
 
     def test_import_invisible_subject(self):
         new_bids = bids.BidsDataset(self.bids_dir)
@@ -397,6 +429,51 @@ class TestImport(unittest.TestCase):
         #check sub02 is not present
         sub_list = [sub['sub'] for sub in new_bids['Subject']]
         self.assertNotIn('02', sub_list, 'Invisible subject is still here !')
+
+    def test_import_with_nomenclatures(self):
+        #write data2import
+        data2impt = bids.Data2Import(self.import_dir_markers, requirements_fileloc=self.req_filoc_markers)
+        # write data2import manually
+        datadesc = bids.DatasetDescJSON()
+        datadesc['Authors'] = __authors__
+        datadesc['Name'] = __dataset_name__
+
+        data2impt['DatasetDescJSON'] = datadesc
+        # create subject object
+        sub01 = bids.Subject()
+        elmt_list = []
+        # create eeg object
+        eeg = bids.Eeg()
+        eeg.update({'ses': '01', 'task': 'rest', 'run': '01', 'fileLoc': '32v_EMG_0003.vhdr'})
+        elmt_list.append(eeg)
+        # create ieeg objects
+        seiz1 = bids.Ieeg()
+        seiz2 = bids.Ieeg()
+        seiz3 = bids.Ieeg()
+        sws1 = bids.Ieeg()
+        seiz1.update({'ses': '01', 'task': 'seizure', 'run': 1, 'fileLoc': 'seizure_1.eeg'})
+        seiz2.update({'ses': '01', 'task': 'seizure', 'run': '02', 'fileLoc': 'seizure_2.eeg'})
+        seiz3.update({'ses': '01', 'task': 'seizure', 'run': 3, 'fileLoc': 'seizure_3.eeg'})
+        sws1.update({'ses': '01', 'task': 'SWS', 'run': 1, 'fileLoc': 'SWS_1.eeg'})
+        elmt_list += [seiz1, seiz2, seiz3, sws1]
+        for elmt in elmt_list:
+            sub01.update({elmt.classname(): elmt})
+        sub01.update({'sub': 1, 'eCRF': 'MAR0080', 'sex': 'M', 'dateOfBirth': '01/01/01'})
+        data2impt['Subject'] = sub01
+        data2impt['UploadDate'] = ''
+        # save data2import.json to make the folder importable for next session (here test)
+        data2impt.save_as_json(self.import_dir_markers)
+        #import data
+        bids.BidsBrick.access_time = datetime.strptime("2019-01-01T00-00-00", bids.BidsBrick.time_format)
+        # import the data in new_bids
+        new_bids = bids.BidsDataset(self.bids_dir_markers)
+        # import without manually checking the data to import
+        new_bids.make_upload_issues(data2impt, force_verif=True)
+        new_bids.import_data(data2impt)
+        self.update_to_current_date(markers=True)
+
+        #check the parsing
+        self.assertEqual(new_bids, self.correct_parsing_markers, 'Import 2 went wrong!')
 
 
 class TestIssueImport(unittest.TestCase):
@@ -723,24 +800,24 @@ class TestElectrodeIssues(unittest.TestCase):
         # take the electrode OCU which is set as SEEG and turn it to OCU (2nd electrode, first one is EEG)
         mismatch_el = ex_elec_iss['MismatchedElectrodes'][0]['name']
         input_dict, opt_dict = __bm__.prepare_chg_eletype(ex_elec_iss, mismatch_el)
-        output_dict = {'type': opt_dict['type'][11]}
+        output_dict = {'type': opt_dict['type'][12]}
         __bm__.make_cmd4electypechg(output_dict, input_dict, ex_elec_iss, mismatch_el)
         self.assertTrue(ex_elec_iss['Action'])
-        self.assertEqual(ex_elec_iss['Action'][0]['command'], 'type="EOG"')
+        self.assertEqual(ex_elec_iss['Action'][0]['command'], 'type="ECG"')
         # apply the action
         self.curr_bids.apply_actions()
         # check channels.tsv of corresponding file was change
         # firstly in bids variable
         obj = self.curr_bids.get_object_from_filename(ex_elec_iss['fileLoc'], sub_id=ex_elec_iss['sub'])
         channels = obj['IeegChannelsTSV']
-        elmts = channels.find_lines_which('type', 'EOG', 'group')
-        self.assertIn('OCU', elmts)
+        elmts = channels.find_lines_which('type', 'ECG', 'group')
+        self.assertIn('ecg+', elmts)
         # secondly in the actual electrode file
         channels = bids.IeegChannelsTSV()
         chnl_file = ex_elec_iss['fileLoc'].replace('_ieeg.vhdr', '_channels.tsv')
         channels.read_file(os.path.join(self.bids_dir, chnl_file))
-        elmts = channels.find_lines_which('type', 'EOG', 'group')
-        self.assertIn('OCU', elmts)
+        elmts = channels.find_lines_which('type', 'ECG', 'group')
+        self.assertIn('ecg+', elmts)
 
     def modify_channel_name(self):
         ex_elec_iss = self.curr_bids.issues['ElectrodeIssue'][0]
@@ -785,6 +862,74 @@ class TestElectrodeIssues(unittest.TestCase):
         self.assertEqual(ex_bids_issue['Action'][0]['command'], 'type="' + opt_dict + '"')
         self.curr_bids.apply_actions()
         self.assertIn('*_CT.nii', self.curr_bids.issues.bidsignore)
+
+
+class TestAccess(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        """ reload ins_bids_class and set bids directory """
+        reload(bids)
+        cls.bids_dir = os.path.join(__main_dir__, 'new_bids_markers')
+        bids.BidsBrick.access_time = datetime.strptime("2019-01-01T00-00-00", bids.BidsBrick.time_format)
+        cls.curr_bids = bids.BidsDataset(cls.bids_dir)
+        cls.access_temp_file = os.path.join(__main_dir__, 'all_data_orig', 'TestAccess', 'access_template.json')
+        with open(cls.access_temp_file, 'r') as file:
+            cls.access_tmp = json.load(file)
+        cls.acces_multiple = os.path.join(__main_dir__, 'all_data_orig', 'TestAccess', 'access_multiple.json')
+        cls.access_read = os.path.join(__main_dir__, 'all_data_orig', 'TestAccess', 'access_read_template.json')
+
+    def update_date_access(self):
+        curr_time = "2019-01-01T00-00-00"
+        self.curr_bids.access[self.curr_bids.curr_user]['access_time'] = curr_time
+
+    def test_access_writing(self):
+        self.update_date_access()
+        self.assertEqual(self.curr_bids.access, self.access_tmp, 'The access is not correct')
+
+    def test_multiple_access(self):
+        #change the access in the folder
+        access_bids = os.path.join(self.bids_dir, 'derivatives', 'log', 'access.json')
+        shutil.copy2(self.acces_multiple, access_bids)
+        self.curr_bids.access.read_file()
+
+        ## try to import
+        perm, users, log_info = self.curr_bids.access.use_token_import(self.curr_bids.curr_user)
+        self.assertFalse(perm)
+        self.assertEqual(users, ['medina'])
+        self.assertEqual(log_info, '/!\\ WAIT /!\\ Users medina are importing data, please wait before to do yours.\n Please contact the users if needed.')
+
+        ## try to run analsysis
+        perm, users, log_info = self.curr_bids.access.use_token_analyse(self.curr_bids.curr_user, soft='h2')
+        self.assertFalse(perm)
+        self.assertEqual(users, ['garnier'])
+        self.assertEqual(log_info, '/!\\ WAIT /!\\ Users garnier are analysing data with pipeline h2, please wait before to do yours.\n Please contact the users if needed.')
+
+        ## try to run another analysis
+        perm, users, log_info = self.curr_bids.access.use_token_analyse(self.curr_bids.curr_user, soft='ica')
+        self.assertTrue(perm)
+        self.assertEqual(users, [])
+        self.assertEqual(log_info, '')
+
+    def test_permission_access(self):
+        # change the access in the folder
+        access_bids = os.path.join(self.bids_dir, 'derivatives', 'log', 'access.json')
+        shutil.copy2(self.access_read, access_bids)
+        self.curr_bids.access = bids.Access(self.curr_bids.curr_user)
+        self.curr_bids.access.read_file(access_bids)
+
+        ## try to import
+        perm, users, log_info = self.curr_bids.access.use_token_import(self.curr_bids.curr_user)
+        self.assertFalse(perm)
+        self.assertEqual(users, [])
+        self.assertEqual(log_info,
+                         '/!\\ ERROR /!\\ User jegou do not have the permission to write data in bids dataset D:\\Data\\testing\\Test_BM_BP\\new_bids_markers.')
+
+        ## try to run another analysis
+        perm, users, log_info = self.curr_bids.access.use_token_analyse(self.curr_bids.curr_user, soft='ica')
+        self.assertTrue(perm)
+        self.assertEqual(users, [])
+        self.assertEqual(log_info, '')
 
 
 class TestObjectRemoval(unittest.TestCase):
@@ -870,7 +1015,7 @@ def suite_init():
     suite = unittest.TestSuite()
     # basic tests
     suite.addTest(unittest.makeSuite(TestBidsBrickSafety))
-    # parsing related  tests
+    # # parsing related  tests
     suite.addTest(TestParsingBids('test_existing_bids'))
     suite.addTest(TestParsingBids('test_parsing_writing'))
     suite.addTest(TestParsingBids('test_parsingjson_recovery'))
@@ -879,6 +1024,7 @@ def suite_init():
     suite.addTest(TestImport('test_writing_data2import'))
     suite.addTest(TestImport('test_import_pat1'))
     suite.addTest(TestImport('test_import_invisible_subject'))
+    suite.addTest(TestImport('test_import_with_nomenclatures'))
     # Import issue tests
     suite.addTest(TestIssueImport('wrong_protocol'))
     suite.addTest(TestIssueImport('wrong_patient_charac'))
@@ -890,6 +1036,10 @@ def suite_init():
     suite.addTest(TestElectrodeIssues('modify_channel_type'))
     suite.addTest(TestElectrodeIssues('modify_channel_name'))
     suite.addTest(TestElectrodeIssues('add_to_bidsignore'))
+    # Access issue
+    suite.addTest(TestAccess('test_access_writing'))
+    suite.addTest(TestAccess('test_multiple_access'))
+    suite.addTest(TestAccess('test_permission_access'))
     # object removal tests
     suite.addTest(TestObjectRemoval('remove_modality_file'))
     suite.addTest(TestObjectRemoval('remove_glbsidecar_file'))
