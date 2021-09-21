@@ -63,7 +63,6 @@ from generic_uploader.data_transfert import data_transfert_sftp
 if 0:  # Used to compile, otherwise, it crashes
     pass
 
-
 #Put the fonction outside of the classes to call them in other scripts
 def valide_date(d):
     try:
@@ -98,6 +97,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             QtWidgets.QMenu.__init__(self)
             # Creation des actions a effectuer lors du clique droit sur la liste de log
             #   Action de suppresion de l'action
+            #for compilation
             self.delete_action = QtWidgets.QAction("Delete", self)
             self.delete_action.triggered.connect(lambda: self.delete_list_command(papa))
             #   Action de Forcage de l'opération de l'action
@@ -269,13 +269,13 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             self.host = 'gitlab-dynamap.timone.univ-amu.fr'
             #port is th sFTP port
             self.port = '22'
-            self.username = 'galvani_ps1'
+            self.username = 'opstimvag'
             #private_key_path is the file with the ssh key. It has to be saved in config folder
-            self.private_key_path = os.path.join(self.init_path, 'config', 'galvani_ps1_privkey')
+            self.private_key_path = os.path.join(self.init_path, 'config', 'priv_key_opstimvag')
             #protocole name is the name appearing in the datset_description of your BIDS dataset
-            protocole_name = 'galvani_ps1'
+            protocole_name = 'opstimvag'
             #secret key is the word used for anonymisation
-            self.secret_key = 'galvani_ps1'
+            self.secret_key = 'opstimvag'
         self.moda_needed = [moda for moda in self.requirements['Requirements'].keys()
                             if moda not in ["Subject"]]
         # ========================================================================================================== #
@@ -350,7 +350,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 ssh.connect(self.host, self.port, self.username, pkey=key)
                 ssh.close()
             except Exception as e:
-                #QtWidgets.QMessageBox.critical(self, "connection error", str(e))
+                QtWidgets.QMessageBox.critical(self, "connection error", str(e))
                 exit()
 
     def interactions_callbacks(self):
@@ -823,7 +823,11 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
                 if key != "modality":
                     items = self.requirements['Requirements'][modality_class]['keys'][key]
                     keys_dict[key] = items
-            modality_list = modality_list + (eval("ins_bids_class." + modality_class + ".allowed_modalities"))
+            # modif sam pour test generic GUI
+            try:
+                modality_list = modality_list + (eval("ins_bids_class." + modality_class + ".allowed_modalities"))
+            except:
+                modality_list = modality_list + [modality_class]
             keys_dict['modality'] = modality_list
         # ses_list = list(set(ses_list))
         ses_list.sort()
@@ -1213,8 +1217,7 @@ class GenericUploader(QtWidgets.QMainWindow, Ui_MainWindow):
             dest_path, dest4data2import = dest_path_fonction(self.Subject, item, src_path, temp_folder)
             if classe:
                 filename, file_ext = os.path.splitext(src_path)
-                if file_ext == '.vhdr' and (os.path.isfile(filename + '.dat') or os.path.isfile(filename + '.eeg')) \
-                        and os.path.isfile(filename + '.vmrk'):
+                if file_ext == '.vhdr' and (os.path.isfile(filename + '.dat') or os.path.isfile(filename + '.eeg')):
                     local_copy_and_anonymization(classe, src_path, dest_path, self.Subject["sub"],
                                                  self.Subject[classe][item["Index"]]["modality"])
                     for ext in ['.vmrk', '.eeg', '.dat']:
