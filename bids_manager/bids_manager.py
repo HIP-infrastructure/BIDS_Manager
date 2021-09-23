@@ -36,7 +36,7 @@ from tkinter import ttk, Tk, Menu, messagebox, filedialog, Frame, Listbox, scrol
     TOP, BOTTOM, BROWSE, MULTIPLE, EXTENDED, ACTIVE, RIDGE, Scrollbar, CENTER, OptionMenu, Checkbutton, Radiobutton, GROOVE, \
     Variable, Canvas, font, HORIZONTAL
 from bids_pipeline.convert_process_file import write_big_table
-from ctypes import windll
+if platform.system() == 'Windows': from ctypes import windll
 from datetime import datetime
 try:
     from importlib import reload
@@ -976,9 +976,11 @@ class BidsManager(Frame, object):  # !!!!!!!!!! object is used to make the class
             str2print = ''
         else:
             str2print = '\n' + str2print
-        self.root.config(cursor="wait")
+        if platform.system() == 'Windows': self.root.config(cursor="wait")
+        if platform.system() == 'Linux': self.root.config(cursor="watch")
         for key in self.main_frame:
-            self.main_frame[key].config(cursor="wait")
+            if platform.system() == 'Windows': self.main_frame[key].config(cursor="wait")
+            if platform.system() == 'Linux': self.main_frame[key].config(cursor="watch")
         self.banner.configure(bg="red")
         self.banner_label.set(self.banner_label._default + str2print)
         self.update()
@@ -2231,7 +2233,8 @@ class BidsBrickDialog(FormDialog):
     def remove_file(self, mod_brick, key, index):
         if BidsBrickDialog.meta_brick == 'BidsDataset' and \
                 messagebox.askyesno('Remove File', 'Are you sure you want to remove ' + mod_brick['fileLoc'] + '?'):
-            self.config(cursor="wait")
+            if platform.system() == 'Windows': self.config(cursor="wait")
+            if platform.system() == 'Linux': self.config(cursor="watch")
             BidsBrickDialog.bidsdataset.remove(mod_brick, with_issues=True)
             BidsBrickDialog.bidsdataset.check_requirements(specif_subs=mod_brick['sub'])
             self.populate_list(self.key_listw[key], self.main_brick[key])
@@ -2257,7 +2260,8 @@ class BidsBrickDialog(FormDialog):
             to_display += ' in '+ in_deriv + 'folder'
         if (BidsBrickDialog.meta_brick == 'BidsDataset' or BidsBrickDialog.meta_brick == 'Pipeline') and \
             messagebox.askyesno('Remove {}'.format(key), 'Are you sure you want to remove ' + to_display + ' from the dataset?'):
-            self.config(cursor="wait")
+            if platform.system() == 'Windows': self.config(cursor="wait")
+            if platform.system() == 'Linux': self.config(cursor="watch")
             BidsBrickDialog.bidsdataset.remove(input_dict, in_deriv=in_deriv)
             if BidsBrickDialog.meta_brick == 'Pipeline':
                 self.master.main_brick.save_as_json()
@@ -3798,8 +3802,12 @@ class RequirementsDialog(TemplateDialog):
             parent.attributes("-topmost", True)
 
         self.error_str = ''
-        if not self.elec_name or 'AnyWave' not in os.path.basename(self.elec_name):
-            self.error_str += 'Bids Manager requires AnyWave to convert electrophy data.\n'
+        if platform.system() == 'Windows':
+            if not self.elec_name or 'AnyWave' not in os.path.basename(self.elec_name):
+                self.error_str += 'Bids Manager requires AnyWave to convert electrophy data.\n'
+        elif platform.system() == 'Linux':
+            if not self.elec_name or 'anywave' not in os.path.basename(self.elec_name).lower():
+                self.error_str += 'Bids Manager requires AnyWave to convert electrophy data.\n'
         if not self.imag_name or '2nii'not in os.path.basename(self.imag_name):
             self.error_str += 'Bids Manager requires dcm2niix or dicm2nii to convert Imaging data.\n'
 

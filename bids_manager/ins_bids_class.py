@@ -33,7 +33,7 @@ import shutil
 import random as rnd
 import getpass
 import platform
-import win32security
+if platform.system() == 'Windows': import win32security
 from bids_validator import BIDSValidator
 from fnmatch import fnmatch
 from builtins import str as builtin_str
@@ -495,7 +495,7 @@ class BidsBrick(dict):
                     shutil.copyfileobj(f_in, f_out)
                 os.remove(output_fname)
                 if platform.system() == 'Linux':
-                    chmod_recursive(output_fname, 0o777)
+                    chmod_recursive(output_fname + '.gz', 0o777)
         else:
             raise TypeError('savedir should be a directory.')
 
@@ -891,9 +891,12 @@ class BidsBrick(dict):
                     for ext in conv_ext:
                         if os.path.exists(os.path.join(Data2Import.dirname, filename + ext)):
                             os.remove(os.path.join(Data2Import.dirname, filename + ext))
-                    cmd_line_base = '""' + converter_path + '"' + " -b y -ba y -m y -z n -f "
-                    cmd_line = cmd_line_base + filename + ' "' + os.path.join(
-                        Data2Import.dirname, self['fileLoc']) + '"'
+                    if platform.system() == 'Windows':
+                        cmd_line_base = '""' + converter_path + '"' + " -b y -ba y -m y -z n -f "
+                        cmd_line = cmd_line_base + filename + ' "' + os.path.join(
+                            Data2Import.dirname, self['fileLoc']) + '"'
+                    elif platform.system() == 'Linux':
+                        cmd_line = converter_path + ' ' + os.path.join(Data2Import.dirname, self['fileLoc'])
                 os.system(cmd_line)
                 # as dicm2nii does not take filename as input, one has to find the newest .nii and sidecar files and rename
                 # them
@@ -908,7 +911,7 @@ class BidsBrick(dict):
                 if mat_header:
                     os.remove(os.path.join(Data2Import.dirname, self['fileLoc'], 'dcmHeaders.mat'))
             elif os.path.isfile(os.path.join(Data2Import.dirname, self['fileLoc'])) and ext in ImagingProcess.allowed_file_formats:#self['fileLoc'].endswith('.nii'):
-                #os.makedirs(os.path.join(dest_change, dirname), exist_ok=True)
+                #os.makedirs(os.path.join(dest_change, dirname), exist_ok=True) # dest_change cannot be None with os.path.join() -> str() instead
                 shutil.copy(os.path.join(Data2Import.dirname, self['fileLoc']),
                             os.path.join(Data2Import.dirname, filename + ext))
                 list_filename = [filename + ext]
@@ -939,12 +942,19 @@ class BidsBrick(dict):
                     events2import = []
             else:
                 events2import = []
-            #Revoir la commande pour linux, voir si fonctionne de la mm façon
-            cmd_line = '""' + converter_path + '"' + ' --toBIDS ' + input_cmd + \
-                        os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
-                        Data2Import.dirname + '" ' + name_cmd + bids_format
-            cmd_line_markers = cmd_line + ' --use_markers "' + ','.join(events2import) + '""'
 
+            if platform.system() == 'Windows':
+                cmd_line = '""' + converter_path + '"' + ' --toBIDS ' + input_cmd + \
+                           os.path.join(Data2Import.dirname, self['fileLoc']) + '" ' + ' --output_dir "' + \
+                           Data2Import.dirname + '" ' + name_cmd + bids_format
+                cmd_line_markers = cmd_line + ' --use_markers "' + ','.join(events2import) + '""'
+            elif platform.system() == 'Linux':
+                cmd_line = converter_path + ' --toBIDS ' + input_cmd.strip('"') + os.path.join(Data2Import.dirname, self[
+                    'fileLoc']) + ' --output_dir ' + Data2Import.dirname + ' ' + name_cmd + bids_format
+                if events2import:
+                    cmd_line_markers = cmd_line + ' --use_markers ' + ','.join(events2import)
+                else:
+                    cmd_line_markers = cmd_line
             os.system(cmd_line_markers)
             list_filename = [filename + ext for ext in conv_ext]
             if not os.path.exists(os.path.join(Data2Import.dirname, list_filename[0])):
@@ -4786,6 +4796,13 @@ class Access(BidsJSON):
             if 'full' in access_type or 'modify' in access_type:
                 userdict['permission'] = 'full'
             elif 'read_only' in access_type:
+                userdict['permission'] = 'read'
+            else:
+                userdict['permission'] = BidsJSON.bids_default_unknown
+        elif platform.system() == 'Linux':
+            if os.access(filename, os.R_OK) and os.access(filename, os.W_OK) and os.access(filename, os.X_OK):
+                userdict['permission'] = 'full'
+            elif os.access(filename, os.R_OK):
                 userdict['permission'] = 'read'
             else:
                 userdict['permission'] = BidsJSON.bids_default_unknown

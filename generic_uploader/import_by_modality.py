@@ -23,6 +23,7 @@
 
 from PyQt5 import QtWidgets
 import os
+import platform
 from bids_manager import ins_bids_class
 from generic_uploader.meg_import_dialog import MegImportDialog
 from generic_uploader.anat_import_dialog import AnatImportDialog
@@ -63,6 +64,9 @@ def find_run_nb(subject_modality, items_list, bids_dataset):
 
 
 def import_by_modality(main_window, modality_class, modality_gui, subject):
+    open_file_options = dict()
+    if platform.system() == 'Linux':
+        open_file_options = {'options': QtWidgets.QFileDialog.DontUseNativeDialog}  # Known issue with PyQt5, extensions are case sensitive with native QFileDialog
     bids_dataset = main_window.bids_dataset
     key_list = [str(modality_gui.combobox_list[idx].objectName()) for idx in range(0, len(modality_gui.combobox_list))]
     keys_dict = {}
@@ -105,7 +109,7 @@ def import_by_modality(main_window, modality_class, modality_gui, subject):
             extenstion_allowed = '*' + ' *'.join(files_type_allowed)
             if tmp_modality.classname() is not "Meg":
                 imported_name = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more files",
-                                                               main_window.last_path, extenstion_allowed)
+                                                                       main_window.last_path, extenstion_allowed, **open_file_options)
                 # SEEG part
                 if not imported_name[0]:
                     return 0, 0
@@ -156,7 +160,7 @@ def import_by_modality(main_window, modality_class, modality_gui, subject):
                 else:
                     if meg_import_dialog.flag_import == "files":
                         imported_name = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more files",
-                                                                           main_window.last_path, extenstion_allowed)
+                                                                           main_window.last_path, extenstion_allowed, **open_file_options)
                         main_window.last_path = os.path.dirname(str(imported_name[0]))
                         # car il peut y avoir plusieurs fichier !!
                         main_window.last_path = os.path.dirname(str(imported_name[0]))
@@ -229,7 +233,7 @@ def import_by_modality(main_window, modality_class, modality_gui, subject):
         #     files_type_allowed = getattr(ins_bids_class, modality_class).allowed_file_formats
         #     extenstion_allowed = '*' + ' *'.join(files_type_allowed)
         imported_name = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more files",
-                                                           main_window.last_path, extenstion_allowed)
+                                                           main_window.last_path, extenstion_allowed, **open_file_options)
         imported_name = imported_name[0] # to manage pyqt5 and tuple from QtWidgets.openfile
         if not imported_name:
             return 0, 0

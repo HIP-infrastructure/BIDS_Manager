@@ -1,4 +1,5 @@
 from os import path
+import sys
 from setuptools import setup, find_packages
 
 here = path.abspath(path.dirname(__file__))
@@ -24,10 +25,10 @@ setup(
         'scipy',
         'xlrd',
         'nibabel',
-        'tkcalendar',
-        'pywin32',
-        'pysimplegui'
-    ],
+        'tkcalendar',        
+        'PySimpleGUI',
+        'babel' 
+        ] + ["pywin32"] if sys.platform == "win32" else [],   
     include_package_data=True,
     #voir à quoi correspond data_files
     # data_files = [
@@ -40,6 +41,7 @@ setup(
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
         'Operating System :: Microsoft :: Windows',
+        'Operating System :: Unix',
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3',
         'Topic :: Scientific/Engineering :: Bio-Informatics',
         'Programming Language :: Python :: 3 :: Only',

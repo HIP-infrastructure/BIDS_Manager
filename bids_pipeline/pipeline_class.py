@@ -31,6 +31,7 @@ import sys
 import subprocess
 import shutil
 import itertools
+import platform
 from tkinter import messagebox, filedialog
 from bids_pipeline.convert_process_file import go_throught_dir_to_convert, convert_channels_in_montage_file
 from sys import exc_info
@@ -651,6 +652,8 @@ class PipelineSetting(dict):
                     use_list = list_for_str_format(in_out[sub], idx)
                     cmd = cmd_line.format(*use_list)
                     self.cmd_line_log.append(cmd)
+                    if platform.system() == 'Linux':
+                        cmd = cmd.split()  # To get a list() of args instead of a cmd str(). Shd be platform independent
                     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             universal_newlines=True)
                     error_proc = proc.communicate()
@@ -942,13 +945,15 @@ class Parameters(dict):
             return name, ext
 
         def select_pipeline_path(name, ext):
+            if platform.system() == 'Windows':
+                ask_file_options = {'filetypes': [('files', ext)]}
+            elif platform.system() == 'Linux':
+                ask_file_options = dict()
             messagebox.showerror('PathError', 'The current pipeline path is not valid')
-            filename = filedialog.askopenfilename(title='Please select ' + name + ' file',
-                                                  filetypes=[('files', ext)])
+            filename = filedialog.askopenfilename(title='Please select ' + name + ' file', **ask_file_options)
             if not name in filename:
                 messagebox.showerror('PathError', 'The selected file is not the good one for this pipeline')
                 return 'ERROR: The path is not valid'
-
             return filename
 
         interm = None
