@@ -28,6 +28,7 @@ import datetime
 import getpass
 import getopt
 import sys
+import re
 import subprocess
 import shutil
 import itertools
@@ -652,8 +653,14 @@ class PipelineSetting(dict):
                     use_list = list_for_str_format(in_out[sub], idx)
                     cmd = cmd_line.format(*use_list)
                     self.cmd_line_log.append(cmd)
-                    if platform.system() == 'Linux':
-                        cmd = cmd.split()  # To get a list() of args instead of a cmd str(). Shd be platform independent
+                    if platform.system() == 'Linux':  # Turns cmd into a list of args. Auto-escapes + platform independent
+                        if re.search('^matlab', cmd):
+                            matlab_cmd = re.search('(".*")', cmd).group(1)
+                            cmd = cmd.replace(matlab_cmd, '').split()
+                            cmd.remove('-wait')  # not on Linux
+                            cmd = cmd + [matlab_cmd.strip('"')]
+                        else:  # Only tested for executables
+                            cmd = cmd.split()
                     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             universal_newlines=True)
                     error_proc = proc.communicate()
@@ -1242,7 +1249,7 @@ class AnyWave(Parameters):
         # else:
         #     self.anywave_directory = os.path.join(home, 'AnyWave', 'Log')
         #     if not os.path.exists(self.anywave_directory):
-        #         self.anywave_directory = os.path.join('\\dynaserv', 'home', getpass.getuser(), 'AnyWave', 'Log')
+        #         self.anywave_directory = os.path.join(os.sep +'dynaserv', 'home', getpass.getuser(), 'AnyWave', 'Log')
         temp_time = 0
         filename =''
         if os.path.exists(self.anywave_directory):
@@ -1325,7 +1332,7 @@ class Matlab(Parameters):
             cmd_end = '; exit\"'
         elif mode == 'manual':
             if not cmd_line_set:
-                cmd_line_set = "matlab -wait -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); "
+                cmd_line_set = "matlab -wait -nosplash -nodesktop -r \"cd('" + os.path.dirname(self.curr_path) + "'); " # closing quotation to end matlab cmd missing ?
         cmd_base = cmd_line_set + self.callname
 
         cmd_line, order = self.chaine_parameters(output_directory, input_p, output_p)
@@ -1623,7 +1630,7 @@ class InputArguments(Parameters):
 
     def get_input_values(self, subject_to_analyse, in_out, idx, tag):#sub, input_param=None):
         def check_dir_existence(bids_directory, chemin, filetype=None):
-            chemin_final = os.path.join(self.bids_directory, '\\'.join(chemin))
+            chemin_final = os.path.join(self.bids_directory, os.sep.join(chemin))
             if os.path.exists(chemin_final):
                 return chemin_final
             else:
@@ -1665,7 +1672,7 @@ class InputArguments(Parameters):
                 chemin = []
                 filetype = None
                 if self.deriv_input:
-                    chemin.append('derivatives\\' + self['deriv-folder'][0])
+                    chemin.append('derivatives'+ os.sep + self['deriv-folder'][0])
                     #path_key['modality'] = path_key['modality'] + 'Process'
                 for key, val in path_key.items():
                     if val and key != 'modality':
@@ -1673,7 +1680,7 @@ class InputArguments(Parameters):
                     elif val and key == 'modality':
                         chemin.append(val.lower())
                     elif not val and key == 'ses':
-                        subdir = os.path.join(self.bids_directory, '\\'.join(chemin))
+                        subdir = os.path.join(self.bids_directory, os.sep.join(chemin))
                         if os.path.exists(subdir):
                             ses = [f for f in os.listdir(subdir) if os.path.isdir(os.path.join(subdir,f)) and f.startswith('ses-')]
                             if len(ses) == 1:
@@ -1798,7 +1805,7 @@ class Output(Parameters):
             if "c,rfDC" in filename:
                 filename = os.path.dirname(filename)
             dirname, filename = os.path.split(filename)
-            trash, dirname = dirname.split(bids_directory + '\\')
+            trash, dirname = dirname.split(bids_directory + os.sep)
             if 'derivatives' in dirname:
                 idx = dirname.find('sub-')
                 dirname = dirname[idx::]
@@ -1823,9 +1830,10 @@ class Output(Parameters):
                 dirname, filename = os.path.split(filename)
                 if dirname.endswith('_meg'):
                     dirname = os.path.dirname(dirname)
-                trash, dirname = dirname.split(bids_directory + '\\')
+                print(bids_directory)
+                trash, dirname = dirname.split(bids_directory + os.sep)
             else:
-                trash, dirname = filename.split(bids_directory+'\\')
+                trash, dirname = filename.split(bids_directory+ os.sep)
             if 'derivatives' in dirname:
                 idx = dirname.find('sub-')
                 dirname = dirname[idx::]
@@ -1871,7 +1879,7 @@ class Output(Parameters):
             out_file = []
             soft_name = soft_name.lower()
             dirname, filename = os.path.split(filename)
-            trash, dirname = dirname.split(bids_directory + '\\')
+            trash, dirname = dirname.split(bids_directory + os.sep)
             file_elt = filename.split('_')
             if isinstance(extension, list):
                 for ext in extension:
