@@ -2351,8 +2351,23 @@ class ScansTSV(BidsTSV):
 
 class Subject(BidsBrick):
 
-    keylist = BidsBrick.keylist + ['Anat', 'Func', 'Fmap', 'Dwi', 'Pet', 'Meg', 'Eeg', 'Ieeg',
-                                   'Beh', 'IeegGlobalSidecars', 'EegGlobalSidecars', 'PetGlobalSidecars', 'MegGlobalSidecars','Scans'] #'Pet',
+    keylist = BidsBrick.keylist + [
+        "Anat",
+        "Func",
+        "Fmap",
+        "Dwi",
+        "CT",
+        "Pet",
+        "Meg",
+        "Eeg",
+        "Ieeg",
+        "Beh",
+        "IeegGlobalSidecars",
+        "EegGlobalSidecars",
+        "PetGlobalSidecars",
+        "MegGlobalSidecars",
+        "Scans",
+    ]
     required_keys = BidsBrick.required_keys
 
     def __setitem__(self, key, value):
