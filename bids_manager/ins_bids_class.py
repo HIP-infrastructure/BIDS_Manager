@@ -38,20 +38,6 @@ from bids_validator import BIDSValidator
 from fnmatch import fnmatch
 from builtins import str as builtin_str
 
-try:
-    print("Loading CT and CTJSON classes from bids_tools")
-    from bids_tools.bids_manager.extensions import CT, CTJSON
-
-    print("Add the classes to the global namespace")
-    globals()["CT"] = CT
-    globals()["CTJSON"] = CTJSON
-    print("CT and CTJSON classes loaded")
-except ImportError:
-    print("CT and CTJSON classes not loaded")
-
-
-''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
-sidecars, BidsTSV: to handle the tsv sidecars. '''
 
 
 class BidsBrick(dict):
@@ -2150,6 +2136,37 @@ class Bval(BidsFreeFile):
 
 class Bvec(BidsFreeFile):
     extension = '.bvec'
+
+""" Computed Tomography (CT) brick with its file-specific sidecar files. """
+
+
+class CT(Imaging):
+
+    keylist = BidsBrick.keylist + [
+        "ses",
+        "acq",
+        "ce",
+        "rec",
+        "run",
+        "mod",
+        "modality",
+        "fileLoc",
+        "CTJSON",
+    ]
+    required_keys = Imaging.required_keys + ["modality"]
+    allowed_modalities = ["ct"]
+    allowed_file_formats = [".nii"]
+    readable_file_formats = allowed_file_formats + [".dcm"]
+    required_protocol_keys = []
+
+    def __init__(self):
+        super().__init__()
+
+
+class CTJSON(ImagingJSON):
+
+    keylist = ImagingJSON.keylist
+    required_keys = ImagingJSON.required_keys
 
 
 """ MEG brick with its file-specific sidecar files (To be finalized). """
