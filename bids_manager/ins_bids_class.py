@@ -39,13 +39,16 @@ from fnmatch import fnmatch
 from builtins import str as builtin_str
 
 try:
+    print("Loading CT and CTJSON classes from bids_tools")
     from bids_tools.bids_manager.extensions import CT, CTJSON
-    # Add the classes to the global namespace
+
+    print("Add the classes to the global namespace")
     globals()["CT"] = CT
     globals()["CTJSON"] = CTJSON
-    print("CT and CTJSON classes loaded from bids_tools")
+    print("CT and CTJSON classes loaded")
 except ImportError:
-    print("CT and CTJSON classes not loaded from bids_tools")
+    print("CT and CTJSON classes not loaded")
+
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
 sidecars, BidsTSV: to handle the tsv sidecars. '''
