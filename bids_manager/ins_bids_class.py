@@ -40,12 +40,12 @@ from builtins import str as builtin_str
 
 try:
     from bids_tools.bids_manager.extensions import CT, CTJSON
-
     # Add the classes to the global namespace
     globals()["CT"] = CT
     globals()["CTJSON"] = CTJSON
+    print("CT and CTJSON classes loaded from bids_tools")
 except ImportError:
-    pass
+    print("CT and CTJSON classes not loaded from bids_tools")
 
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
 sidecars, BidsTSV: to handle the tsv sidecars. '''
