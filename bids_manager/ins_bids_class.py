@@ -38,6 +38,14 @@ from bids_validator import BIDSValidator
 from fnmatch import fnmatch
 from builtins import str as builtin_str
 
+try:
+    from bids_tools.bids_manager.extensions import (
+        CT,
+        CTJSON
+    )
+except ImportError:
+    pass
+
 ''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
 sidecars, BidsTSV: to handle the tsv sidecars. '''
 
