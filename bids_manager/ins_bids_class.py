@@ -39,10 +39,11 @@ from fnmatch import fnmatch
 from builtins import str as builtin_str
 
 try:
-    from bids_tools.bids_manager.extensions import (
-        CT,
-        CTJSON
-    )
+    from bids_tools.bids_manager.extensions import CT, CTJSON
+
+    # Add the classes to the global namespace
+    globals()["CT"] = CT
+    globals()["CTJSON"] = CTJSON
 except ImportError:
     pass
 
