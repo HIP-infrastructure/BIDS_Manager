@@ -38,6 +38,8 @@ from bids_validator import BIDSValidator
 from fnmatch import fnmatch
 from builtins import str as builtin_str
 
+''' Three main bricks: BidsBrick: to handles the modality and high level directories, BidsJSON: to handles the JSON 
+sidecars, BidsTSV: to handle the tsv sidecars. '''
 
 
 class BidsBrick(dict):
