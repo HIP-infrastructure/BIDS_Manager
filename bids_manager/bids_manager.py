@@ -3882,7 +3882,7 @@ class RequirementsDialog(TemplateDialog):
                         if key == 'amount' and value:
                             mod_dict['amount'] = int(value)
                         elif key == 'run' and value:
-                            if value.isdigit() or value is '_':
+                            if value.isdigit() or value == "_":
                                 type_dict[key] = value
                             else:
                                 error = 'Run should be numerical value or "_" in required mod {}.\n'.format(self.modality_required_name[i])

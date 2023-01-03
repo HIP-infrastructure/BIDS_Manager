@@ -106,10 +106,15 @@ def import_by_modality(main_window, modality_class, modality_gui, subject):
         elif isinstance(tmp_modality, ins_bids_class.Electrophy):
         # files_type_allowed = "(*.trc *.eeg *.vhdr *.vmrk *.dat *.jpg *.png *.edf *.ctf *.fif)"
             files_type_allowed = tmp_modality.readable_file_formats
-            extenstion_allowed = '*' + ' *'.join(files_type_allowed)
-            if tmp_modality.classname() is not "Meg":
-                imported_name = QtWidgets.QFileDialog.getOpenFileNames(None, "Select one or more files",
-                                                                       main_window.last_path, extenstion_allowed, **open_file_options)
+            extenstion_allowed = "*" + " *".join(files_type_allowed)
+            if tmp_modality.classname() != "Meg":
+                imported_name = QtWidgets.QFileDialog.getOpenFileNames(
+                    None,
+                    "Select one or more files",
+                    main_window.last_path,
+                    extenstion_allowed,
+                    **open_file_options
+                )
                 # SEEG part
                 if not imported_name[0]:
                     return 0, 0
