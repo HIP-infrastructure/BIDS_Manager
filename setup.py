@@ -6,7 +6,7 @@ here = path.abspath(path.dirname(__file__))
 
 setup(
     name='bids_manager',
-    version="0.3.3-dev",
+    version="0.3.3-dev0",
     zip_safe=False,
     #modifier l'url
     url='https://github.com/Dynamap/BIDS_Manager',
